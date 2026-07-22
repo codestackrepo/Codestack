@@ -1,0 +1,43 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# build
+dist/
+build/
+*.tsbuildinfo
+
+# env
+.env
+.env.local
+.env.*.local
+
+# logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# test / coverage
+coverage/
+.nyc_output/
+
+# editors / os
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+
+# AI tooling (Claude Code skills) — local dev convenience only, not required
+# to build/run/test the app; not committed to keep the public repo focused
+# on the product. Reinstall via: npx skills@latest add mattpocock/skills
+.claude/
+.agents/
+skills-lock.json
+
+# misc
+*.pem
+tmp/
+
+# graphify knowledge-graph artifacts
+graphify-out/

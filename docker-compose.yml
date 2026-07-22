@@ -1,0 +1,113 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: codestack_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: code
+    ports:
+      - '5432:5432'
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d code']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: codestack_redis
+    command: ['redis-server', '--maxmemory-policy', 'noeviction']
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  piston:
+    image: ghcr.io/engineer-man/piston:latest
+    container_name: codestack_piston
+    privileged: true
+    ports:
+      - '2000:2000'
+    volumes:
+      - piston-data:/piston
+    restart: unless-stopped
+
+  # One-off: installs language runtimes into Piston via its package API
+  # (python, node, gcc for C++, java). Exits when done.
+  piston-setup:
+    image: curlimages/curl:latest
+    depends_on:
+      - piston
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - |
+        echo "waiting for piston..."; \
+        until curl -s http://piston:2000/api/v2/runtimes >/dev/null; do sleep 2; done; \
+        for pkg in '{"language":"python","version":"3.11.0"}' \
+                   '{"language":"node","version":"20.11.1"}' \
+                   '{"language":"gcc","version":"10.2.0"}' \
+                   '{"language":"java","version":"15.0.2"}'; do \
+          echo "installing $$pkg"; \
+          curl -s -X POST http://piston:2000/api/v2/packages -H 'Content-Type: application/json' -d "$$pkg" || true; \
+        done; \
+        echo "piston runtimes installed"
+    restart: 'no'
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: codestack_api
+    command: ['node', 'dist/main.js']
+    env_file:
+      - apps/api/.env
+    environment:
+      DATABASE_HOST: postgres
+      REDIS_HOST: redis
+      PISTON_URLS: http://piston:2000/api/v2/execute
+    ports:
+      - '3000:3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      piston:
+        condition: service_started
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: codestack_worker
+    command: ['node', 'dist/worker.js']
+    env_file:
+      - apps/api/.env
+    environment:
+      DATABASE_HOST: postgres
+      REDIS_HOST: redis
+      PISTON_URLS: http://piston:2000/api/v2/execute
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      piston:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  pg-data:
+  redis-data:
+  piston-data:

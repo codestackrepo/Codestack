@@ -1,0 +1,176 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import '@fontsource-variable/inter';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-heading: var(--font-sans);
+  --font-sans: 'Inter Variable', sans-serif;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-brand: var(--brand);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/*
+ * CodeStack brand system.
+ *   --primary : logo navy  #1D5A87  (hsl 205 65% 32%)
+ *   --brand   : logo amber #F5A623  (hsl 37 91% 55%) — used for CTAs/highlights,
+ *               kept separate from shadcn's --accent so component hover states
+ *               don't read as brand highlights. --brand-foreground is a deep navy
+ *               so text on the amber CTA meets contrast.
+ * Neutrals carry a faint cool (blue) cast so greys sit under the navy primary
+ * instead of looking sterile. Dark mode is navy-tinted to match the dark-variant
+ * logo (#0F2438), and the sidebar rail stays deep navy in BOTH themes.
+ */
+:root {
+  --background: hsl(0 0% 100%);
+  --foreground: hsl(205 30% 12%);
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(205 30% 12%);
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(205 30% 12%);
+  --primary: hsl(205 65% 32%);
+  --primary-foreground: hsl(204 92% 96%);
+  --secondary: hsl(205 32% 96%);
+  --secondary-foreground: hsl(205 40% 20%);
+  --muted: hsl(205 28% 96%);
+  --muted-foreground: hsl(205 12% 42%);
+  --accent: hsl(205 32% 94%);
+  --accent-foreground: hsl(205 45% 22%);
+  --brand: hsl(37 91% 55%);
+  --brand-foreground: hsl(205 80% 12%);
+  --destructive: hsl(0 72% 48%);
+  --border: hsl(205 24% 89%);
+  --input: hsl(205 24% 89%);
+  --ring: hsl(205 65% 32% / 0.45);
+  --chart-1: hsl(205 70% 45%);
+  --chart-2: hsl(37 91% 55%);
+  --chart-3: hsl(172 55% 40%);
+  --chart-4: hsl(265 55% 62%);
+  --chart-5: hsl(145 55% 42%);
+  --radius: 0.625rem;
+  --sidebar: hsl(206 55% 13%);
+  --sidebar-foreground: hsl(205 38% 86%);
+  --sidebar-primary: hsl(37 91% 55%);
+  --sidebar-primary-foreground: hsl(206 55% 12%);
+  --sidebar-accent: hsl(206 44% 21%);
+  --sidebar-accent-foreground: hsl(0 0% 100%);
+  --sidebar-border: hsl(206 40% 22%);
+  --sidebar-ring: hsl(37 91% 55%);
+}
+
+.dark {
+  --background: hsl(206 44% 8%);
+  --foreground: hsl(205 30% 92%);
+  --card: hsl(206 40% 12%);
+  --card-foreground: hsl(205 30% 92%);
+  --popover: hsl(206 42% 11%);
+  --popover-foreground: hsl(205 30% 92%);
+  /* Dark mode keeps a pale ice-blue primary (matching the dark-variant logo)
+     instead of a dark navy that would lose contrast on the navy surface. */
+  --primary: hsl(202 55% 78%);
+  --primary-foreground: hsl(206 55% 12%);
+  --secondary: hsl(206 34% 18%);
+  --secondary-foreground: hsl(205 30% 92%);
+  --muted: hsl(206 34% 16%);
+  --muted-foreground: hsl(205 20% 64%);
+  --accent: hsl(206 34% 19%);
+  --accent-foreground: hsl(205 30% 92%);
+  --brand: hsl(37 92% 58%);
+  --brand-foreground: hsl(206 60% 10%);
+  --destructive: hsl(0 68% 58%);
+  --border: hsl(206 30% 22%);
+  --input: hsl(206 30% 24%);
+  --ring: hsl(202 55% 60%);
+  --chart-1: hsl(202 72% 62%);
+  --chart-2: hsl(37 92% 58%);
+  --chart-3: hsl(172 55% 50%);
+  --chart-4: hsl(265 60% 70%);
+  --chart-5: hsl(145 55% 52%);
+  --sidebar: hsl(206 52% 10%);
+  --sidebar-foreground: hsl(205 38% 86%);
+  --sidebar-primary: hsl(37 91% 55%);
+  --sidebar-primary-foreground: hsl(206 55% 12%);
+  --sidebar-accent: hsl(206 40% 17%);
+  --sidebar-accent-foreground: hsl(0 0% 100%);
+  --sidebar-border: hsl(206 34% 19%);
+  --sidebar-ring: hsl(37 91% 55%);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+@layer utilities {
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: var(--border);
+    border-radius: 9999px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  /* Subtle brand grid backdrop for hero/empty surfaces. */
+  .bg-grid {
+    background-image:
+      linear-gradient(to right, color-mix(in oklab, var(--border) 60%, transparent) 1px, transparent 1px),
+      linear-gradient(to bottom, color-mix(in oklab, var(--border) 60%, transparent) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+}
