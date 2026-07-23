@@ -55,6 +55,11 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* Soft "floating card" elevation (reference board §14.4). Tinted with the
+     foreground hue so shadows read warm-neutral, not flat black. */
+  --shadow-soft: 0 1px 2px hsl(205 40% 12% / 0.04), 0 4px 16px hsl(205 40% 12% / 0.06);
+  --shadow-soft-lg: 0 2px 6px hsl(205 40% 12% / 0.06), 0 16px 40px hsl(205 40% 12% / 0.1);
 }
 
 /*
@@ -77,7 +82,9 @@
  * deep navy in BOTH themes (institutional shell + warm reward layer, §13.5).
  */
 :root {
-  --background: hsl(0 0% 100%);
+  /* Soft off-white app surface so white cards visibly float on it (reference
+     board §14.4). Cards/popovers stay pure white. */
+  --background: hsl(210 33% 98%);
   --foreground: hsl(205 30% 12%);
   --card: hsl(0 0% 100%);
   --card-foreground: hsl(205 30% 12%);
@@ -185,6 +192,22 @@
   html {
     @apply font-sans;
   }
+  /* Motion accessibility (§14.2): honor the OS reduced-motion setting — collapse
+     every animation/transition to ~instant and reveal any scroll-in content. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+    .reveal {
+      opacity: 1 !important;
+      transform: none !important;
+    }
+  }
 }
 
 @layer utilities {
@@ -209,5 +232,88 @@
       linear-gradient(to right, color-mix(in oklab, var(--border) 60%, transparent) 1px, transparent 1px),
       linear-gradient(to bottom, color-mix(in oklab, var(--border) 60%, transparent) 1px, transparent 1px);
     background-size: 28px 28px;
+  }
+
+  /* Brand gradient for hero / promo-CTA cards (reference board §14.4): a calm
+     navy → violet → amber sweep. Text on it should use a light foreground. */
+  .bg-gradient-brand {
+    background-image: linear-gradient(
+      135deg,
+      hsl(205 72% 26%) 0%,
+      hsl(255 45% 42%) 55%,
+      hsl(37 91% 48%) 130%
+    );
+  }
+}
+
+/* ─── Motion layer (§14.2) ─────────────────────────────────────────────────
+ * Calm, quick (150–400ms) entrances + a gentle idle float. Reveal-on-scroll is
+ * driven by the useReveal() hook toggling `.in-view`. All neutralized by the
+ * reduced-motion guard in @layer base. */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes float-y {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@layer utilities {
+  .animate-fade-in {
+    animation: fade-in 0.4s ease-out both;
+  }
+  .animate-fade-in-up {
+    animation: fade-in-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .animate-scale-in {
+    animation: scale-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .animate-float {
+    animation: float-y 6s ease-in-out infinite;
+  }
+
+  /* Reveal-on-scroll: hidden until the useReveal hook adds `.in-view`.
+     Stagger children with inline `style="--reveal-delay: 80ms"`. */
+  .reveal {
+    opacity: 0;
+    transform: translateY(16px);
+    transition:
+      opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+      transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    transition-delay: var(--reveal-delay, 0ms);
+  }
+  .reveal.in-view {
+    opacity: 1;
+    transform: none;
   }
 }

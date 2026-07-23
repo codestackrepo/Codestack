@@ -397,3 +397,52 @@ page sweep (§8) must NOT homogenize these.
 - **Editor theme: INDEPENDENT, default dark** ✅ (user 2026-07-24) — app-light + editor-dark by default,
   VS Code/Replit style, with a per-user editor-theme toggle persisted separately from app theme. Monaco
   `defineTheme` synced to an *independent* editor-theme pref, NOT next-themes (§13.6#1).
+
+## 14. Added scope (user 2026-07-24): public Home page + UI animation layer
+
+Two additions on top of the phased plan. Both honor the "not-gov, coder-friendly, soothing" direction.
+
+### 14.1 Public Home / landing page
+Today `/` redirects into the auth-gated `/home` (dashboard) — there is **no public page**. Add a
+public **landing page at `/`** (unauthenticated-accessible): hero with animated headline + primary CTA
+(Get started → register / Sign in), a short "what CodeStack is" value strip, feature cards (practice,
+classrooms, assignments, playground), a lightweight "how it works" flow, and a footer. Logged-in
+visitors see an "Open dashboard" CTA instead of sign-in. Full-bleed (no AppShell sidebar); its own
+slim public top bar with the theme toggle. Style = calm dev-platform hero (LeetCode/Codecademy energy),
+NOT a gov hero. Reuses the token system + motion layer below.
+
+### 14.2 Animation / motion layer
+A single motion foundation (Phase 2) reused everywhere:
+- **Reduced-motion first:** a global `prefers-reduced-motion: reduce` guard neutralizes animation +
+  smooth scroll. Every animation must degrade to instant.
+- **Foundation utilities** (index.css keyframes + classes): `fade-in`, `fade-in-up`, `scale-in`,
+  `float` (gentle idle), plus staggered reveal-on-scroll via an `useReveal` IntersectionObserver hook.
+- **Micro-interactions** (already partly in): control hover/press transitions, focus ring transition.
+- **Route/content transitions:** subtle fade/slide-in on page mount (Suspense-boundary friendly).
+- **Engagement celebration** (§13.5): the Accepted verdict + streak/points get a tasteful pop/confetti
+  moment — expressive, still reduced-motion-gated.
+- Restraint: motion is calm and quick (150–400ms), never blocks input, honors the "soothing" intent.
+
+### 14.3 PageFrame width primitive (Phase 2, decision 3)
+`<PageFrame width="default|wide|full">` centralizes the container width (default ~1200 / wide ~1440 /
+full). Ships as a primitive now; pages adopt it during the Phase 3 sweep. AppShell keeps its current
+`max-w-7xl` default until pages migrate (avoids a flag-day refactor).
+
+### 14.4 Reference board (user-supplied 2026-07-24: Mr.Booster + Chaart dashboards)
+Two friendly SaaS dashboards. We adopt their **form**, not their palette (our navy+amber brand and
+AA-locked tokens stay; these lean purple+warm).
+- **Soft floating cards:** larger radius (cards use `rounded-2xl`), gentle shadows (new `--shadow-soft`
+  elevation), generous padding + whitespace.
+- **Colorful accent tiles:** category/feature cards each take a distinct color from the **chart
+  palette** (`--chart-1..5` = blue/amber/teal/violet/green) as a soft tint + icon chip — never
+  monochrome rows. (Engagement/feature surfaces, §13.5 — restraint doesn't apply here.)
+- **Bold friendly greeting** headings on dashboard/home ("Hello, {name}"), larger than today.
+- **Stat card** pattern: icon chip + big number + label; positive/negative deltas use success/destructive.
+- **Gradient promo/CTA card:** brand gradient (navy→amber, or a chart-hue pair) with optional imagery —
+  used for the home hero and a dashboard engagement/upsell card.
+- **Warmth:** a soft off-white app background (very light warm grey), not stark white — stays AA.
+- Motion (§14.2) makes the tiles reveal-on-scroll and the hero headline animate in.
+
+**Open palette question for the user:** references are purple-forward; our brand is navy. Default plan
+keeps navy primary + amber + multicolor chart tiles. If the user wants a warmer/more purple-forward
+feel, that's a token change (re-run the contrast gate) — flagged, not assumed.
