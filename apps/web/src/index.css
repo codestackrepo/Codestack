@@ -22,8 +22,16 @@
   --color-chart-1: var(--chart-1);
   --color-ring: var(--ring);
   --color-input: var(--input);
+  --color-input-border: var(--input-border);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
   --color-brand-foreground: var(--brand-foreground);
   --color-brand: var(--brand);
   --color-accent-foreground: var(--accent-foreground);
@@ -50,15 +58,23 @@
 }
 
 /*
- * CodeStack brand system.
- *   --primary : logo navy  #1D5A87  (hsl 205 65% 32%)
- *   --brand   : logo amber #F5A623  (hsl 37 91% 55%) — used for CTAs/highlights,
- *               kept separate from shadcn's --accent so component hover states
- *               don't read as brand highlights. --brand-foreground is a deep navy
- *               so text on the amber CTA meets contrast.
+ * CodeStack design tokens — light is the DEFAULT theme (UI revamp Phase 0).
+ * Visual language: calm, coder-friendly dev-platform skin (not a gov portal).
+ * All pairings below are AA-verified by `scripts/check-contrast.mjs` (pnpm
+ * contrast:check), which gates every revamp phase. Corrected values follow
+ * docs/ui-revamp-roadmap.md §13.2 (several prior values failed AA).
+ *
+ *   --primary : logo navy  (hsl 205 72% 30%) — 7.82:1 on white, links + CTAs
+ *   --brand   : logo amber (hsl 37 91% 55%)  — HIGHLIGHT/celebration ONLY, never
+ *               a text/CTA color (amber-on-white is 2.05:1). Kept separate from
+ *               shadcn's neutral --accent so menu hovers never flash amber
+ *               (§13.3). --brand-foreground is deep navy so text ON amber passes.
+ *   status    : --success / --warning / --info / --destructive, each with a
+ *               *-foreground for filled badges/buttons. As text on the page they
+ *               all clear 4.5:1; amber (--brand) is deliberately NOT in this set.
  * Neutrals carry a faint cool (blue) cast so greys sit under the navy primary
- * instead of looking sterile. Dark mode is navy-tinted to match the dark-variant
- * logo (#0F2438), and the sidebar rail stays deep navy in BOTH themes.
+ * instead of looking sterile. Dark mode is navy-tinted; the sidebar rail stays
+ * deep navy in BOTH themes (institutional shell + warm reward layer, §13.5).
  */
 :root {
   --background: hsl(0 0% 100%);
@@ -67,8 +83,8 @@
   --card-foreground: hsl(205 30% 12%);
   --popover: hsl(0 0% 100%);
   --popover-foreground: hsl(205 30% 12%);
-  --primary: hsl(205 65% 32%);
-  --primary-foreground: hsl(204 92% 96%);
+  --primary: hsl(205 72% 30%);
+  --primary-foreground: hsl(204 92% 97%);
   --secondary: hsl(205 32% 96%);
   --secondary-foreground: hsl(205 40% 20%);
   --muted: hsl(205 28% 96%);
@@ -77,10 +93,22 @@
   --accent-foreground: hsl(205 45% 22%);
   --brand: hsl(37 91% 55%);
   --brand-foreground: hsl(205 80% 12%);
-  --destructive: hsl(0 72% 48%);
+  --destructive: hsl(0 72% 45%);
+  --destructive-foreground: hsl(0 0% 100%);
+  --success: hsl(152 60% 30%);
+  --success-foreground: hsl(0 0% 100%);
+  --warning: hsl(32 95% 34%);
+  --warning-foreground: hsl(0 0% 100%);
+  --info: hsl(205 82% 37%);
+  --info-foreground: hsl(0 0% 100%);
   --border: hsl(205 24% 89%);
+  /* --input keeps the light hairline: it is also used as a low-alpha FILL
+     (bg-input/30, disabled:bg-input/50) by the shadcn field primitives, so it
+     must stay pale. Form-control BOUNDARIES use the stronger --input-border
+     below (Phase 1 rewires border-input -> border-input-border, §13.4). */
   --input: hsl(205 24% 89%);
-  --ring: hsl(205 65% 32% / 0.45);
+  --input-border: hsl(214 12% 55%);
+  --ring: hsl(205 72% 30%);
   --chart-1: hsl(205 70% 45%);
   --chart-2: hsl(37 91% 55%);
   --chart-3: hsl(172 55% 40%);
@@ -116,9 +144,18 @@
   --accent-foreground: hsl(205 30% 92%);
   --brand: hsl(37 92% 58%);
   --brand-foreground: hsl(206 60% 10%);
-  --destructive: hsl(0 68% 58%);
+  /* Per-hue dark values (the blanket "+12% L" rule broke red — §13.2). */
+  --destructive: hsl(0 75% 64%);
+  --destructive-foreground: hsl(0 40% 10%);
+  --success: hsl(152 48% 55%);
+  --success-foreground: hsl(152 45% 8%);
+  --warning: hsl(36 92% 60%);
+  --warning-foreground: hsl(32 60% 8%);
+  --info: hsl(205 78% 66%);
+  --info-foreground: hsl(205 55% 8%);
   --border: hsl(206 30% 22%);
   --input: hsl(206 30% 24%);
+  --input-border: hsl(210 14% 46%);
   --ring: hsl(202 55% 60%);
   --chart-1: hsl(202 72% 62%);
   --chart-2: hsl(37 92% 58%);
