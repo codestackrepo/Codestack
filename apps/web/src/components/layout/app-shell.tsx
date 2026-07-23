@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { Navbar } from './navbar';
 import { Sidebar } from './sidebar';
 
 export function AppShell() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const location = useLocation();
 
   return (
     <div className="flex h-svh">
@@ -22,7 +23,12 @@ export function AppShell() {
       <div className="flex min-w-0 flex-1 flex-col">
         <Navbar onMenuClick={() => setMobileNavOpen(true)} />
         <main className="custom-scrollbar flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-7xl p-4 md:p-6 lg:p-8">
+          {/* Keyed on pathname so each navigation replays a gentle fade-in
+              (§14.2); neutralized under prefers-reduced-motion. */}
+          <div
+            key={location.pathname}
+            className="animate-fade-in mx-auto w-full max-w-7xl p-4 md:p-6 lg:p-8"
+          >
             <Outlet />
           </div>
         </main>
