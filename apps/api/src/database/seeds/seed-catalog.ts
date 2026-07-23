@@ -18,7 +18,10 @@ import {
   TestCaseType,
 } from '../../modules/problems/enums/problem.enums';
 import { DriverSynthService } from '../../modules/code-execution/driver-synth/driver-synth.service';
-import { encodeExpectedOutput, encodeStdin } from '../../modules/code-execution/driver-synth/io-codec';
+import {
+  encodeExpectedOutput,
+  encodeStdin,
+} from '../../modules/code-execution/driver-synth/io-codec';
 import type { IoSpec } from '../../modules/code-execution/driver-synth/io-spec.types';
 import { catalogProblems } from './catalog/problems';
 import { CatalogSchema, type CatalogProblem } from './catalog/schema';
@@ -79,19 +82,15 @@ async function validateThenSeed(problems: CatalogProblem[]): Promise<void> {
   // Imported lazily so plain seeding never pulls in the whole Nest app graph.
   const { NestFactory } = await import('@nestjs/core');
   const { AppModule } = await import('../../app.module');
-  const { DriverMergeService } = await import(
-    '../../modules/code-execution/services/driver-merge.service'
-  );
-  const { ExecutorService } = await import(
-    '../../modules/code-execution/executors/executor.service'
-  );
+  const { DriverMergeService } =
+    await import('../../modules/code-execution/services/driver-merge.service');
+  const { ExecutorService } =
+    await import('../../modules/code-execution/executors/executor.service');
   const { VerdictService } = await import('../../modules/code-execution/services/verdict.service');
-  const { DEFAULT_COMPARE_CONFIG } = await import(
-    '../../modules/code-execution/services/normalizer.service'
-  );
-  const { SubmissionStatus } = await import(
-    '../../modules/submissions/enums/submission-status.enum'
-  );
+  const { DEFAULT_COMPARE_CONFIG } =
+    await import('../../modules/code-execution/services/normalizer.service');
+  const { SubmissionStatus } =
+    await import('../../modules/submissions/enums/submission-status.enum');
 
   const app = await NestFactory.createApplicationContext(AppModule, { logger: ['error', 'warn'] });
   try {
@@ -175,7 +174,10 @@ async function upsertCatalogProblem(
   const testCaseRepo = ds.getRepository(TestCase);
   const templateRepo = ds.getRepository(LibraryProblemTemplate);
 
-  const tags = await resolveTags(ds, cp.tags.map((t) => t.toLowerCase()));
+  const tags = await resolveTags(
+    ds,
+    cp.tags.map((t) => t.toLowerCase()),
+  );
   const companies = await resolveCompanies(ds, cp.companies);
 
   let problem = await problemRepo.findOne({ where: { title: cp.title } });

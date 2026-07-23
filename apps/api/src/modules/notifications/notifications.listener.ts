@@ -76,11 +76,7 @@ export class NotificationsListener {
     });
   }
 
-  private async fanOut(
-    classroomId: string,
-    actorId: string,
-    opts: FanOutOptions,
-  ): Promise<void> {
+  private async fanOut(classroomId: string, actorId: string, opts: FanOutOptions): Promise<void> {
     try {
       const classroom = await this.classrooms.getDetail(classroomId);
       const recipientIds = (classroom.students ?? []).map((s) => s.id);

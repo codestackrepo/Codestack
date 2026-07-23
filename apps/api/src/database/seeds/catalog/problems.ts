@@ -49,8 +49,7 @@ export const catalogProblems: CatalogProblem[] = [
     ioSpec: { params: [{ name: 's', type: 'string' }], returns: 'string' },
     referenceSolution: {
       python: 'def reverseString(s):\n    return s[::-1]\n',
-      javascript:
-        "function reverseString(s) {\n  return s.split('').reverse().join('');\n}\n",
+      javascript: "function reverseString(s) {\n  return s.split('').reverse().join('');\n}\n",
     },
     starterCode: {
       python: 'def reverseString(s):\n    # TODO\n    pass\n',
@@ -75,10 +74,8 @@ export const catalogProblems: CatalogProblem[] = [
     functionName: 'countVowels',
     ioSpec: { params: [{ name: 's', type: 'string' }], returns: 'int' },
     referenceSolution: {
-      python:
-        "def countVowels(s):\n    return sum(1 for c in s.lower() if c in 'aeiou')\n",
-      javascript:
-        'function countVowels(s) {\n  return (s.match(/[aeiou]/gi) || []).length;\n}\n',
+      python: "def countVowels(s):\n    return sum(1 for c in s.lower() if c in 'aeiou')\n",
+      javascript: 'function countVowels(s) {\n  return (s.match(/[aeiou]/gi) || []).length;\n}\n',
     },
     starterCode: {
       python: 'def countVowels(s):\n    # TODO\n    pass\n',
@@ -95,8 +92,7 @@ export const catalogProblems: CatalogProblem[] = [
   {
     slug: 'max-element',
     title: 'Maximum Element',
-    statementMarkdown:
-      'Given a non-empty array of integers `nums`, return the largest element.',
+    statementMarkdown: 'Given a non-empty array of integers `nums`, return the largest element.',
     difficulty: 'easy',
     tags: ['arrays'],
     companies: ['Initech'],
@@ -129,8 +125,7 @@ export const catalogProblems: CatalogProblem[] = [
     ioSpec: { params: [{ name: 's', type: 'string' }], returns: 'bool' },
     referenceSolution: {
       python: 'def isPalindrome(s):\n    return s == s[::-1]\n',
-      javascript:
-        "function isPalindrome(s) {\n  return s === s.split('').reverse().join('');\n}\n",
+      javascript: "function isPalindrome(s) {\n  return s === s.split('').reverse().join('');\n}\n",
     },
     starterCode: {
       python: 'def isPalindrome(s):\n    # TODO\n    pass\n',
@@ -191,9 +186,7 @@ export const catalogProblems: CatalogProblem[] = [
       python: 'def fizzBuzzCount(n):\n    # TODO\n    pass\n',
       javascript: 'function fizzBuzzCount(n) {\n  // TODO\n}\n',
     },
-    sampleTestcases: [
-      { inputs: [15], expected: 7, explanation: '3,5,6,9,10,12,15' },
-    ],
+    sampleTestcases: [{ inputs: [15], expected: 7, explanation: '3,5,6,9,10,12,15' }],
     hiddenTestcases: [
       { inputs: [1], expected: 0 },
       { inputs: [10], expected: 5 },

@@ -21,9 +21,7 @@ export class AddProblemCatalog1784800000000 implements MigrationInterface {
         CONSTRAINT "PK_companies" PRIMARY KEY ("id")
       )
     `);
-    await queryRunner.query(
-      `CREATE UNIQUE INDEX "idx_company_name" ON "companies" ("name")`,
-    );
+    await queryRunner.query(`CREATE UNIQUE INDEX "idx_company_name" ON "companies" ("name")`);
 
     await queryRunner.query(`
       CREATE TABLE "problem_companies" (

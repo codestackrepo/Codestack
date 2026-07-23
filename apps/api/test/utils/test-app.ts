@@ -9,10 +9,6 @@ import { DataSource } from 'typeorm';
 import { AppModule } from '../../src/app.module';
 import { ExecutorService } from '../../src/modules/code-execution/executors/executor.service';
 import { FakeExecutorService } from './fake-executor.service';
-import { LLM_PROVIDER } from '../../src/modules/ai/llm/llm-provider.interface';
-import { FakeLlmProvider } from '../../src/modules/ai/llm/providers/fake-llm.provider';
-import { PAYMENT_PROVIDER } from '../../src/modules/billing/payment/payment-provider.interface';
-import { FakeStripeProvider } from '../../src/modules/billing/payment/providers/fake-stripe.provider';
 
 import { InitUsers1784388727774 } from '../../src/database/migrations/1784388727774-InitUsers';
 import { InitProblems1784388980702 } from '../../src/database/migrations/1784388980702-InitProblems';
@@ -24,6 +20,10 @@ import { InitDemo1784390961571 } from '../../src/database/migrations/17843909615
 import { DropRedundantIndexes1784404788981 } from '../../src/database/migrations/1784404788981-DropRedundantIndexes';
 import { AddAiGenerationTables1784409505122 } from '../../src/database/migrations/1784409505122-AddAiGenerationTables';
 import { AddBillingTables1784431044465 } from '../../src/database/migrations/1784431044465-AddBillingTables';
+import { AddNotifications1784500000000 } from '../../src/database/migrations/1784500000000-AddNotifications';
+import { NotificationTypeToVarchar1784600000000 } from '../../src/database/migrations/1784600000000-NotificationTypeToVarchar';
+import { AddOnboardingTables1784700000000 } from '../../src/database/migrations/1784700000000-AddOnboardingTables';
+import { AddProblemCatalog1784800000000 } from '../../src/database/migrations/1784800000000-AddProblemCatalog';
 
 const ALL_MIGRATIONS = [
   InitUsers1784388727774,
@@ -36,25 +36,26 @@ const ALL_MIGRATIONS = [
   DropRedundantIndexes1784404788981,
   AddAiGenerationTables1784409505122,
   AddBillingTables1784431044465,
+  AddNotifications1784500000000,
+  NotificationTypeToVarchar1784600000000,
+  AddOnboardingTables1784700000000,
+  AddProblemCatalog1784800000000,
 ];
 
 export interface TestAppContext {
   app: INestApplication;
   fakeExecutor: FakeExecutorService;
-  fakeLlm: FakeLlmProvider;
-  fakeStripe: FakeStripeProvider;
   pgContainer: StartedPostgreSqlContainer;
   redisContainer: StartedRedisContainer;
 }
 
 /**
  * Boots ephemeral Postgres + Redis containers, applies every real migration,
- * and starts the full Nest application with only genuine third-party
- * boundaries faked — Piston (ExecutorService), the LLM (LLM_PROVIDER), and
- * Stripe (PAYMENT_PROVIDER, whose real client throws synchronously without a
- * valid-looking secret key). Everything else — the judge queue, worker,
- * verdict logic, self-validation, webhook idempotency/dispatch, DB writes,
- * and scoring events — runs for real.
+ * and starts the full Nest application with only the genuine third-party
+ * boundary faked — Piston (ExecutorService). (The AI/LLM and Stripe/billing
+ * modules were disabled at M0 and are no longer in the AppModule graph, so
+ * there is nothing to override for them.) Everything else — the judge queue,
+ * worker, verdict logic, DB writes, and scoring events — runs for real.
  */
 export async function createTestApp(): Promise<TestAppContext> {
   const pgContainer = await new PostgreSqlContainer('postgres:16-alpine')
@@ -101,16 +102,10 @@ export async function createTestApp(): Promise<TestAppContext> {
   await migrationDataSource.destroy();
 
   const fakeExecutor = new FakeExecutorService();
-  const fakeLlm = new FakeLlmProvider();
-  const fakeStripe = new FakeStripeProvider();
 
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(ExecutorService)
     .useValue(fakeExecutor)
-    .overrideProvider(LLM_PROVIDER)
-    .useValue(fakeLlm)
-    .overrideProvider(PAYMENT_PROVIDER)
-    .useValue(fakeStripe)
     .compile();
 
   const app = moduleRef.createNestApplication();
@@ -118,7 +113,7 @@ export async function createTestApp(): Promise<TestAppContext> {
   app.setGlobalPrefix('api/v1');
   await app.init();
 
-  return { app, fakeExecutor, fakeLlm, fakeStripe, pgContainer, redisContainer };
+  return { app, fakeExecutor, pgContainer, redisContainer };
 }
 
 /**

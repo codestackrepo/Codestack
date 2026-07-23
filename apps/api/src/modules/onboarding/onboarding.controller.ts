@@ -1,13 +1,4 @@
-import {
-  Body,
-  Controller,
-  Get,
-  HttpCode,
-  Param,
-  ParseUUIDPipe,
-  Post,
-  Query,
-} from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { ApiCookieAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
@@ -76,9 +67,7 @@ export class OnboardingController {
   }
 
   @Get('requests/me')
-  async myRequest(
-    @CurrentUser('id') userId: string,
-  ): Promise<ProfessorRequestResponseDto | null> {
+  async myRequest(@CurrentUser('id') userId: string): Promise<ProfessorRequestResponseDto | null> {
     const req = await this.onboarding.myLatestRequest(userId);
     return req ? ProfessorRequestResponseDto.from(req) : null;
   }

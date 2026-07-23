@@ -291,11 +291,7 @@ export class AssignmentsService {
    * they can already see. DRAFT/SCHEDULED attachments notify no one (the
    * assignment isn't visible yet — the publish event covers that later).
    */
-  private notifyProblemAdded(
-    assignment: Assignment,
-    ap: AssignmentProblem,
-    actorId: string,
-  ): void {
+  private notifyProblemAdded(assignment: Assignment, ap: AssignmentProblem, actorId: string): void {
     if (!VISIBLE_TO_STUDENTS.includes(assignment.status)) return;
     this.emitter.emit(ASSIGNMENT_PROBLEM_ADDED, {
       assignmentId: assignment.id,

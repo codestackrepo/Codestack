@@ -125,7 +125,9 @@ export class ProblemsService {
    * Available facet values (with problem counts) for the catalog filter UI,
    * scoped to problems the actor can see. Returns topic tags + companies.
    */
-  async getFacets(actor: AuthenticatedUser): Promise<{ tags: FacetCount[]; companies: FacetCount[] }> {
+  async getFacets(
+    actor: AuthenticatedUser,
+  ): Promise<{ tags: FacetCount[]; companies: FacetCount[] }> {
     const [tags, companies] = await Promise.all([
       this.facetCounts('problem_tags', 'tags', actor),
       this.facetCounts('problem_companies', 'companies', actor),

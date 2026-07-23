@@ -1,14 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  IsEmail,
-  IsEnum,
-  IsInt,
-  IsOptional,
-  IsString,
-  MaxLength,
-  Min,
-  Max,
-} from 'class-validator';
+import { IsEmail, IsEnum, IsInt, IsOptional, IsString, MaxLength, Min, Max } from 'class-validator';
 import { PaginationQueryDto } from '../../../common/dto/pagination.dto';
 import { ProfessorInvite } from '../entities/professor-invite.entity';
 import { ProfessorRequest } from '../entities/professor-request.entity';
@@ -17,7 +8,10 @@ import { InviteStatus, RequestStatus } from '../enums/onboarding.enums';
 // ---- Requests (input) ----
 
 export class CreateInviteDto {
-  @ApiPropertyOptional({ example: 'prof@university.edu', description: 'Advisory — pre-fills register' })
+  @ApiPropertyOptional({
+    example: 'prof@university.edu',
+    description: 'Advisory — pre-fills register',
+  })
   @IsOptional()
   @IsEmail()
   @MaxLength(254)
