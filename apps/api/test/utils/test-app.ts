@@ -28,6 +28,7 @@ import { AddBatchesAndAssignmentTargeting1784900000000 } from '../../src/databas
 import { AddAssignmentItems1785000000000 } from '../../src/database/migrations/1785000000000-AddAssignmentItems';
 import { GeneralizeSubmissionTarget1785100000000 } from '../../src/database/migrations/1785100000000-GeneralizeSubmissionTarget';
 import { AddModuleAccess1785200000000 } from '../../src/database/migrations/1785200000000-AddModuleAccess';
+import { AddGamification1785300000000 } from '../../src/database/migrations/1785300000000-AddGamification';
 
 const ALL_MIGRATIONS = [
   InitUsers1784388727774,
@@ -48,6 +49,7 @@ const ALL_MIGRATIONS = [
   AddAssignmentItems1785000000000,
   GeneralizeSubmissionTarget1785100000000,
   AddModuleAccess1785200000000,
+  AddGamification1785300000000,
 ];
 
 export interface TestAppContext {

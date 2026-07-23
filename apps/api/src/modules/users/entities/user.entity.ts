@@ -31,6 +31,11 @@ export class User extends BaseEntity {
   @Column({ type: 'timestamptz', nullable: true, name: 'last_login_at' })
   lastLoginAt!: Date | null;
 
+  // Canonical per-user IANA timezone (gamification streak/local-day math, §5.6).
+  // Owned by the gamification migration; UserGamification.timezone is a denorm copy.
+  @Column({ type: 'varchar', length: 64, default: 'UTC' })
+  timezone!: string;
+
   get fullName(): string {
     return `${this.firstName} ${this.lastName}`.trim();
   }
