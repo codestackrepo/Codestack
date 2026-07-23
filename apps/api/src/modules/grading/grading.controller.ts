@@ -35,6 +35,7 @@ export class GradingController {
     return this.grading.getAssignmentScore(assignmentId, actor);
   }
 
+  /** Legacy coding-only manual grade — kept working; delegates to updateScore. */
   @Patch('problems/:assignmentProblemId/students/:studentId')
   updateScore(
     @Param('assignmentProblemId', ParseUUIDPipe) apId: string,
@@ -43,5 +44,27 @@ export class GradingController {
     @CurrentUser() actor: AuthenticatedUser,
   ) {
     return this.grading.updateScore(apId, studentId, dto, actor);
+  }
+
+  /** Item-keyed manual grade (coding/quiz/mcq-override), dispatched by item kind. */
+  @Patch('items/:itemId/students/:studentId')
+  gradeItem(
+    @Param('itemId', ParseUUIDPipe) itemId: string,
+    @Param('studentId', ParseUUIDPipe) studentId: string,
+    @Body() dto: UpdateScoreDto,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
+    return this.grading.gradeItem(itemId, studentId, dto, actor);
+  }
+
+  /** Staff item-review detail for the grading drawer (code+verdict / selection
+   * vs. correct / quiz text). Staff/grader only. */
+  @Get('items/:itemId/students/:studentId')
+  itemReview(
+    @Param('itemId', ParseUUIDPipe) itemId: string,
+    @Param('studentId', ParseUUIDPipe) studentId: string,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
+    return this.grading.getItemReview(itemId, studentId, actor);
   }
 }
