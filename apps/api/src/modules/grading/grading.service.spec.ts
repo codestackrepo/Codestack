@@ -2,9 +2,11 @@ import { AssignmentProblem } from '../assignments/entities/assignment-problem.en
 import { Assignment } from '../assignments/entities/assignment.entity';
 import { ClassroomsService } from '../classrooms/classrooms.service';
 import { Submission } from '../submissions/entities/submission.entity';
+import { SubmissionContext } from '../submissions/enums/submission-context.enum';
 import { SubmissionStatus } from '../submissions/enums/submission-status.enum';
 import { AssignmentScore } from './entities/assignment-score.entity';
 import { ProblemScore } from './entities/problem-score.entity';
+import { GradingStatus } from './enums/grading-status.enum';
 import { GradingService } from './grading.service';
 
 type MockRepo = {
@@ -23,7 +25,7 @@ function fakeQueryBuilder(rawResult: { total: string }) {
   return qb;
 }
 
-describe('GradingService.onSubmissionFinalized — award-on-accept', () => {
+describe('GradingService.onSubmissionFinalized — attempt tracking (no auto-award)', () => {
   let problemScores: MockRepo;
   let assignmentScores: MockRepo;
   let submissions: MockRepo;
@@ -43,6 +45,7 @@ describe('GradingService.onSubmissionFinalized — award-on-accept', () => {
       id: 'sub-1',
       userId: STUDENT_ID,
       assignmentProblemId: AP_ID,
+      context: SubmissionContext.ASSIGNMENT,
       status: SubmissionStatus.ACCEPTED,
       ...overrides,
     }) as Submission;
@@ -102,24 +105,46 @@ describe('GradingService.onSubmissionFinalized — award-on-accept', () => {
     );
   });
 
-  it('awards full points on an Accepted submission', async () => {
+  it('does NOT auto-award on an Accepted submission — points stay 0 awaiting review', async () => {
+    // §5.3 decision #3: award-on-accept was removed. An accepted submission is
+    // pinned + counted + marked "submitted", but the score remains 0 until a
+    // professor grades it.
     submissions.findOne.mockResolvedValue(submission({ status: SubmissionStatus.ACCEPTED }));
 
     await service.onSubmissionFinalized({ submissionId: 'sub-1' });
 
     expect(problemScores.save).toHaveBeenCalledWith(
-      expect.objectContaining({ score: 10, submissionCount: 1, submissionId: 'sub-1' }),
+      expect.objectContaining({
+        score: 0,
+        submissionCount: 1,
+        submissionId: 'sub-1',
+        gradingStatus: GradingStatus.SUBMITTED,
+      }),
     );
   });
 
-  it('does not award points on a non-Accepted submission, but still tracks the attempt', async () => {
+  it('tracks a non-Accepted submission the same way — 0 points, awaiting review', async () => {
     submissions.findOne.mockResolvedValue(submission({ status: SubmissionStatus.WRONG_ANSWER }));
 
     await service.onSubmissionFinalized({ submissionId: 'sub-1' });
 
     expect(problemScores.save).toHaveBeenCalledWith(
-      expect.objectContaining({ score: 0, submissionCount: 1, submissionId: 'sub-1' }),
+      expect.objectContaining({
+        score: 0,
+        submissionCount: 1,
+        submissionId: 'sub-1',
+        gradingStatus: GradingStatus.SUBMITTED,
+      }),
     );
+  });
+
+  it('skips assignment scoring entirely for a PRACTICE submission', async () => {
+    submissions.findOne.mockResolvedValue(submission({ context: SubmissionContext.PRACTICE }));
+
+    await service.onSubmissionFinalized({ submissionId: 'sub-1' });
+
+    expect(assignmentProblems.findOne).not.toHaveBeenCalled();
+    expect(problemScores.save).not.toHaveBeenCalled();
   });
 
   it('does not overwrite an already-Accepted submission with a later non-Accepted one', async () => {

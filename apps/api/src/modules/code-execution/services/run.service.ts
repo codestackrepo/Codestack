@@ -1,9 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AuthenticatedUser } from '../../../common/types/authenticated-user';
+import { Language } from '../../../common/enums/language.enum';
 import { AssignmentsService } from '../../assignments/assignments.service';
 import { ProblemTemplate } from '../../assignments/entities/problem-template.entity';
+import { LibraryProblemTemplate } from '../../problems/entities/library-problem-template.entity';
+import { ProblemsService } from '../../problems/problems.service';
+import { SubmissionContext } from '../../submissions/enums/submission-context.enum';
 import { SubmissionStatus } from '../../submissions/enums/submission-status.enum';
 import { RunCodeDto } from '../dto/code-execution.dto';
 import { ExecutorService } from '../executors/executor.service';
@@ -30,20 +34,22 @@ export interface RunResult {
 export class RunService {
   constructor(
     @InjectRepository(ProblemTemplate) private readonly templates: Repository<ProblemTemplate>,
+    @InjectRepository(LibraryProblemTemplate)
+    private readonly libraryTemplates: Repository<LibraryProblemTemplate>,
     private readonly assignments: AssignmentsService,
+    private readonly problems: ProblemsService,
     private readonly executor: ExecutorService,
     private readonly verdict: VerdictService,
     private readonly driverMerge: DriverMergeService,
   ) {}
 
   async run(dto: RunCodeDto, actor: AuthenticatedUser): Promise<RunResult> {
-    const ap = await this.assignments.getAssignmentProblem(dto.assignmentProblemId);
-    await this.assignments.findOne(ap.assignmentId, actor);
+    const driverCode =
+      dto.context === SubmissionContext.PRACTICE
+        ? await this.resolvePracticeDriver(dto.problemId, dto.language, actor)
+        : await this.resolveAssignmentDriver(dto.assignmentProblemId, dto.language, actor);
 
-    const template = await this.templates.findOne({
-      where: { assignmentProblemId: ap.id, language: dto.language },
-    });
-    const fullCode = this.driverMerge.merge(template?.driverCode ?? '', dto.userCode);
+    const fullCode = this.driverMerge.merge(driverCode, dto.userCode);
     const rt = this.executor.getRuntime(dto.language);
     const opts = this.executor.defaultOptions();
 
@@ -72,5 +78,35 @@ export class RunService {
     const firstFailure = results.find((r) => r.status !== SubmissionStatus.ACCEPTED);
     const overall = firstFailure ? firstFailure.status : SubmissionStatus.ACCEPTED;
     return { status: overall, results };
+  }
+
+  private async resolveAssignmentDriver(
+    assignmentProblemId: string,
+    language: Language,
+    actor: AuthenticatedUser,
+  ): Promise<string> {
+    const ap = await this.assignments.getAssignmentProblem(assignmentProblemId);
+    await this.assignments.findOne(ap.assignmentId, actor);
+    const template = await this.templates.findOne({
+      where: { assignmentProblemId: ap.id, language },
+    });
+    return template?.driverCode ?? '';
+  }
+
+  /** Practice run: visibility + §9.11 judge-ready gate, library driver. */
+  private async resolvePracticeDriver(
+    problemId: string,
+    language: Language,
+    actor: AuthenticatedUser,
+  ): Promise<string> {
+    const problem = await this.problems.findOne(problemId, actor); // visibility
+    if (!problem.isJudgeReady) {
+      throw new BadRequestException('This problem is not available for practice judging yet');
+    }
+    const template = await this.libraryTemplates.findOne({ where: { problemId, language } });
+    if (!template) {
+      throw new BadRequestException(`Language ${language} is not enabled for this problem`);
+    }
+    return template.driverCode ?? '';
   }
 }

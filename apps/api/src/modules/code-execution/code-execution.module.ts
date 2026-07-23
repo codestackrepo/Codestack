@@ -2,6 +2,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { AssignmentsModule } from '../assignments/assignments.module';
+import { ProblemsModule } from '../problems/problems.module';
 import { SubmissionsModule } from '../submissions/submissions.module';
 import { QUEUE_JUDGE } from '../../queue/queue.constants';
 import { CodeExecutionController } from './code-execution.controller';
@@ -22,6 +23,7 @@ import { VerdictService } from './services/verdict.service';
   imports: [
     SubmissionsModule,
     AssignmentsModule,
+    ProblemsModule,
     JwtModule.register({}),
     BullModule.registerQueue({
       name: QUEUE_JUDGE,

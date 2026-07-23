@@ -16,7 +16,11 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '../../common/enums/role.enum';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
 import { CreateProblemDto } from './dto/create-problem.dto';
-import { ProblemResponseDto, TestCaseResponseDto } from './dto/problem-response.dto';
+import {
+  ProblemEditorResponseDto,
+  ProblemResponseDto,
+  TestCaseResponseDto,
+} from './dto/problem-response.dto';
 import { QueryProblemsDto } from './dto/query-problems.dto';
 import { TestCaseInputDto } from './dto/test-case.dto';
 import { UpdateProblemDto } from './dto/update-problem.dto';
@@ -77,6 +81,17 @@ export class ProblemsController {
     @CurrentUser() actor: AuthenticatedUser,
   ): Promise<void> {
     await this.problems.remove(id, actor);
+  }
+
+  /** Practice code-editor bootstrap: statement, SAMPLE cases, starter code only
+   * (never driverCode/hidden cases). `isJudgeReady` lets the UI gate Submit (#29). */
+  @Get(':id/editor')
+  async editorBootstrap(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() actor: AuthenticatedUser,
+  ): Promise<ProblemEditorResponseDto> {
+    const { problem, sampleCases, templates } = await this.problems.getEditorBootstrap(id, actor);
+    return ProblemEditorResponseDto.from(problem, sampleCases, templates);
   }
 
   @Get(':id/test-cases')

@@ -14,9 +14,11 @@ import { Classroom } from '../classrooms/entities/classroom.entity';
 import { NotificationType } from '../notifications/enums/notification-type.enum';
 import { NotificationsService } from '../notifications/notifications.service';
 import { Submission } from '../submissions/entities/submission.entity';
+import { SubmissionContext } from '../submissions/enums/submission-context.enum';
 import { SubmissionStatus } from '../submissions/enums/submission-status.enum';
 import { AssignmentScore } from './entities/assignment-score.entity';
 import { ProblemScore } from './entities/problem-score.entity';
+import { GradingStatus } from './enums/grading-status.enum';
 import { UpdateScoreDto } from './dto/grading.dto';
 
 @Injectable()
@@ -36,14 +38,19 @@ export class GradingService {
   ) {}
 
   /**
-   * Award-on-accept: when a submission finalizes, update the student's problem
-   * score (full points on first Accept) and roll up the assignment total.
+   * On finalize, track the attempt and mark the coding item as awaiting manual
+   * review. Scoring is professor-driven now — award-on-accept was removed (§5.3,
+   * decision #3): the student's points stay 0 until a professor grades. Practice
+   * submissions never touch assignment scores (explicit context guard, §5.5).
    */
   @OnEvent(SUBMISSION_FINALIZED)
   async onSubmissionFinalized(event: SubmissionFinalizedEvent): Promise<void> {
     try {
       const submission = await this.submissions.findOne({ where: { id: event.submissionId } });
       if (!submission) return;
+      // Practice never touches assignment scoring — guard explicitly rather than
+      // relying on the null assignmentProblemId AP lookup returning null.
+      if (submission.context === SubmissionContext.PRACTICE) return;
       const ap = await this.assignmentProblems.findOne({
         where: { id: submission.assignmentProblemId },
         relations: { assignment: true, problem: true },
@@ -58,16 +65,17 @@ export class GradingService {
       ps.submissionCount += 1;
       const isFirstSubmission = ps.submissionCount === 1;
 
+      // Attempt tracking only — NO auto-award. Pin the representative submission
+      // (prefer an accepted one; don't overwrite an accepted with a later WA).
       const accepted = submission.status === SubmissionStatus.ACCEPTED;
       const alreadyAccepted = ps.submission?.status === SubmissionStatus.ACCEPTED;
-      if (accepted) {
+      if (accepted || !alreadyAccepted) {
         ps.submission = submission;
         ps.submissionId = submission.id;
-        ps.score = ap.score; // award full points
-      } else if (!alreadyAccepted) {
-        ps.submission = submission;
-        ps.submissionId = submission.id;
-        // score unchanged (stays 0 until an accepted submission arrives)
+      }
+      // Coding item now awaits manual review — but never revert a graded item.
+      if (ps.gradingStatus !== GradingStatus.GRADED) {
+        ps.gradingStatus = GradingStatus.SUBMITTED;
       }
       await this.problemScores.save(ps);
       await this.recomputeAssignmentScore(ap.assignmentId, submission.userId);
@@ -207,6 +215,7 @@ export class GradingService {
     ps.score = dto.score;
     if (dto.feedback !== undefined) ps.feedback = dto.feedback;
     ps.createdById = actor.id;
+    ps.gradingStatus = GradingStatus.GRADED; // a professor applied a score
     await this.problemScores.save(ps);
     await this.recomputeAssignmentScore(ap.assignmentId, studentId);
     await this.notifyStudentOfReview(studentId, actor.id, ap, ps.id);

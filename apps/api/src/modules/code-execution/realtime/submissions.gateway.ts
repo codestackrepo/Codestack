@@ -16,6 +16,7 @@ import { AuthConfig } from '../../../config/configuration';
 import { JwtPayload } from '../../../common/types/authenticated-user';
 import { REDIS_CLIENT } from '../../../redis/redis.module';
 import { Submission } from '../../submissions/entities/submission.entity';
+import { SubmissionContext } from '../../submissions/enums/submission-context.enum';
 import { SUBMISSION_EVENTS_CHANNEL, SubmissionEvent } from './submission-events.service';
 
 /**
@@ -85,14 +86,21 @@ export class SubmissionsGateway implements OnGatewayInit, OnGatewayConnection, O
 
     await client.join(`submission:${submissionId}`);
     // Immediate snapshot so late-joiners/reconnects still get the verdict.
-    client.emit('submission.status', {
-      submissionId: submission.id,
-      status: submission.status,
-      passedTestcaseCount: submission.passedTestcaseCount,
-      totalTestcaseCount: submission.totalTestcaseCount,
-      runtimeMs: submission.runtimeMs,
-      memoryBytes: submission.memoryBytes,
-    });
+    // Blind for assignment context (defense-in-depth behind the source-side
+    // blinding in JudgeService) — the DB row holds the real verdict, but the
+    // student only ever sees the coarse "submitted" sentinel.
+    if (submission.context === SubmissionContext.ASSIGNMENT) {
+      client.emit('submission.status', { submissionId: submission.id, status: 'submitted' });
+    } else {
+      client.emit('submission.status', {
+        submissionId: submission.id,
+        status: submission.status,
+        passedTestcaseCount: submission.passedTestcaseCount,
+        totalTestcaseCount: submission.totalTestcaseCount,
+        runtimeMs: submission.runtimeMs,
+        memoryBytes: submission.memoryBytes,
+      });
+    }
   }
 
   @SubscribeMessage('unsubscribe')
