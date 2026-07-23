@@ -3,6 +3,7 @@ import { BaseEntity } from '../../../common/entities/base.entity';
 import { AssignmentProblem } from '../../assignments/entities/assignment-problem.entity';
 import { Submission } from '../../submissions/entities/submission.entity';
 import { User } from '../../users/entities/user.entity';
+import { GradingStatus } from '../enums/grading-status.enum';
 
 @Entity('problem_scores')
 @Unique('uq_problem_score', ['assignmentProblemId', 'userId'])
@@ -44,4 +45,14 @@ export class ProblemScore extends BaseEntity {
 
   @Column({ type: 'uuid', nullable: true, name: 'created_by_id' })
   createdById!: string | null;
+
+  // Grading progress under the professor-driven model (issue #19). Replaces the
+  // old implicit award-on-accept signal (removed in issue #28).
+  @Column({
+    type: 'enum',
+    enum: GradingStatus,
+    default: GradingStatus.NOT_STARTED,
+    name: 'grading_status',
+  })
+  gradingStatus!: GradingStatus;
 }

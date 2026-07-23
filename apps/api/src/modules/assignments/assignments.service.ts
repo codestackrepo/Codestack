@@ -20,6 +20,7 @@ import { Language } from '../../common/enums/language.enum';
 import { Role } from '../../common/enums/role.enum';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
 import { ClassroomsService } from '../classrooms/classrooms.service';
+import { Batch } from '../classrooms/entities/batch.entity';
 import { Classroom } from '../classrooms/entities/classroom.entity';
 import { LibraryProblemTemplate } from '../problems/entities/library-problem-template.entity';
 import { Problem } from '../problems/entities/problem.entity';
@@ -33,13 +34,27 @@ import {
   QueryAssignmentsDto,
   UpdateAssignmentDto,
 } from './dto/assignment.dto';
+import { syncCodingPoints } from './coding-points.util';
 import { AssignmentProblem } from './entities/assignment-problem.entity';
 import { Assignment } from './entities/assignment.entity';
 import { ProblemTemplate } from './entities/problem-template.entity';
+import { AssignmentKind } from './enums/assignment-kind.enum';
 import { AssignmentStatus, VISIBLE_TO_STUDENTS } from './enums/assignment-status.enum';
+import { AssignmentTargetType } from './enums/assignment-target-type.enum';
 
 @Injectable()
 export class AssignmentsService {
+  /**
+   * The batch-targeting visibility predicate (§9.10): an assignment `a` is
+   * batch-visible to `:uid` iff it targets the whole classroom, or the user is
+   * a member of at least one of its target batches. Shared by the three query
+   * sites (findAll, myActiveDeadlines) so they can't drift.
+   */
+  private static readonly BATCH_VISIBLE_SQL = `a.target_type = 'classroom' OR EXISTS (
+    SELECT 1 FROM assignment_target_batches atb
+    JOIN batch_students bs ON bs.batch_id = atb.batch_id
+    WHERE atb.assignment_id = a.id AND bs.user_id = :uid)`;
+
   constructor(
     @InjectRepository(Assignment) private readonly assignments: Repository<Assignment>,
     @InjectRepository(AssignmentProblem)
@@ -49,6 +64,7 @@ export class AssignmentsService {
     @InjectRepository(TestCase) private readonly testCases: Repository<TestCase>,
     @InjectRepository(LibraryProblemTemplate)
     private readonly libraryTemplates: Repository<LibraryProblemTemplate>,
+    @InjectRepository(Batch) private readonly batches: Repository<Batch>,
     private readonly classroomsService: ClassroomsService,
     private readonly dataSource: DataSource,
     private readonly emitter: EventEmitter2,
@@ -62,6 +78,8 @@ export class AssignmentsService {
     const classroom = await this.classroomsService.getDetail(dto.classroomId);
     this.assertCanManage(actor, classroom);
 
+    const targeting = await this.resolveTargeting(dto.classroomId, dto);
+
     const assignment = this.assignments.create({
       title: dto.title,
       description: dto.description ?? '',
@@ -70,15 +88,66 @@ export class AssignmentsService {
       classroomId: dto.classroomId,
       createdById: actor.id,
       status: dto.asDraft ? AssignmentStatus.DRAFT : AssignmentStatus.SCHEDULED,
+      kind: targeting.kind,
+      targetType: targeting.targetType,
+      durationMinutes: targeting.durationMinutes,
+      targetBatches: targeting.targetBatches,
     });
     return this.assignments.save(assignment);
+  }
+
+  /**
+   * Validates + resolves kind/targeting for create/update:
+   * - `kind=test` requires `durationMinutes >= 1`.
+   * - `targetType=batch` requires ≥1 target batch, every one belonging to the
+   *   assignment's classroom (so a professor can't target another class's batch).
+   */
+  private async resolveTargeting(
+    classroomId: string,
+    input: {
+      kind?: AssignmentKind;
+      targetType?: AssignmentTargetType;
+      durationMinutes?: number | null;
+      targetBatchIds?: string[];
+    },
+  ): Promise<{
+    kind: AssignmentKind;
+    targetType: AssignmentTargetType;
+    durationMinutes: number | null;
+    targetBatches: Batch[];
+  }> {
+    const kind = input.kind ?? AssignmentKind.ASSIGNMENT;
+    const targetType = input.targetType ?? AssignmentTargetType.CLASSROOM;
+    const durationMinutes = input.durationMinutes ?? null;
+
+    if (kind === AssignmentKind.TEST && (durationMinutes === null || durationMinutes < 1)) {
+      throw new BadRequestException('durationMinutes (>= 1) is required when kind=test');
+    }
+
+    let targetBatches: Batch[] = [];
+    if (targetType === AssignmentTargetType.BATCH) {
+      const ids = [...new Set(input.targetBatchIds ?? [])];
+      if (!ids.length) {
+        throw new BadRequestException(
+          'targetBatchIds must contain at least one batch when targetType=batch',
+        );
+      }
+      targetBatches = await this.batches.find({ where: { id: In(ids), classroomId } });
+      if (targetBatches.length !== ids.length) {
+        throw new BadRequestException('One or more target batches do not belong to this classroom');
+      }
+    }
+    return { kind, targetType, durationMinutes, targetBatches };
   }
 
   async findAll(
     query: QueryAssignmentsDto,
     actor: AuthenticatedUser,
   ): Promise<PaginatedResult<Assignment>> {
-    const qb = this.assignments.createQueryBuilder('a').orderBy('a.createdAt', 'DESC');
+    const qb = this.assignments
+      .createQueryBuilder('a')
+      .leftJoinAndSelect('a.targetBatches', 'tb')
+      .orderBy('a.createdAt', 'DESC');
     if (query.classroomId) qb.andWhere('a.classroom_id = :cid', { cid: query.classroomId });
 
     if (actor.role === Role.PROFESSOR) {
@@ -89,11 +158,18 @@ export class AssignmentsService {
         { uid: actor.id },
       );
     } else if (actor.role === Role.STUDENT) {
+      // Site #1 of the three-site batch filter (§9.10). Graders (role=student)
+      // stay exempt: they see every visible assignment in their classroom;
+      // plain enrolled students only see classroom-targeted assignments plus
+      // batch-targeted ones whose target batches they belong to.
       qb.andWhere(
         `a.status IN (:...visible) AND EXISTS (
            SELECT 1 FROM classrooms c WHERE c.id = a.classroom_id AND (
-             EXISTS (SELECT 1 FROM classroom_students cs WHERE cs.classroom_id = c.id AND cs.user_id = :uid)
-             OR EXISTS (SELECT 1 FROM classroom_graders cg WHERE cg.classroom_id = c.id AND cg.user_id = :uid)))`,
+             EXISTS (SELECT 1 FROM classroom_graders cg WHERE cg.classroom_id = c.id AND cg.user_id = :uid)
+             OR (
+               EXISTS (SELECT 1 FROM classroom_students cs WHERE cs.classroom_id = c.id AND cs.user_id = :uid)
+               AND (${AssignmentsService.BATCH_VISIBLE_SQL})
+             )))`,
         { uid: actor.id, visible: VISIBLE_TO_STUDENTS },
       );
     }
@@ -104,11 +180,14 @@ export class AssignmentsService {
   }
 
   async getById(id: string): Promise<Assignment> {
-    const assignment = await this.assignments.findOne({ where: { id } });
+    const assignment = await this.assignments.findOne({
+      where: { id },
+      relations: { targetBatches: true },
+    });
     if (!assignment) throw new NotFoundException('Assignment not found');
     if (await this.refreshStatuses([assignment])) {
       // reload to reflect persisted status
-      return this.assignments.findOneOrFail({ where: { id } });
+      return this.assignments.findOneOrFail({ where: { id }, relations: { targetBatches: true } });
     }
     return assignment;
   }
@@ -130,6 +209,27 @@ export class AssignmentsService {
     if (dto.description !== undefined) assignment.description = dto.description;
     if (dto.startDate) assignment.startDate = new Date(dto.startDate);
     if (dto.endDate) assignment.endDate = new Date(dto.endDate);
+
+    // Re-resolve kind/targeting only if any targeting field was supplied,
+    // merging with the assignment's current values so a partial update (e.g.
+    // switching to targetType=batch) still validates against the full picture.
+    if (
+      dto.kind !== undefined ||
+      dto.targetType !== undefined ||
+      dto.durationMinutes !== undefined ||
+      dto.targetBatchIds !== undefined
+    ) {
+      const targeting = await this.resolveTargeting(assignment.classroomId, {
+        kind: dto.kind ?? assignment.kind,
+        targetType: dto.targetType ?? assignment.targetType,
+        durationMinutes: dto.durationMinutes ?? assignment.durationMinutes,
+        targetBatchIds: dto.targetBatchIds ?? (assignment.targetBatches ?? []).map((b) => b.id),
+      });
+      assignment.kind = targeting.kind;
+      assignment.targetType = targeting.targetType;
+      assignment.durationMinutes = targeting.durationMinutes;
+      assignment.targetBatches = targeting.targetBatches;
+    }
     return this.assignments.save(assignment);
   }
 
@@ -151,6 +251,7 @@ export class AssignmentsService {
       classroomId: saved.classroomId,
       title: saved.title,
       actorId: actor.id,
+      studentRecipientIds: await this.resolveNotificationStudentIds(saved),
     } satisfies AssignmentPublishedEvent);
     return saved;
   }
@@ -174,8 +275,28 @@ export class AssignmentsService {
       classroomId: saved.classroomId,
       title: saved.title,
       actorId: actor.id,
+      studentRecipientIds: await this.resolveNotificationStudentIds(saved),
     } satisfies AssignmentGradesPublishedEvent);
     return saved;
+  }
+
+  /**
+   * For batch-targeted assignments, the deduped union of target-batch member
+   * ids (the only students who should be notified); `undefined` for
+   * classroom-targeted assignments (the listener then falls back to notifying
+   * every enrolled student). Graders are unioned in by the listener.
+   */
+  private async resolveNotificationStudentIds(
+    assignment: Assignment,
+  ): Promise<string[] | undefined> {
+    if (assignment.targetType !== AssignmentTargetType.BATCH) return undefined;
+    const rows: Array<{ user_id: string }> = await this.dataSource.query(
+      `SELECT DISTINCT bs.user_id AS user_id FROM assignment_target_batches atb
+         JOIN batch_students bs ON bs.batch_id = atb.batch_id
+         WHERE atb.assignment_id = $1`,
+      [assignment.id],
+    );
+    return rows.map((r) => r.user_id);
   }
 
   private async transition(
@@ -224,7 +345,7 @@ export class AssignmentsService {
       this.attachProblem(m, assignment.id, source.id, dto.score, dto.languages, true),
     );
     const ap = await this.getAssignmentProblem(apId);
-    this.notifyProblemAdded(assignment, ap, actor.id);
+    await this.notifyProblemAdded(assignment, ap, actor.id);
     return ap;
   }
 
@@ -282,7 +403,7 @@ export class AssignmentsService {
       );
     });
     const ap = await this.getAssignmentProblem(apId);
-    this.notifyProblemAdded(assignment, ap, actor.id);
+    await this.notifyProblemAdded(assignment, ap, actor.id);
     return ap;
   }
 
@@ -291,7 +412,11 @@ export class AssignmentsService {
    * they can already see. DRAFT/SCHEDULED attachments notify no one (the
    * assignment isn't visible yet — the publish event covers that later).
    */
-  private notifyProblemAdded(assignment: Assignment, ap: AssignmentProblem, actorId: string): void {
+  private async notifyProblemAdded(
+    assignment: Assignment,
+    ap: AssignmentProblem,
+    actorId: string,
+  ): Promise<void> {
     if (!VISIBLE_TO_STUDENTS.includes(assignment.status)) return;
     this.emitter.emit(ASSIGNMENT_PROBLEM_ADDED, {
       assignmentId: assignment.id,
@@ -300,6 +425,7 @@ export class AssignmentsService {
       assignmentTitle: assignment.title,
       problemTitle: ap.problem?.title ?? 'A new problem',
       actorId,
+      studentRecipientIds: await this.resolveNotificationStudentIds(assignment),
     } satisfies AssignmentProblemAddedEvent);
   }
 
@@ -312,13 +438,27 @@ export class AssignmentsService {
     const assignment = await this.getById(ap.assignmentId);
     await this.assertCanManageAssignment(actor, assignment);
 
-    if (dto.score !== undefined) ap.score = dto.score;
-    await this.assignmentProblems.save(ap);
+    // Keep AssignmentProblem.score and the wrapping AssignmentItem.maxPoints in
+    // lockstep via the shared helper (issue #20) so the two never drift.
+    if (dto.score !== undefined) {
+      await syncCodingPoints(this.dataSource.manager, ap.id, dto.score);
+    }
 
     if (dto.languages) {
       await this.reconcileTemplates(ap, dto.languages);
     }
     return this.getAssignmentProblem(apId);
+  }
+
+  /**
+   * Public manage-gate for sibling services (assignment-items / taking): loads
+   * the assignment and asserts the actor may manage it (staff/grader). Throws
+   * NotFound/Forbidden as appropriate. Returns the loaded assignment.
+   */
+  async assertCanManageById(assignmentId: string, actor: AuthenticatedUser): Promise<Assignment> {
+    const assignment = await this.getById(assignmentId);
+    await this.assertCanManageAssignment(actor, assignment);
+    return assignment;
   }
 
   async deleteAssignmentProblem(apId: string, actor: AuthenticatedUser): Promise<void> {
@@ -356,11 +496,17 @@ export class AssignmentsService {
       .where('a.status = :active', { active: AssignmentStatus.ACTIVE })
       .orderBy('a.end_date', 'ASC');
     if (actor.role !== Role.ADMIN) {
+      // Site #2 of the three-site batch filter (§9.10). Creator/professor and
+      // graders stay exempt; the batch predicate is applied only to plain
+      // enrolled students.
       qb.andWhere(
         `EXISTS (SELECT 1 FROM classrooms c WHERE c.id = a.classroom_id AND (
            c.created_by_id = :uid OR c.professor_id = :uid
-           OR EXISTS (SELECT 1 FROM classroom_students cs WHERE cs.classroom_id = c.id AND cs.user_id = :uid)
-           OR EXISTS (SELECT 1 FROM classroom_graders cg WHERE cg.classroom_id = c.id AND cg.user_id = :uid)))`,
+           OR EXISTS (SELECT 1 FROM classroom_graders cg WHERE cg.classroom_id = c.id AND cg.user_id = :uid)
+           OR (
+             EXISTS (SELECT 1 FROM classroom_students cs WHERE cs.classroom_id = c.id AND cs.user_id = :uid)
+             AND (${AssignmentsService.BATCH_VISIBLE_SQL})
+           )))`,
         { uid: actor.id },
       );
     }
@@ -460,7 +606,23 @@ export class AssignmentsService {
     if (classroom.createdById === actor.id || classroom.professorId === actor.id) return;
     const isGrader = classroom.graders?.some((g) => g.id === actor.id);
     const isStudent = classroom.students?.some((s) => s.id === actor.id);
-    if ((isGrader || isStudent) && VISIBLE_TO_STUDENTS.includes(assignment.status)) return;
+    if ((isGrader || isStudent) && VISIBLE_TO_STUDENTS.includes(assignment.status)) {
+      // Site #3 of the three-site batch filter (§9.10). This is the submit
+      // chokepoint (code-execution submit → findOne), so enforcing here also
+      // blocks a non-batch student from submitting. Graders are exempt.
+      if (isStudent && !isGrader && assignment.targetType === AssignmentTargetType.BATCH) {
+        const inBatch = await this.dataSource.query(
+          `SELECT 1 FROM assignment_target_batches atb
+             JOIN batch_students bs ON bs.batch_id = atb.batch_id
+             WHERE atb.assignment_id = $1 AND bs.user_id = $2 LIMIT 1`,
+          [assignment.id, actor.id],
+        );
+        if (!inBatch.length) {
+          throw new ForbiddenException('This assignment is targeted to specific batches');
+        }
+      }
+      return;
+    }
     if (isGrader && assignment.createdById === actor.id) return;
     throw new ForbiddenException('You do not have access to this assignment');
   }

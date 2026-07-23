@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { DataSource, In, Repository } from 'typeorm';
 import { PaginatedResult, PaginationQueryDto } from '../../common/dto/pagination.dto';
 import { Role } from '../../common/enums/role.enum';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
@@ -19,6 +19,7 @@ export class ClassroomsService {
   constructor(
     @InjectRepository(Classroom) private readonly classrooms: Repository<Classroom>,
     @InjectRepository(User) private readonly users: Repository<User>,
+    private readonly dataSource: DataSource,
   ) {}
 
   async create(dto: CreateClassroomDto, actor: AuthenticatedUser): Promise<Classroom> {
@@ -182,6 +183,15 @@ export class ClassroomsService {
     classroom.totalUsers =
       classroom.students.length + classroom.graders.length + (classroom.professor ? 1 : 0);
     await this.classrooms.save(classroom);
+    // Removing a student from the classroom must also strip them from every
+    // batch in that classroom (batches are a subset of classroom students —
+    // §9.10). Done directly here (not via BatchesService) to avoid a circular
+    // dependency: BatchesService → ClassroomsService, never the reverse.
+    await this.dataSource.query(
+      `DELETE FROM batch_students bs USING batches b
+         WHERE bs.batch_id = b.id AND b.classroom_id = $1 AND bs.user_id = $2`,
+      [id, studentId],
+    );
     return this.getDetail(id);
   }
 
@@ -244,7 +254,7 @@ export class ClassroomsService {
   }
 
   /** Roster/structure management (professor/admin only — graders excluded by design). */
-  private assertCanManage(actor: AuthenticatedUser, classroom: Classroom): void {
+  assertCanManage(actor: AuthenticatedUser, classroom: Classroom): void {
     if (actor.role === Role.ADMIN) return;
     if (
       actor.role === Role.PROFESSOR &&

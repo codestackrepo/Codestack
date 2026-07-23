@@ -24,6 +24,8 @@ import { AddNotifications1784500000000 } from '../../src/database/migrations/178
 import { NotificationTypeToVarchar1784600000000 } from '../../src/database/migrations/1784600000000-NotificationTypeToVarchar';
 import { AddOnboardingTables1784700000000 } from '../../src/database/migrations/1784700000000-AddOnboardingTables';
 import { AddProblemCatalog1784800000000 } from '../../src/database/migrations/1784800000000-AddProblemCatalog';
+import { AddBatchesAndAssignmentTargeting1784900000000 } from '../../src/database/migrations/1784900000000-AddBatchesAndAssignmentTargeting';
+import { AddAssignmentItems1785000000000 } from '../../src/database/migrations/1785000000000-AddAssignmentItems';
 
 const ALL_MIGRATIONS = [
   InitUsers1784388727774,
@@ -40,6 +42,8 @@ const ALL_MIGRATIONS = [
   NotificationTypeToVarchar1784600000000,
   AddOnboardingTables1784700000000,
   AddProblemCatalog1784800000000,
+  AddBatchesAndAssignmentTargeting1784900000000,
+  AddAssignmentItems1785000000000,
 ];
 
 export interface TestAppContext {

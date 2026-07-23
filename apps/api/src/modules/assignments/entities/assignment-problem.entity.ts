@@ -33,4 +33,10 @@ export class AssignmentProblem extends BaseEntity {
 
   @OneToMany(() => ProblemTemplate, (t) => t.assignmentProblem)
   languageTemplates!: ProblemTemplate[];
+
+  // Convenience back-reference to the wrapping coding AssignmentItem (issue
+  // #19). Nullable to break the insert-time FK cycle (AP ↔ item); the canonical
+  // join for grading is assignment_items.assignment_problem_id.
+  @Column({ type: 'uuid', nullable: true, name: 'assignment_item_id' })
+  assignmentItemId!: string | null;
 }
