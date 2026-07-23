@@ -97,15 +97,29 @@ export class AssignmentTakingService {
         ? new Date(startedAt.getTime() + assignment.durationMinutes * 60_000)
         : assignment.endDate;
 
-    return this.attempts.save(
-      this.attempts.create({
-        assignmentId,
-        userId: actor.id,
-        startedAt,
-        deadlineAt,
-        status: AttemptStatus.IN_PROGRESS,
-      }),
-    );
+    try {
+      return await this.attempts.save(
+        this.attempts.create({
+          assignmentId,
+          userId: actor.id,
+          startedAt,
+          deadlineAt,
+          status: AttemptStatus.IN_PROGRESS,
+        }),
+      );
+    } catch (err) {
+      // Concurrent start (double-click at test open): the uq_attempt violation
+      // means another request already created it — re-fetch and stay idempotent.
+      if (this.isUniqueViolation(err)) {
+        const attempt = await this.attempts.findOne({ where: { assignmentId, userId: actor.id } });
+        if (attempt) return attempt;
+      }
+      throw err;
+    }
+  }
+
+  private isUniqueViolation(err: unknown): boolean {
+    return typeof err === 'object' && err !== null && (err as { code?: string }).code === '23505';
   }
 
   async saveMcqResponse(
@@ -120,15 +134,23 @@ export class AssignmentTakingService {
 
     // Server-side auto-score: exact-set match against the correct options.
     const options = await this.mcqOptions.find({ where: { itemId } });
-    const selected = new Set(dto.selectedOptionIds);
+    const validIds = new Set(options.map((o) => o.id));
+    // Sanitize: drop duplicates and any ids that aren't options of THIS item
+    // (never trust the client to send well-formed / in-range selections).
+    const sanitized = [...new Set(dto.selectedOptionIds)].filter((id) => validIds.has(id));
+    const selected = new Set(sanitized);
     const correct = new Set(options.filter((o) => o.isCorrect).map((o) => o.id));
+    // A misconfigured item with no correct option must never award points on an
+    // empty selection (0 === 0 would otherwise be an "exact match").
     const exactMatch =
-      selected.size === correct.size && [...selected].every((id) => correct.has(id));
+      correct.size > 0 &&
+      selected.size === correct.size &&
+      [...selected].every((id) => correct.has(id));
     const awardedPoints = exactMatch ? item.maxPoints : 0;
 
     const existing = await this.mcqResponses.findOne({ where: { itemId, userId: actor.id } });
     if (existing) {
-      existing.selectedOptionIds = dto.selectedOptionIds;
+      existing.selectedOptionIds = sanitized;
       existing.awardedPoints = awardedPoints;
       await this.mcqResponses.save(existing);
     } else {
@@ -136,7 +158,7 @@ export class AssignmentTakingService {
         this.mcqResponses.create({
           itemId,
           userId: actor.id,
-          selectedOptionIds: dto.selectedOptionIds,
+          selectedOptionIds: sanitized,
           awardedPoints,
         }),
       );
@@ -203,6 +225,12 @@ export class AssignmentTakingService {
     });
     if (!attempt) {
       throw new ForbiddenException('Start the test before submitting responses');
+    }
+    // A submitted/auto-submitted attempt is closed — no further edits, even
+    // before the wall-clock deadline (otherwise `submittedAt` is meaningless
+    // and a grader could review answers that are still changing).
+    if (attempt.status !== AttemptStatus.IN_PROGRESS) {
+      throw new ForbiddenException('This attempt has already been submitted');
     }
     if (new Date() > attempt.deadlineAt) {
       throw new ForbiddenException('The test deadline has passed');

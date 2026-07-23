@@ -111,11 +111,25 @@ export class AssignmentItemsService {
     }
 
     if (item.kind === AssignmentItemKind.MCQ) {
+      const effectiveAllowMultiple = dto.allowMultiple ?? item.allowMultiple;
       if (dto.allowMultiple !== undefined) item.allowMultiple = dto.allowMultiple;
-      if (dto.options) {
-        this.validateMcqOptions(dto.options, dto.allowMultiple ?? item.allowMultiple);
-        await this.mcqOptions.delete({ itemId: item.id });
-        await this.mcqOptions.save(this.buildOptions(item.id, dto.options));
+      const newOptions = dto.options;
+      if (newOptions) {
+        this.validateMcqOptions(newOptions, effectiveAllowMultiple);
+        // Replace atomically — a delete that commits without its rebuild would
+        // leave an option-less MCQ (which the auto-scorer would mis-handle).
+        await this.dataSource.transaction(async (m) => {
+          await m.getRepository(McqOption).delete({ itemId: item.id });
+          await m.getRepository(McqOption).save(this.buildOptions(item.id, newOptions));
+        });
+      } else if (dto.allowMultiple === false) {
+        // Flipping to single-answer without new options: the CURRENT options
+        // must still satisfy the exactly-one-correct invariant.
+        const current = await this.mcqOptions.find({ where: { itemId: item.id } });
+        this.validateMcqOptions(
+          current.map((o) => ({ text: o.text, isCorrect: o.isCorrect, orderIndex: o.orderIndex })),
+          false,
+        );
       }
     }
 

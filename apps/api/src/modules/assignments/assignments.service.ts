@@ -493,6 +493,7 @@ export class AssignmentsService {
   async myActiveDeadlines(actor: AuthenticatedUser): Promise<Assignment[]> {
     const qb = this.assignments
       .createQueryBuilder('a')
+      .leftJoinAndSelect('a.targetBatches', 'tb')
       .where('a.status = :active', { active: AssignmentStatus.ACTIVE })
       .orderBy('a.end_date', 'ASC');
     if (actor.role !== Role.ADMIN) {

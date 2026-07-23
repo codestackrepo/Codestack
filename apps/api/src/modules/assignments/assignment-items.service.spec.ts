@@ -10,7 +10,7 @@ describe('AssignmentItemsService', () => {
   let mcqOptions: { delete: jest.Mock; save: jest.Mock; create: jest.Mock };
   let assignmentProblems: { update: jest.Mock };
   let assignmentsService: { assertCanManageById: jest.Mock };
-  let dataSource: { manager: { query: jest.Mock } };
+  let dataSource: { manager: { query: jest.Mock; transaction: jest.Mock } };
   let service: AssignmentItemsService;
 
   const actor: AuthenticatedUser = { id: 'prof-1', role: Role.PROFESSOR, email: 'p@x.io' };
@@ -29,7 +29,11 @@ describe('AssignmentItemsService', () => {
     };
     assignmentProblems = { update: jest.fn() };
     assignmentsService = { assertCanManageById: jest.fn().mockResolvedValue({ id: 'a-1' }) };
-    dataSource = { manager: { query: jest.fn().mockResolvedValue(undefined) } };
+    const query = jest.fn().mockResolvedValue(undefined);
+    // transaction() runs its callback with a manager that shares the same query
+    // mock, so assertions on dataSource.manager.query still see the calls.
+    const transaction = jest.fn(async (cb: (m: unknown) => unknown) => cb({ query }));
+    dataSource = { manager: { query, transaction } };
     service = new AssignmentItemsService(
       items as never,
       mcqOptions as never,

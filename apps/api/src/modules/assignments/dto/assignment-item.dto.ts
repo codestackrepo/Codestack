@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
   ArrayNotEmpty,
   IsArray,
   IsBoolean,
@@ -128,6 +129,7 @@ export class UpdateAssignmentItemDto {
 export class SaveMcqResponseDto {
   @ApiProperty({ type: [String] })
   @IsArray()
+  @ArrayMaxSize(50)
   @IsUUID('4', { each: true })
   @Type(() => String)
   selectedOptionIds!: string[];

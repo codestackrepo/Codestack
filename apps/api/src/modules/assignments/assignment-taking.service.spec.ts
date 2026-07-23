@@ -96,13 +96,49 @@ describe('AssignmentTakingService', () => {
     expect(mcqResponses.save).toHaveBeenCalledTimes(1);
   });
 
+  it('awards 0 on an empty selection even if the item has no correct option (misconfigured)', async () => {
+    mcqOptions.find.mockResolvedValue([
+      { id: 'o1', isCorrect: false },
+      { id: 'o2', isCorrect: false },
+    ]);
+    await service.saveMcqResponse(ITEM_ID, { selectedOptionIds: [] }, actor);
+    expect(mcqResponses.save.mock.calls[0][0].awardedPoints).toBe(0);
+  });
+
+  it('drops foreign/duplicate option ids from the stored selection', async () => {
+    await service.saveMcqResponse(
+      ITEM_ID,
+      { selectedOptionIds: ['o1', 'o1', 'not-an-option', 'o3'] },
+      actor,
+    );
+    expect(mcqResponses.save.mock.calls[0][0].selectedOptionIds).toEqual(['o1', 'o3']);
+  });
+
+  it('rejects a write once the test attempt has been submitted', async () => {
+    assignmentsService.findOne.mockResolvedValue({
+      id: 'a-1',
+      status: AssignmentStatus.ACTIVE,
+      kind: AssignmentKind.TEST,
+    });
+    attempts.findOne.mockResolvedValue({
+      deadlineAt: new Date(Date.now() + 60_000),
+      status: 'submitted',
+    });
+    await expect(
+      service.saveMcqResponse(ITEM_ID, { selectedOptionIds: ['o1', 'o3'] }, actor),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
   it('rejects an MCQ write for a test past its deadline (§9.9)', async () => {
     assignmentsService.findOne.mockResolvedValue({
       id: 'a-1',
       status: AssignmentStatus.ACTIVE,
       kind: AssignmentKind.TEST,
     });
-    attempts.findOne.mockResolvedValue({ deadlineAt: new Date(Date.now() - 60_000) });
+    attempts.findOne.mockResolvedValue({
+      deadlineAt: new Date(Date.now() - 60_000),
+      status: 'in_progress',
+    });
     await expect(
       service.saveMcqResponse(ITEM_ID, { selectedOptionIds: ['o1', 'o3'] }, actor),
     ).rejects.toBeInstanceOf(ForbiddenException);

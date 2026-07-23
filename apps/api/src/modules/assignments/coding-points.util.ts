@@ -12,12 +12,18 @@ export async function syncCodingPoints(
   assignmentProblemId: string,
   points: number,
 ): Promise<void> {
-  await manager.query('UPDATE assignment_problems SET score = $1 WHERE id = $2', [
-    points,
-    assignmentProblemId,
-  ]);
-  await manager.query(
-    'UPDATE assignment_items SET max_points = $1 WHERE assignment_problem_id = $2',
-    [points, assignmentProblemId],
-  );
+  // Both rows must move together — run them in one transaction so a failure
+  // between the two UPDATEs can't leave score and max_points drifted (the exact
+  // thing this helper exists to prevent). `manager.transaction` reuses an
+  // existing transaction when the manager is already transactional.
+  await manager.transaction(async (m) => {
+    await m.query('UPDATE assignment_problems SET score = $1 WHERE id = $2', [
+      points,
+      assignmentProblemId,
+    ]);
+    await m.query('UPDATE assignment_items SET max_points = $1 WHERE assignment_problem_id = $2', [
+      points,
+      assignmentProblemId,
+    ]);
+  });
 }
