@@ -443,6 +443,8 @@ AA-locked tokens stay; these lean purple+warm).
 - **Warmth:** a soft off-white app background (very light warm grey), not stark white — stays AA.
 - Motion (§14.2) makes the tiles reveal-on-scroll and the hero headline animate in.
 
-**Open palette question for the user:** references are purple-forward; our brand is navy. Default plan
-keeps navy primary + amber + multicolor chart tiles. If the user wants a warmer/more purple-forward
-feel, that's a token change (re-run the contrast gate) — flagged, not assumed.
+**Palette decision (user 2026-07-24): PURPLE-FORWARD.** Primary shifted from navy to violet
+(`262 60% 42%` light / `262 65% 76%` dark); amber (`--brand`) kept as the highlight/reward accent;
+neutrals re-tinted violet; sidebar is deep plum in both themes; gradient is violet→magenta→amber. All
+48 contrast pairings re-verified. The navy logo mark asset is unchanged (fixed brand image) — a minor
+hue mismatch we accept until/unless a violet mark is produced.
