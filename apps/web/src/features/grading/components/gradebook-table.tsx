@@ -1,4 +1,4 @@
-import { Check, MessageSquareText, Pencil } from 'lucide-react';
+import { Check, Eye, MessageSquareText } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -11,19 +11,26 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { User } from '@/types/user';
-import { formatScore, scorePercent, type ProblemScore, type StudentScore } from '../types';
+import {
+  GRADING_STATUS_LABEL,
+  ITEM_KIND_LABEL,
+  formatScore,
+  scorePercent,
+  type ItemScore,
+  type StudentScore,
+} from '../types';
 
 interface GradebookTableProps {
   students: StudentScore[];
   studentsById: Map<string, User>;
   canEdit: boolean;
-  onEdit: (studentId: string, studentName: string, problem: ProblemScore) => void;
+  onReview: (studentId: string, studentName: string, item: ItemScore) => void;
 }
 
-export function GradebookTable({ students, studentsById, canEdit, onEdit }: GradebookTableProps) {
-  // Every StudentScore lists the same assignment-problems in creation order —
-  // use the first student's list for the column headers.
-  const columns = students[0]?.problems ?? [];
+export function GradebookTable({ students, studentsById, canEdit, onReview }: GradebookTableProps) {
+  // Every StudentScore lists the same items in order — use the first student's
+  // list for the column headers.
+  const columns = students[0]?.items ?? [];
 
   return (
     <div className="custom-scrollbar overflow-x-auto rounded-xl ring-1 ring-foreground/10">
@@ -31,13 +38,16 @@ export function GradebookTable({ students, studentsById, canEdit, onEdit }: Grad
         <TableHeader>
           <TableRow className="bg-muted/50 hover:bg-muted/50">
             <TableHead className="sticky left-0 z-10 bg-muted/50 backdrop-blur">Student</TableHead>
-            {columns.map((p) => (
-              <TableHead key={p.assignmentProblemId} className="text-center">
-                <span className="line-clamp-1 max-w-40" title={p.title || 'Untitled problem'}>
-                  {p.title || 'Untitled problem'}
+            {columns.map((item) => (
+              <TableHead key={item.itemId} className="text-center">
+                <span className="line-clamp-1 max-w-40" title={item.title || 'Untitled item'}>
+                  {item.title || 'Untitled item'}
                 </span>
-                <span className="font-normal text-muted-foreground">
-                  / {formatScore(p.maxScore)}
+                <span className="flex items-center justify-center gap-1 font-normal text-muted-foreground">
+                  <Badge variant="outline" className="px-1 py-0 text-[10px] uppercase">
+                    {ITEM_KIND_LABEL[item.kind]}
+                  </Badge>
+                  / {formatScore(item.maxScore)}
                 </span>
               </TableHead>
             ))}
@@ -50,7 +60,7 @@ export function GradebookTable({ students, studentsById, canEdit, onEdit }: Grad
             const name = user
               ? `${user.firstName} ${user.lastName}`.trim() || user.email
               : student.userId;
-            const byAp = new Map(student.problems.map((p) => [p.assignmentProblemId, p]));
+            const byItem = new Map(student.items.map((i) => [i.itemId, i]));
             const pct = scorePercent(
               student.assignmentScore.finalScore,
               student.assignmentScore.maxScore,
@@ -63,17 +73,25 @@ export function GradebookTable({ students, studentsById, canEdit, onEdit }: Grad
                 </TableCell>
 
                 {columns.map((col) => {
-                  const p = byAp.get(col.assignmentProblemId) ?? col;
+                  const item = byItem.get(col.itemId) ?? col;
                   return (
-                    <TableCell key={col.assignmentProblemId} className="text-center">
+                    <TableCell key={col.itemId} className="text-center">
                       <div className="flex items-center justify-center gap-1.5">
-                        {p.solved && (
+                        {item.solved && (
                           <Check className="size-3.5 text-emerald-600 dark:text-emerald-400" />
                         )}
-                        <span className={cn(p.score > 0 ? 'font-medium' : 'text-muted-foreground')}>
-                          {formatScore(p.score)}
-                        </span>
-                        {p.feedback && (
+                        {item.score === null ? (
+                          <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
+                            {GRADING_STATUS_LABEL[item.gradingStatus]}
+                          </Badge>
+                        ) : (
+                          <span
+                            className={cn(item.score > 0 ? 'font-medium' : 'text-muted-foreground')}
+                          >
+                            {formatScore(item.score)}
+                          </span>
+                        )}
+                        {item.feedback && (
                           <MessageSquareText
                             className="size-3 text-muted-foreground"
                             aria-label="Has feedback"
@@ -85,10 +103,10 @@ export function GradebookTable({ students, studentsById, canEdit, onEdit }: Grad
                             variant="ghost"
                             size="icon-xs"
                             className="text-muted-foreground"
-                            aria-label={`Edit ${name}'s score for ${p.title || 'this problem'}`}
-                            onClick={() => onEdit(student.userId, name, p)}
+                            aria-label={`Review ${name}'s ${item.title || 'item'}`}
+                            onClick={() => onReview(student.userId, name, item)}
                           >
-                            <Pencil />
+                            <Eye />
                           </Button>
                         )}
                       </div>

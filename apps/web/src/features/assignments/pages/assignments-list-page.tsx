@@ -124,8 +124,10 @@ function AssignmentProblemsPanel({
   const isActive = status === AssignmentStatus.ACTIVE;
   const notYetOpen =
     status === AssignmentStatus.DRAFT || status === AssignmentStatus.SCHEDULED;
-  // Grades/feedback are visible as soon as they exist, so show a student their
-  // running grade on any open/closed assignment (not just after publish).
+  // The card is reveal-gated internally (§9.2): pre-publish it shows per-item
+  // "Submitted / Awaiting review" states, post-publish the full breakdown. So
+  // mount it for any open/closed assignment; the backend hides scores until
+  // GRADE_PUBLISHED.
   const showGrades = user?.role === Role.STUDENT && !notYetOpen;
 
   const { data, isLoading } = useQuery({
