@@ -53,6 +53,16 @@ const AssignmentFormPage = lazy(() =>
     default: m.AssignmentFormPage,
   })),
 );
+const AssignmentBuilderPage = lazy(() =>
+  import('@/features/assignments/pages/assignment-builder-page').then((m) => ({
+    default: m.AssignmentBuilderPage,
+  })),
+);
+const AssignmentTakePage = lazy(() =>
+  import('@/features/assignments/pages/assignment-take-page').then((m) => ({
+    default: m.AssignmentTakePage,
+  })),
+);
 const CodeEditorPage = lazy(() =>
   import('@/features/editor/pages/code-editor-page').then((m) => ({ default: m.CodeEditorPage })),
 );
@@ -147,10 +157,13 @@ function App() {
             </Route>
             <Route element={<RequireModule module={AppModuleKey.ASSIGNMENTS} />}>
               <Route path="assignments" element={<AssignmentsListPage />} />
-              {/* Staff-only assignment/test create/edit (#23) */}
+              {/* Student/member take surface (#22); server assertCanView gates access. */}
+              <Route path="assignments/:id/take" element={<AssignmentTakePage />} />
+              {/* Staff-only create/edit (#23) + item builder (#22) */}
               <Route element={<RequireRole roles={[Role.ADMIN, Role.PROFESSOR]} />}>
                 <Route path="assignments/new" element={<AssignmentFormPage />} />
                 <Route path="assignments/:id/edit" element={<AssignmentFormPage />} />
+                <Route path="assignments/:id/build" element={<AssignmentBuilderPage />} />
               </Route>
             </Route>
             <Route element={<RequireModule module={AppModuleKey.PLAYGROUND} />}>
