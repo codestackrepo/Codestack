@@ -4,6 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import { AuthConfig } from '../../config/configuration';
 import { Role } from '../../common/enums/role.enum';
 import { AuthenticatedUser, JwtPayload } from '../../common/types/authenticated-user';
+import { OnboardingService } from '../onboarding/onboarding.service';
 import { User } from '../users/entities/user.entity';
 import { UsersService } from '../users/users.service';
 import { RegisterDto } from './dto/register.dto';
@@ -20,6 +21,7 @@ export class AuthService {
   constructor(
     private readonly users: UsersService,
     private readonly jwt: JwtService,
+    private readonly onboarding: OnboardingService,
     config: ConfigService,
   ) {
     this.auth = config.getOrThrow<AuthConfig>('auth');
@@ -33,8 +35,24 @@ export class AuthService {
     return user;
   }
 
+  /**
+   * Self-registration. Defaults to a student account. If a valid professor
+   * `inviteToken` is supplied, the invite is validated first, the account is
+   * created with the professor role, and the invite is then marked consumed
+   * (only after the user is successfully created, so a failed registration
+   * doesn't burn the invite).
+   */
   async register(dto: RegisterDto): Promise<User> {
-    return this.users.create({ ...dto, role: Role.STUDENT });
+    const { inviteToken, ...userDto } = dto;
+
+    if (!inviteToken) {
+      return this.users.create({ ...userDto, role: Role.STUDENT });
+    }
+
+    const invite = await this.onboarding.validateInviteForConsumption(inviteToken);
+    const user = await this.users.create({ ...userDto, role: Role.PROFESSOR });
+    await this.onboarding.markInviteConsumed(invite, user.id);
+    return user;
   }
 
   async login(user: User): Promise<TokenPair> {

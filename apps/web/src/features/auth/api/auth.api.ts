@@ -11,6 +11,8 @@ export interface RegisterInput {
   password: string;
   firstName: string;
   lastName: string;
+  /** Professor invite token (from an invite link) — elevates the new account. */
+  inviteToken?: string;
 }
 
 export const authApi = {

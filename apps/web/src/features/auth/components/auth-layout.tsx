@@ -5,7 +5,7 @@ import { Logo } from '@/components/shared/logo';
 const FEATURES = [
   'Solve problems with instant, sandboxed judging',
   'Assignments, classrooms, and a live gradebook',
-  'Practice mode and an AI problem generator',
+  'Practice mode and progress tracking',
 ];
 
 export function AuthLayout({

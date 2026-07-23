@@ -5,6 +5,7 @@ import { AssignmentsModule } from '../assignments/assignments.module';
 import { SubmissionsModule } from '../submissions/submissions.module';
 import { QUEUE_JUDGE } from '../../queue/queue.constants';
 import { CodeExecutionController } from './code-execution.controller';
+import { DriverSynthService } from './driver-synth/driver-synth.service';
 import { ExecutorService } from './executors/executor.service';
 import { PistonClient } from './piston/piston.client';
 import { JudgeProcessor } from './queue/judge.processor';
@@ -34,6 +35,7 @@ import { VerdictService } from './services/verdict.service';
     NormalizerService,
     VerdictService,
     DriverMergeService,
+    DriverSynthService,
     JudgeService,
     CodeExecutionService,
     RunService,
@@ -41,6 +43,10 @@ import { VerdictService } from './services/verdict.service';
     SubmissionsGateway,
     JudgeProcessor,
   ],
-  exports: [JudgeService, ExecutorService, VerdictService, DriverMergeService],
+  // DriverSynthService is a dependency-free, deterministic judge-driver generator.
+  // It was lifted out of the (now-disabled) AI module so the capability survives;
+  // exported here so any future consumer (e.g. seeding) can synthesize drivers
+  // without pulling in AiModule. See driver-synth/io-spec.types.ts.
+  exports: [JudgeService, ExecutorService, VerdictService, DriverMergeService, DriverSynthService],
 })
 export class CodeExecutionModule {}

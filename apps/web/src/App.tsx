@@ -54,11 +54,23 @@ const PlaygroundPage = lazy(() =>
 const GradingPage = lazy(() =>
   import('@/features/grading/pages/grading-page').then((m) => ({ default: m.GradingPage })),
 );
-const AiGeneratePage = lazy(() =>
-  import('@/features/ai/pages/ai-generate-page').then((m) => ({ default: m.AiGeneratePage })),
+const TopicsPage = lazy(() =>
+  import('@/features/topics/pages/topics-page').then((m) => ({ default: m.TopicsPage })),
 );
-const BillingPage = lazy(() =>
-  import('@/features/billing/pages/billing-page').then((m) => ({ default: m.BillingPage })),
+const RequestAccessPage = lazy(() =>
+  import('@/features/onboarding/pages/request-access-page').then((m) => ({
+    default: m.RequestAccessPage,
+  })),
+);
+const AdminRequestsPage = lazy(() =>
+  import('@/features/onboarding/pages/admin-requests-page').then((m) => ({
+    default: m.AdminRequestsPage,
+  })),
+);
+const AdminInvitesPage = lazy(() =>
+  import('@/features/onboarding/pages/admin-invites-page').then((m) => ({
+    default: m.AdminInvitesPage,
+  })),
 );
 const ProfilePage = lazy(() =>
   import('@/features/profile/pages/profile-page').then((m) => ({ default: m.ProfilePage })),
@@ -93,14 +105,20 @@ function App() {
             <Route path="problems/:id" element={<ProblemDetailPage />} />
             <Route path="assignments" element={<AssignmentsListPage />} />
             <Route path="playground" element={<PlaygroundPage />} />
-            <Route path="ai" element={<AiGeneratePage />} />
-            <Route path="billing" element={<BillingPage />} />
+            <Route path="topics" element={<TopicsPage />} />
+            <Route path="request-access" element={<RequestAccessPage />} />
             <Route path="profile" element={<ProfilePage />} />
             <Route path="settings" element={<SettingsPage />} />
 
             {/* Staff-only gradebook */}
             <Route element={<RequireRole roles={[Role.ADMIN, Role.PROFESSOR]} />}>
               <Route path="grading" element={<GradingPage />} />
+            </Route>
+
+            {/* Admin-only professor onboarding management */}
+            <Route element={<RequireRole roles={[Role.ADMIN]} />}>
+              <Route path="admin/requests" element={<AdminRequestsPage />} />
+              <Route path="admin/invites" element={<AdminInvitesPage />} />
             </Route>
           </Route>
 

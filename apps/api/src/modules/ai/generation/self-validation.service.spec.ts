@@ -1,7 +1,7 @@
 import { DriverMergeService } from '../../code-execution/services/driver-merge.service';
 import { NormalizerService } from '../../code-execution/services/normalizer.service';
 import { VerdictService } from '../../code-execution/services/verdict.service';
-import { DriverSynthService } from '../driver-synth/driver-synth.service';
+import { DriverSynthService } from '../../code-execution/driver-synth/driver-synth.service';
 import { GeneratedProblem } from '../llm/schemas/generated-problem.schema';
 import { SelfValidationService } from './self-validation.service';
 

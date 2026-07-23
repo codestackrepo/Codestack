@@ -5,7 +5,6 @@ import { QUEUE_AI_GENERATE } from '../../queue/queue.constants';
 import { BillingModule } from '../billing/billing.module';
 import { CodeExecutionModule } from '../code-execution/code-execution.module';
 import { AiController } from './ai.controller';
-import { DriverSynthService } from './driver-synth/driver-synth.service';
 import { GeneratedProblemLink } from './entities/generated-problem-link.entity';
 import { GenerationRequest } from './entities/generation-request.entity';
 import { GenerationRequestService } from './generation/generation-request.service';
@@ -35,7 +34,9 @@ import { AiGenerateProcessor } from './queue/ai-generate.processor';
   controllers: [AiController],
   providers: [
     IngestionService,
-    DriverSynthService,
+    // DriverSynthService is now provided/exported by CodeExecutionModule (imported
+    // above) — it was lifted out of AiModule so the deterministic driver generator
+    // survives AI being disabled.
     PromptBuilderService,
     SelfValidationService,
     MaterializerService,
