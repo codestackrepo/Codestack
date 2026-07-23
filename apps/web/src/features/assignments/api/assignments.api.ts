@@ -1,5 +1,10 @@
 import { apiClient } from '@/lib/api-client';
-import type { Assignment, AssignmentProblem } from '@/types/assignment';
+import type {
+  Assignment,
+  AssignmentProblem,
+  CreateAssignmentInput,
+  UpdateAssignmentInput,
+} from '@/types/assignment';
 import type { PaginatedResult } from '@/types/common';
 
 export interface AssignmentsQuery {
@@ -25,6 +30,21 @@ export const assignmentsApi = {
     const { data } = await apiClient.get<AssignmentProblem[]>(
       `/assignments/${assignmentId}/problems`,
     );
+    return data;
+  },
+
+  async getById(id: string): Promise<Assignment> {
+    const { data } = await apiClient.get<Assignment>(`/assignments/${id}`);
+    return data;
+  },
+
+  async create(input: CreateAssignmentInput): Promise<Assignment> {
+    const { data } = await apiClient.post<Assignment>('/assignments', input);
+    return data;
+  },
+
+  async update(id: string, input: UpdateAssignmentInput): Promise<Assignment> {
+    const { data } = await apiClient.patch<Assignment>(`/assignments/${id}`, input);
     return data;
   },
 };

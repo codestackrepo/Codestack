@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { CalendarRange, ChevronDown, ChevronRight, Code2, Eye, Lock } from 'lucide-react';
+import { CalendarRange, ChevronDown, ChevronRight, Code2, Eye, Lock, Plus } from 'lucide-react';
 import { assignmentsApi } from '../api/assignments.api';
 import { useAuth } from '@/features/auth/context/auth-context';
 import { StudentGradesCard } from '@/features/grading/components/student-grades-card';
@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
-import { Role } from '@/types/common';
+import { Role, STAFF_ROLES } from '@/types/common';
 import { AssignmentStatus } from '@/types/assignment';
 import { Difficulty } from '@/types/problem';
 
@@ -39,6 +39,8 @@ export function AssignmentStatusBadge({ status }: { status: AssignmentStatus }) 
 }
 
 export function AssignmentsListPage() {
+  const { user } = useAuth();
+  const isStaff = !!user && STAFF_ROLES.includes(user.role);
   const { data, isLoading } = useQuery({
     queryKey: ['assignments', 'list'],
     queryFn: () => assignmentsApi.list(),
@@ -50,6 +52,15 @@ export function AssignmentsListPage() {
       <PageHeader
         title="Assignments"
         description="Coursework across your classrooms — expand one to open its problems."
+        actions={
+          isStaff ? (
+            <Button asChild className="bg-brand text-brand-foreground hover:bg-brand/90">
+              <Link to="/home/assignments/new">
+                <Plus className="size-4" /> New assignment
+              </Link>
+            </Button>
+          ) : undefined
+        }
       />
 
       {isLoading && (

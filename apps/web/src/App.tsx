@@ -28,6 +28,11 @@ const ClassroomDetailPage = lazy(() =>
     default: m.ClassroomDetailPage,
   })),
 );
+const ClassroomFormPage = lazy(() =>
+  import('@/features/classrooms/pages/classroom-form-page').then((m) => ({
+    default: m.ClassroomFormPage,
+  })),
+);
 const ProblemsListPage = lazy(() =>
   import('@/features/problems/pages/problems-list-page').then((m) => ({
     default: m.ProblemsListPage,
@@ -41,6 +46,11 @@ const ProblemDetailPage = lazy(() =>
 const AssignmentsListPage = lazy(() =>
   import('@/features/assignments/pages/assignments-list-page').then((m) => ({
     default: m.AssignmentsListPage,
+  })),
+);
+const AssignmentFormPage = lazy(() =>
+  import('@/features/assignments/pages/assignment-form-page').then((m) => ({
+    default: m.AssignmentFormPage,
   })),
 );
 const CodeEditorPage = lazy(() =>
@@ -125,6 +135,11 @@ function App() {
             <Route element={<RequireModule module={AppModuleKey.CLASSROOMS} />}>
               <Route path="classrooms" element={<ClassroomsListPage />} />
               <Route path="classrooms/:id" element={<ClassroomDetailPage />} />
+              {/* Staff-only classroom create/edit (#23) */}
+              <Route element={<RequireRole roles={[Role.ADMIN, Role.PROFESSOR]} />}>
+                <Route path="classrooms/new" element={<ClassroomFormPage />} />
+                <Route path="classrooms/:id/edit" element={<ClassroomFormPage />} />
+              </Route>
             </Route>
             <Route element={<RequireModule module={AppModuleKey.PROBLEMS} />}>
               <Route path="problems" element={<ProblemsListPage />} />
@@ -132,6 +147,11 @@ function App() {
             </Route>
             <Route element={<RequireModule module={AppModuleKey.ASSIGNMENTS} />}>
               <Route path="assignments" element={<AssignmentsListPage />} />
+              {/* Staff-only assignment/test create/edit (#23) */}
+              <Route element={<RequireRole roles={[Role.ADMIN, Role.PROFESSOR]} />}>
+                <Route path="assignments/new" element={<AssignmentFormPage />} />
+                <Route path="assignments/:id/edit" element={<AssignmentFormPage />} />
+              </Route>
             </Route>
             <Route element={<RequireModule module={AppModuleKey.PLAYGROUND} />}>
               <Route path="playground" element={<PlaygroundPage />} />
