@@ -41,7 +41,7 @@ export function AuthLayout({
             ))}
           </ul>
         </div>
-        <p className="relative text-xs text-sidebar-foreground/40">© CodeStack</p>
+        <p className="relative text-xs text-sidebar-foreground/60">© CodeStack</p>
       </div>
 
       {/* Form panel */}

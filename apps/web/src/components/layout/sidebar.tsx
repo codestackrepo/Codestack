@@ -135,7 +135,7 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
         {sections.map((section, i) => (
           <div key={section.heading ?? `section-${i}`} className="space-y-0.5">
             {section.heading && (
-              <p className="px-3 pb-1 text-[0.6875rem] font-semibold tracking-wider text-sidebar-foreground/40 uppercase">
+              <p className="px-3 pb-1 text-[0.6875rem] font-semibold tracking-wider text-sidebar-foreground/60 uppercase">
                 {section.heading}
               </p>
             )}
