@@ -45,9 +45,11 @@ export function BatchFormDialog({
   // Re-seed the form each time the dialog is opened (for create or a given batch).
   useEffect(() => {
     if (!open) return;
+    /* eslint-disable react-hooks/set-state-in-effect -- intentional open-time form seed */
     setName(batch?.name ?? '');
     setSelectedIds((batch?.students ?? []).map((s) => s.id));
     setError(null);
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [open, batch]);
 
   const mutation = useMutation({
@@ -119,9 +121,7 @@ export function BatchFormDialog({
                 }))}
                 selectedIds={selectedIds}
                 onToggle={(id, checked) =>
-                  setSelectedIds((prev) =>
-                    checked ? [...prev, id] : prev.filter((x) => x !== id),
-                  )
+                  setSelectedIds((prev) => (checked ? [...prev, id] : prev.filter((x) => x !== id)))
                 }
               />
             )}

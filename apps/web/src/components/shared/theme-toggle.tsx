@@ -11,6 +11,9 @@ import { Button } from '@/components/ui/button';
 export function ThemeToggle() {
   const [mounted, setMounted] = useState(false);
   const { resolvedTheme, setTheme } = useTheme();
+  // Canonical next-themes hydration guard: a one-shot post-mount flag, not
+  // derivable during render.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => setMounted(true), []);
 
   const isDark = resolvedTheme === 'dark';
