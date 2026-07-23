@@ -34,7 +34,11 @@ export function PracticeEditorPage() {
     void queryClient.invalidateQueries({ queryKey: ['gamification'] });
     void Promise.all([gamificationApi.summary(), gamificationApi.history({ limit: 1 })])
       .then(([summary, history]) => {
-        const earned = history.data[0]?.points;
+        // Only credit "+N points" when the most recent solve is THIS problem —
+        // a re-solve of an already-solved problem earns nothing, and the award
+        // listener may not have committed yet.
+        const latest = history.data[0];
+        const earned = latest?.problemId === problemId ? latest.points : undefined;
         const streak = summary.currentStreak;
         toast.success(earned ? `Accepted! +${earned} points` : 'Accepted!', {
           description: streak > 0 ? `${streak}-day streak 🔥` : undefined,

@@ -19,7 +19,9 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
+import { CheckboxList } from '@/components/shared/checkbox-list';
 import { cn } from '@/lib/utils';
+import { Language } from '@/types/common';
 import {
   AssignmentItemKind,
   type AssignmentItemStaff,
@@ -33,6 +35,14 @@ const KIND_TITLE: Record<AssignmentItemKind, string> = {
   [AssignmentItemKind.MCQ]: 'multiple-choice question',
   [AssignmentItemKind.QUIZ]: 'quiz question',
 };
+
+const LANGUAGE_LABELS: Record<Language, string> = {
+  [Language.PYTHON]: 'Python',
+  [Language.JAVASCRIPT]: 'JavaScript',
+  [Language.JAVA]: 'Java',
+  [Language.CPP]: 'C++',
+};
+const ALL_LANGUAGES = Object.keys(LANGUAGE_LABELS) as Language[];
 
 function emptyOptions(): McqOptionInput[] {
   return [
@@ -68,6 +78,7 @@ export function ItemFormDialog({
   const [allowMultiple, setAllowMultiple] = useState(false);
   const [options, setOptions] = useState<McqOptionInput[]>(emptyOptions());
   const [sourceProblemId, setSourceProblemId] = useState<string | null>(null);
+  const [languages, setLanguages] = useState<Language[]>(ALL_LANGUAGES);
   const [search, setSearch] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -90,6 +101,7 @@ export function ItemFormDialog({
         : emptyOptions(),
     );
     setSourceProblemId(null);
+    setLanguages(ALL_LANGUAGES);
     setSearch('');
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [open, item, kind]);
@@ -106,11 +118,25 @@ export function ItemFormDialog({
       .filter((o) => o.text.length > 0);
   }
 
+  // True when the edited option set differs from the item's saved options. The
+  // backend rebuilds options (fresh ids) whenever `options` is sent, orphaning
+  // students' saved selections — so on edit we only send options when changed.
+  function optionsChanged(): boolean {
+    const next = cleanedOptions();
+    const prev = (item?.options ?? [])
+      .slice()
+      .sort((a, b) => a.orderIndex - b.orderIndex)
+      .map((o) => ({ text: o.text, isCorrect: o.isCorrect }));
+    if (next.length !== prev.length) return true;
+    return next.some((o, i) => o.text !== prev[i].text || o.isCorrect !== prev[i].isCorrect);
+  }
+
   function validate(): string | null {
     const pts = Number(points);
     if (Number.isNaN(pts) || pts < 0) return 'Points must be a non-negative number.';
     if (kind === AssignmentItemKind.CODING) {
       if (isCodingCreate && !sourceProblemId) return 'Pick a problem.';
+      if (isCodingCreate && languages.length === 0) return 'Select at least one language.';
     } else if (!prompt.trim()) {
       return 'A prompt is required.';
     }
@@ -133,7 +159,9 @@ export function ItemFormDialog({
         if (kind !== AssignmentItemKind.CODING) body.prompt = prompt.trim();
         if (kind === AssignmentItemKind.MCQ) {
           body.allowMultiple = allowMultiple;
-          body.options = cleanedOptions();
+          // Only replace options when they actually changed — sending them
+          // rebuilds ids server-side and orphans saved student responses.
+          if (optionsChanged()) body.options = cleanedOptions();
         }
         return assignmentsApi.updateItem(item.id, body);
       }
@@ -141,6 +169,7 @@ export function ItemFormDialog({
       if (kind === AssignmentItemKind.CODING) {
         body.sourceProblemId = sourceProblemId ?? undefined;
         body.score = pts;
+        body.languages = languages;
       } else {
         body.prompt = prompt.trim();
         body.maxPoints = pts;
@@ -233,6 +262,17 @@ export function ItemFormDialog({
                   ))
                 )}
               </div>
+
+              <Label className="mt-2">Languages students may use</Label>
+              <CheckboxList
+                items={ALL_LANGUAGES.map((lang) => ({ id: lang, label: LANGUAGE_LABELS[lang] }))}
+                selectedIds={languages}
+                onToggle={(langId, checked) =>
+                  setLanguages((prev) =>
+                    checked ? [...prev, langId as Language] : prev.filter((l) => l !== langId),
+                  )
+                }
+              />
             </div>
           )}
 

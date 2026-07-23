@@ -57,12 +57,18 @@ function formatRemaining(ms: number): string {
  */
 export function AssignmentTakePage() {
   const { id } = useParams<{ id: string }>();
+  if (!id) return null;
+  // key={id} remounts on assignment change, resetting all per-attempt state/refs
+  // (guards against take→take navigation reusing another attempt's timers).
+  return <TakePageInner key={id} id={id} />;
+}
+
+function TakePageInner({ id }: { id: string }) {
   const navigate = useNavigate();
 
   const { data: take, isLoading } = useQuery({
     queryKey: ['assignments', id, 'take'],
-    queryFn: () => assignmentsApi.take(id!),
-    enabled: !!id,
+    queryFn: () => assignmentsApi.take(id),
   });
 
   const [deadlineAt, setDeadlineAt] = useState<string | null>(null);
@@ -73,6 +79,10 @@ export function AssignmentTakePage() {
   const [submitting, setSubmitting] = useState(false);
 
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  // Latest pending save thunk per item, so we can FLUSH before submit/expiry
+  // rather than dropping the last debounced edit.
+  const pendingSaves = useRef<Record<string, () => Promise<unknown>>>({});
+  const seededRef = useRef<string | null>(null);
   const startedRef = useRef(false);
   const autoSubmittedRef = useRef(false);
 
@@ -89,9 +99,12 @@ export function AssignmentTakePage() {
     return () => Object.values(pending).forEach(clearTimeout);
   }, []);
 
-  // Seed local answers + attempt from the fetched payload (once per load).
+  // Seed local answers + attempt from the fetched payload — ONCE per assignment.
+  // Guarding on assignmentId stops a background refetch (reconnect/invalidate)
+  // from clobbering in-progress edits with the server copy.
   useEffect(() => {
-    if (!take) return;
+    if (!take || seededRef.current === take.assignmentId) return;
+    seededRef.current = take.assignmentId;
     const mcq: Record<string, string[]> = {};
     const quiz: Record<string, string> = {};
     for (const it of take.items) {
@@ -133,34 +146,51 @@ export function AssignmentTakePage() {
     attemptStatus === AttemptStatus.SUBMITTED || attemptStatus === AttemptStatus.AUTO_SUBMITTED;
   const canAnswer = take?.status === AssignmentStatus.ACTIVE && !submitted && !(isTest && expired);
 
+  // Run (or flush) a single item's pending save immediately.
+  async function runSave(itemId: string) {
+    const run = pendingSaves.current[itemId];
+    if (!run) return;
+    delete pendingSaves.current[itemId];
+    clearTimeout(timers.current[itemId]);
+    delete timers.current[itemId];
+    setSaveState((s) => ({ ...s, [itemId]: 'saving' }));
+    try {
+      await run();
+      setSaveState((s) => ({ ...s, [itemId]: 'saved' }));
+    } catch (e) {
+      setSaveState((s) => {
+        const next = { ...s };
+        delete next[itemId];
+        return next;
+      });
+      toast.error(parseApiError(e).message);
+    }
+  }
+
+  // Flush every pending debounced save and wait for them — call BEFORE submit so
+  // the last edit (still inside the 600ms window) isn't dropped on unmount.
+  async function flushSaves() {
+    await Promise.all(Object.keys(pendingSaves.current).map((itemId) => runSave(itemId)));
+  }
+
   // Best-effort client auto-submit at expiry (server independently enforces #39).
   useEffect(() => {
     if (!id || !isTest || !deadlineAt || !expired || submitted || autoSubmittedRef.current) return;
     autoSubmittedRef.current = true;
-    assignmentsApi
-      .submitAttempt(id)
+    void flushSaves()
+      .then(() => assignmentsApi.submitAttempt(id))
       .then((a) => {
         setAttemptStatus(a.status);
         toast.warning('Time is up — your attempt was submitted.');
       })
       .catch(() => setAttemptStatus(AttemptStatus.AUTO_SUBMITTED));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, isTest, deadlineAt, expired, submitted]);
 
   function scheduleSave(itemId: string, run: () => Promise<unknown>) {
     clearTimeout(timers.current[itemId]);
-    timers.current[itemId] = setTimeout(() => {
-      setSaveState((s) => ({ ...s, [itemId]: 'saving' }));
-      run()
-        .then(() => setSaveState((s) => ({ ...s, [itemId]: 'saved' })))
-        .catch((e) => {
-          setSaveState((s) => {
-            const next = { ...s };
-            delete next[itemId];
-            return next;
-          });
-          toast.error(parseApiError(e).message);
-        });
-    }, 600);
+    pendingSaves.current[itemId] = run;
+    timers.current[itemId] = setTimeout(() => void runSave(itemId), 600);
   }
 
   function onMcqChange(itemId: string, selected: string[]) {
@@ -174,9 +204,9 @@ export function AssignmentTakePage() {
   }
 
   async function handleSubmit() {
-    if (!id) return;
     setSubmitting(true);
     try {
+      await flushSaves();
       const a = await assignmentsApi.submitAttempt(id);
       setAttemptStatus(a.status);
       toast.success('Assignment submitted.');
@@ -265,7 +295,7 @@ export function AssignmentTakePage() {
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button
-                  disabled={submitting || expired}
+                  disabled={submitting || (isTest && expired)}
                   className="bg-brand text-brand-foreground hover:bg-brand/90"
                 >
                   {submitting ? (

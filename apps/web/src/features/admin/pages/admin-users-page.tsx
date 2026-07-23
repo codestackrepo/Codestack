@@ -56,8 +56,8 @@ function formatDate(iso: string | null): string {
 /**
  * Admin user management (`/home/admin/users`, #40). Paginated table over
  * `GET /users` with inline role change, active toggle, and delete. Actions on
- * the acting admin's own row are disabled to prevent self-lockout (the backend
- * is the source of truth; this is a UX guard).
+ * the acting admin's own row are disabled to prevent accidental self-lockout —
+ * a client-side UX guard (the API does not currently block self-changes).
  */
 export function AdminUsersPage() {
   const queryClient = useQueryClient();
