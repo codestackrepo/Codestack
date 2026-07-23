@@ -1,8 +1,20 @@
-import { Column, Entity, Index, JoinColumn, ManyToOne, OneToMany } from 'typeorm';
+import {
+  Column,
+  Entity,
+  Index,
+  JoinColumn,
+  JoinTable,
+  ManyToMany,
+  ManyToOne,
+  OneToMany,
+} from 'typeorm';
 import { BaseEntity } from '../../../common/entities/base.entity';
+import { Batch } from '../../classrooms/entities/batch.entity';
 import { Classroom } from '../../classrooms/entities/classroom.entity';
 import { User } from '../../users/entities/user.entity';
+import { AssignmentKind } from '../enums/assignment-kind.enum';
 import { AssignmentStatus } from '../enums/assignment-status.enum';
+import { AssignmentTargetType } from '../enums/assignment-target-type.enum';
 import { AssignmentProblem } from './assignment-problem.entity';
 
 @Entity('assignments')
@@ -41,6 +53,32 @@ export class Assignment extends BaseEntity {
 
   @Column({ type: 'timestamptz', nullable: true, name: 'published_at' })
   publishedAt!: Date | null;
+
+  // ---- Kind + targeting (issue #17) ----
+  // A "test" reuses this entity + state machine; `durationMinutes` drives the
+  // server-authoritative attempt deadline. Targeting decides student
+  // visibility: whole classroom vs. specific batches (§5.2).
+  @Column({ type: 'enum', enum: AssignmentKind, default: AssignmentKind.ASSIGNMENT })
+  kind!: AssignmentKind;
+
+  @Column({
+    type: 'enum',
+    enum: AssignmentTargetType,
+    default: AssignmentTargetType.CLASSROOM,
+    name: 'target_type',
+  })
+  targetType!: AssignmentTargetType;
+
+  @Column({ type: 'int', nullable: true, name: 'duration_minutes' })
+  durationMinutes!: number | null;
+
+  @ManyToMany(() => Batch)
+  @JoinTable({
+    name: 'assignment_target_batches',
+    joinColumn: { name: 'assignment_id', referencedColumnName: 'id' },
+    inverseJoinColumn: { name: 'batch_id', referencedColumnName: 'id' },
+  })
+  targetBatches!: Batch[];
 
   @OneToMany(() => AssignmentProblem, (ap) => ap.assignment)
   assignmentProblems!: AssignmentProblem[];

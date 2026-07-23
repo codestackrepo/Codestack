@@ -31,6 +31,9 @@ export class ProblemResponseDto {
   @ApiProperty({ enum: ProblemSource }) source!: ProblemSource;
   @ApiProperty({ enum: ProblemVisibility }) visibility!: ProblemVisibility;
   @ApiProperty({ type: [String] }) tags!: string[];
+  @ApiProperty({ type: [String] }) companies!: string[];
+  @ApiProperty({ description: 'True when drivers/tests can be judged (has io_spec)' })
+  isJudgeReady!: boolean;
   @ApiProperty({ nullable: true }) createdById!: string | null;
   @ApiProperty() createdAt!: Date;
   @ApiPropertyOptional({ type: [TestCaseResponseDto] }) testCases?: TestCaseResponseDto[];
@@ -44,6 +47,8 @@ export class ProblemResponseDto {
       source: problem.source,
       visibility: problem.visibility,
       tags: (problem.tags ?? []).map((t) => t.name),
+      companies: (problem.companies ?? []).map((c) => c.name),
+      isJudgeReady: !!problem.ioSpec && !!problem.functionName,
       createdById: problem.createdById,
       createdAt: problem.createdAt,
       ...(testCases ? { testCases: testCases.map(TestCaseResponseDto.from) } : {}),

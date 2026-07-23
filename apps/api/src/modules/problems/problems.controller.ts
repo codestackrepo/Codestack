@@ -43,6 +43,13 @@ export class ProblemsController {
     return { data: page.data.map((p) => ProblemResponseDto.from(p)), meta: page.meta };
   }
 
+  /** Available topic/company facet values (with counts) for the filter UI.
+   * Declared before ':id' so "facets" isn't captured as an id param. */
+  @Get('facets')
+  async facets(@CurrentUser() actor: AuthenticatedUser) {
+    return this.problems.getFacets(actor);
+  }
+
   @Get(':id')
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,

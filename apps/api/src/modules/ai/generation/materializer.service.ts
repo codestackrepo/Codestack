@@ -11,8 +11,8 @@ import {
   ProblemVisibility,
   TestCaseType,
 } from '../../problems/enums/problem.enums';
-import { DriverSynthService } from '../driver-synth/driver-synth.service';
-import { encodeExpectedOutput, encodeStdin } from '../driver-synth/io-codec';
+import { DriverSynthService } from '../../code-execution/driver-synth/driver-synth.service';
+import { encodeExpectedOutput, encodeStdin } from '../../code-execution/driver-synth/io-codec';
 import { PerLanguagePass } from '../entities/generated-problem-link.entity';
 import { GeneratedProblem, TestCaseIo } from '../llm/schemas/generated-problem.schema';
 

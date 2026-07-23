@@ -37,6 +37,13 @@ export class CreateProblemDto {
   @ArrayMaxSize(20)
   tags?: string[];
 
+  @ApiPropertyOptional({ type: [String], description: 'Company names' })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @ArrayMaxSize(20)
+  companies?: string[];
+
   @ApiPropertyOptional({ enum: ProblemVisibility, default: ProblemVisibility.PRIVATE })
   @IsOptional()
   @IsEnum(ProblemVisibility)

@@ -1,5 +1,5 @@
 import { apiClient } from '@/lib/api-client';
-import type { CreateProblemInput, Problem } from '@/types/problem';
+import type { CreateProblemInput, Problem, ProblemFacets } from '@/types/problem';
 import type { PaginatedResult } from '@/types/common';
 
 export interface ProblemsQuery {
@@ -8,6 +8,7 @@ export interface ProblemsQuery {
   difficulty?: string;
   search?: string;
   tag?: string;
+  company?: string;
 }
 
 export const problemsApi = {
@@ -15,6 +16,11 @@ export const problemsApi = {
     const { data } = await apiClient.get<PaginatedResult<Problem>>('/problems', {
       params: { page: 1, limit: 20, ...query },
     });
+    return data;
+  },
+
+  async facets(): Promise<ProblemFacets> {
+    const { data } = await apiClient.get<ProblemFacets>('/problems/facets');
     return data;
   },
 

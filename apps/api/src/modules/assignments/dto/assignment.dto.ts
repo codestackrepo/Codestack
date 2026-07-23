@@ -6,6 +6,7 @@ import {
   IsBoolean,
   IsDateString,
   IsEnum,
+  IsInt,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -17,6 +18,8 @@ import {
 import { PaginationQueryDto } from '../../../common/dto/pagination.dto';
 import { Language } from '../../../common/enums/language.enum';
 import { Difficulty } from '../../problems/enums/problem.enums';
+import { AssignmentKind } from '../enums/assignment-kind.enum';
+import { AssignmentTargetType } from '../enums/assignment-target-type.enum';
 
 export class CreateAssignmentDto {
   @ApiProperty()
@@ -50,6 +53,36 @@ export class CreateAssignmentDto {
   @IsOptional()
   @IsBoolean()
   asDraft?: boolean;
+
+  @ApiPropertyOptional({ enum: AssignmentKind, default: AssignmentKind.ASSIGNMENT })
+  @IsOptional()
+  @IsEnum(AssignmentKind)
+  kind?: AssignmentKind;
+
+  @ApiPropertyOptional({ enum: AssignmentTargetType, default: AssignmentTargetType.CLASSROOM })
+  @IsOptional()
+  @IsEnum(AssignmentTargetType)
+  targetType?: AssignmentTargetType;
+
+  @ApiPropertyOptional({
+    description: 'Attempt duration in minutes. Required when kind=test.',
+    minimum: 1,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  durationMinutes?: number;
+
+  @ApiPropertyOptional({
+    type: [String],
+    description:
+      'Target batch ids. Required (≥1) when targetType=batch; must belong to classroomId.',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  @Type(() => String)
+  targetBatchIds?: string[];
 }
 
 export class UpdateAssignmentDto extends PartialType(CreateAssignmentDto) {}

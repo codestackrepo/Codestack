@@ -21,6 +21,12 @@ interface FanOutOptions {
   link: string;
   /** Include classroom graders (student-role) in addition to students. */
   includeGraders: boolean;
+  /**
+   * When provided, use exactly this set as the student recipients (batch
+   * targeting — §9.10) instead of every enrolled student. Graders are still
+   * unioned in when `includeGraders`. Undefined → all classroom students.
+   */
+  studentRecipientIds?: string[];
 }
 
 /**
@@ -47,6 +53,7 @@ export class NotificationsListener {
       entityId: e.assignmentId,
       link: '/home/assignments',
       includeGraders: true,
+      studentRecipientIds: e.studentRecipientIds,
     });
   }
 
@@ -60,6 +67,7 @@ export class NotificationsListener {
       entityId: e.assignmentProblemId,
       link: '/home/assignments',
       includeGraders: true,
+      studentRecipientIds: e.studentRecipientIds,
     });
   }
 
@@ -73,17 +81,17 @@ export class NotificationsListener {
       entityId: e.assignmentId,
       link: '/home/assignments',
       includeGraders: false,
+      studentRecipientIds: e.studentRecipientIds,
     });
   }
 
-  private async fanOut(
-    classroomId: string,
-    actorId: string,
-    opts: FanOutOptions,
-  ): Promise<void> {
+  private async fanOut(classroomId: string, actorId: string, opts: FanOutOptions): Promise<void> {
     try {
       const classroom = await this.classrooms.getDetail(classroomId);
-      const recipientIds = (classroom.students ?? []).map((s) => s.id);
+      const recipientIds =
+        opts.studentRecipientIds !== undefined
+          ? [...opts.studentRecipientIds]
+          : (classroom.students ?? []).map((s) => s.id);
       if (opts.includeGraders) {
         recipientIds.push(...(classroom.graders ?? []).map((g) => g.id));
       }

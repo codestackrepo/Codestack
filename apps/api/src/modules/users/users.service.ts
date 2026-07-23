@@ -143,6 +143,18 @@ export class UsersService {
     await this.users.update({ id }, { lastLoginAt: new Date() });
   }
 
+  /**
+   * Sets a user's role. For trusted internal flows only (professor-onboarding
+   * invite consumption and admin request approval) — the CALLER is responsible
+   * for authorizing the change; this method intentionally has no actor gate,
+   * unlike `update()`. Returns the updated user.
+   */
+  async setRole(userId: string, role: Role): Promise<User> {
+    const user = await this.getById(userId);
+    user.role = role;
+    return this.users.save(user);
+  }
+
   verifyPassword(user: User, plain: string): Promise<boolean> {
     return argon2.verify(user.passwordHash, plain);
   }

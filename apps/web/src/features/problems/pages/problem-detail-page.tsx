@@ -1,6 +1,6 @@
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Building2, CheckCircle2, Tag as TagIcon } from 'lucide-react';
 import { problemsApi } from '../api/problems.api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -41,12 +41,28 @@ export function ProblemDetailPage() {
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="font-heading text-2xl font-bold tracking-tight">{problem.title}</h1>
           <DifficultyBadge difficulty={problem.difficulty} />
+          {problem.isJudgeReady && (
+            <Badge className="gap-1 bg-emerald-600 hover:bg-emerald-600">
+              <CheckCircle2 className="size-3" /> Judge-ready
+            </Badge>
+          )}
         </div>
         {problem.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1">
+          <div className="flex flex-wrap items-center gap-1">
+            <TagIcon className="mr-0.5 size-3.5 text-muted-foreground" />
             {problem.tags.map((tag) => (
               <Badge key={tag} variant="secondary">
                 {tag}
+              </Badge>
+            ))}
+          </div>
+        )}
+        {problem.companies.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1">
+            <Building2 className="mr-0.5 size-3.5 text-muted-foreground" />
+            {problem.companies.map((c) => (
+              <Badge key={c} variant="outline">
+                {c}
               </Badge>
             ))}
           </div>
@@ -58,6 +74,29 @@ export function ProblemDetailPage() {
           <MarkdownView>{problem.body}</MarkdownView>
         </CardContent>
       </Card>
+
+      {problem.testCases && problem.testCases.length > 0 && (
+        <Card>
+          <CardContent className="space-y-3 pt-6">
+            <h2 className="text-sm font-semibold">Examples</h2>
+            {problem.testCases.map((tc, i) => (
+              <div key={tc.id} className="rounded-lg border border-border bg-muted/40 p-3">
+                <p className="mb-1 text-xs font-medium text-muted-foreground">Example {i + 1}</p>
+                <pre className="overflow-x-auto text-xs">
+                  <span className="text-muted-foreground">Input:  </span>
+                  {tc.inputData}
+                  {'\n'}
+                  <span className="text-muted-foreground">Output: </span>
+                  {tc.expectedOutput}
+                </pre>
+                {tc.explanation && (
+                  <p className="mt-1 text-xs text-muted-foreground">{tc.explanation}</p>
+                )}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

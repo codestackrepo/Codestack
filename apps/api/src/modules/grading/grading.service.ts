@@ -96,9 +96,7 @@ export class GradingService {
     const submitter = [...(classroom.students ?? []), ...(classroom.graders ?? [])].find(
       (u) => u.id === studentId,
     );
-    const studentName = submitter
-      ? `${submitter.firstName} ${submitter.lastName}`
-      : 'A student';
+    const studentName = submitter ? `${submitter.firstName} ${submitter.lastName}` : 'A student';
     const problemTitle = ap.problem?.title ?? 'a problem';
 
     await this.notifications.createForRecipients({

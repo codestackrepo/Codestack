@@ -19,8 +19,7 @@ import { Assignment } from '../../modules/assignments/entities/assignment.entity
 import { AssignmentProblem } from '../../modules/assignments/entities/assignment-problem.entity';
 import { ProblemTemplate } from '../../modules/assignments/entities/problem-template.entity';
 import { AssignmentStatus } from '../../modules/assignments/enums/assignment-status.enum';
-import { Plan } from '../../modules/billing/entities/plan.entity';
-import { PlanInterval } from '../../modules/billing/enums/billing.enums';
+// Billing plans are no longer seeded (M0 — "Disable & hide AI + Billing").
 
 const PASSWORD = 'Password1!';
 
@@ -121,31 +120,6 @@ async function main(): Promise<void> {
 
   const assignment = await upsertAssignment('Week 1 — Arrays Warmup', classroom, professor);
   await upsertAssignmentProblem(assignment, problem, 10, [Language.PYTHON, Language.JAVASCRIPT]);
-
-  // NOTE: stripe_price_id values are placeholders — replace with real Stripe
-  // test-mode Price IDs (from your own Stripe dashboard) before checkout
-  // will actually work against the live Stripe API.
-  await upsertPlan(
-    'monthly',
-    'Monthly',
-    PlanInterval.MONTH,
-    1900,
-    'price_codestack_monthly_placeholder',
-  );
-  await upsertPlan(
-    'quarterly',
-    'Quarterly',
-    PlanInterval.QUARTER,
-    4900,
-    'price_codestack_quarterly_placeholder',
-  );
-  await upsertPlan(
-    'yearly',
-    'Yearly',
-    PlanInterval.YEAR,
-    14900,
-    'price_codestack_yearly_placeholder',
-  );
 
   console.log('\nSeed complete. Login with any of:');
   console.log(
@@ -337,30 +311,6 @@ async function upsertAssignmentProblem(
   }
 
   return ap;
-}
-
-async function upsertPlan(
-  code: string,
-  name: string,
-  interval: PlanInterval,
-  priceMinorUnits: number,
-  stripePriceId: string,
-): Promise<Plan> {
-  const repo = dataSource.getRepository(Plan);
-  const existing = await repo.findOne({ where: { code } });
-  if (existing) return existing;
-  return repo.save(
-    repo.create({
-      code,
-      name,
-      interval,
-      priceMinorUnits,
-      currency: 'usd',
-      stripePriceId,
-      features: { ai: true },
-      active: true,
-    }),
-  );
 }
 
 main().catch((err) => {

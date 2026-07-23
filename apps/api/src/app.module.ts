@@ -13,6 +13,7 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { AppThrottlerGuard } from './common/guards/app-throttler.guard';
 import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { OnboardingModule } from './modules/onboarding/onboarding.module';
 import { ProblemsModule } from './modules/problems/problems.module';
 import { ClassroomsModule } from './modules/classrooms/classrooms.module';
 import { AssignmentsModule } from './modules/assignments/assignments.module';
@@ -22,8 +23,10 @@ import { GradingModule } from './modules/grading/grading.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { PlaygroundModule } from './modules/playground/playground.module';
 import { DemoModule } from './modules/demo/demo.module';
-import { AiModule } from './modules/ai/ai.module';
-import { BillingModule } from './modules/billing/billing.module';
+// AiModule and BillingModule are intentionally NOT imported (M0 — "Disable & hide
+// AI + Billing"). Their source and migrations remain on disk so the feature can be
+// re-enabled later; they are simply not registered in the composition root, so
+// neither the API nor the worker (which boots this same AppModule) loads them.
 
 @Module({
   imports: [
@@ -54,6 +57,7 @@ import { BillingModule } from './modules/billing/billing.module';
     HealthModule,
     UsersModule,
     AuthModule,
+    OnboardingModule,
     ProblemsModule,
     ClassroomsModule,
     AssignmentsModule,
@@ -63,8 +67,6 @@ import { BillingModule } from './modules/billing/billing.module';
     NotificationsModule,
     PlaygroundModule,
     DemoModule,
-    BillingModule,
-    AiModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

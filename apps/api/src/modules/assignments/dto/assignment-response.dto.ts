@@ -3,7 +3,9 @@ import { Language } from '../../../common/enums/language.enum';
 import { Difficulty, TestCaseType } from '../../problems/enums/problem.enums';
 import { AssignmentProblem } from '../entities/assignment-problem.entity';
 import { Assignment } from '../entities/assignment.entity';
+import { AssignmentKind } from '../enums/assignment-kind.enum';
 import { AssignmentStatus } from '../enums/assignment-status.enum';
+import { AssignmentTargetType } from '../enums/assignment-target-type.enum';
 
 export class AssignmentResponseDto {
   @ApiProperty() id!: string;
@@ -15,6 +17,10 @@ export class AssignmentResponseDto {
   @ApiProperty() createdById!: string;
   @ApiProperty({ enum: AssignmentStatus }) status!: AssignmentStatus;
   @ApiProperty({ nullable: true }) publishedAt!: Date | null;
+  @ApiProperty({ enum: AssignmentKind }) kind!: AssignmentKind;
+  @ApiProperty({ enum: AssignmentTargetType }) targetType!: AssignmentTargetType;
+  @ApiProperty({ nullable: true }) durationMinutes!: number | null;
+  @ApiProperty({ type: [String] }) targetBatchIds!: string[];
 
   static from(a: Assignment): AssignmentResponseDto {
     return {
@@ -27,6 +33,10 @@ export class AssignmentResponseDto {
       createdById: a.createdById,
       status: a.status,
       publishedAt: a.publishedAt,
+      kind: a.kind,
+      targetType: a.targetType,
+      durationMinutes: a.durationMinutes,
+      targetBatchIds: (a.targetBatches ?? []).map((b) => b.id),
     };
   }
 }

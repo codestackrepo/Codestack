@@ -9,10 +9,15 @@ export class QueryProblemsDto extends PaginationQueryDto {
   @IsEnum(Difficulty)
   difficulty?: Difficulty;
 
-  @ApiPropertyOptional({ description: 'Filter by a single tag name' })
+  @ApiPropertyOptional({ description: 'Filter by a single tag (topic) name' })
   @IsOptional()
   @IsString()
   tag?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by a single company name' })
+  @IsOptional()
+  @IsString()
+  company?: string;
 
   @ApiPropertyOptional({ description: 'Search in title' })
   @IsOptional()

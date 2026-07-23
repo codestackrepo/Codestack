@@ -27,7 +27,8 @@
     "migration:generate": "pnpm typeorm migration:generate",
     "migration:run": "pnpm typeorm migration:run",
     "migration:revert": "pnpm typeorm migration:revert",
-    "seed": "ts-node -r tsconfig-paths/register src/database/seeds/run-seed.ts"
+    "seed": "ts-node -r tsconfig-paths/register src/database/seeds/run-seed.ts",
+    "seed:catalog": "ts-node -r tsconfig-paths/register src/database/seeds/seed-catalog.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.3",

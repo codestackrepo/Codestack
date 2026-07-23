@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { Company } from './entities/company.entity';
 import { LibraryProblemTemplate } from './entities/library-problem-template.entity';
 import { Problem } from './entities/problem.entity';
 import { Tag } from './entities/tag.entity';
@@ -10,7 +11,14 @@ import { ProblemsService } from './problems.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Problem, TestCase, Tag, LibraryProblemTemplate, UserProblemList]),
+    TypeOrmModule.forFeature([
+      Problem,
+      TestCase,
+      Tag,
+      Company,
+      LibraryProblemTemplate,
+      UserProblemList,
+    ]),
   ],
   controllers: [ProblemsController],
   providers: [ProblemsService],
