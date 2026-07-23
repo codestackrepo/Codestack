@@ -126,8 +126,9 @@ export class UsersService {
     }
     if (dto.firstName !== undefined) user.firstName = dto.firstName;
     if (dto.lastName !== undefined) user.lastName = dto.lastName;
-    // Only admins may change roles.
+    // Only admins may change roles or the active flag (same gate as role).
     if (dto.role !== undefined && actor.role === Role.ADMIN) user.role = dto.role;
+    if (dto.isActive !== undefined && actor.role === Role.ADMIN) user.isActive = dto.isActive;
     if (dto.password) user.passwordHash = await this.hashPassword(dto.password);
 
     return this.users.save(user);

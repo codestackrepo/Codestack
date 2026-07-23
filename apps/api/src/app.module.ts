@@ -24,6 +24,7 @@ import { GradingModule } from './modules/grading/grading.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { PlaygroundModule } from './modules/playground/playground.module';
 import { GamificationModule } from './modules/gamification/gamification.module';
+import { AdminModule } from './modules/admin/admin.module';
 import { DemoModule } from './modules/demo/demo.module';
 // AiModule and BillingModule are intentionally NOT imported (M0 — "Disable & hide
 // AI + Billing"). Their source and migrations remain on disk so the feature can be
@@ -72,6 +73,7 @@ import { DemoModule } from './modules/demo/demo.module';
     // Registered here (not only where its controller lives) so the
     // SUBMISSION_FINALIZED listener also runs in the worker process (§5.6).
     GamificationModule,
+    AdminModule,
     DemoModule,
   ],
   providers: [

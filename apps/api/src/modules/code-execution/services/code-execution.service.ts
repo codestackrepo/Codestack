@@ -90,6 +90,12 @@ export class CodeExecutionService {
     if (!isStaffTestSubmission && assignment.status !== AssignmentStatus.ACTIVE) {
       throw new ForbiddenException('This assignment is not open for submissions');
     }
+    // Per-attempt deadline gate for timed tests (#39, §9.9): status !== ACTIVE
+    // closes a test for everyone; this is the finer per-student clock on top.
+    // Staff test-submissions stay exempt (they never affect scores).
+    if (!isStaffTestSubmission) {
+      await this.assignments.assertTestAttemptOpen(assignment, actor.id);
+    }
     return { context: SubmissionContext.ASSIGNMENT, assignmentProblemId: ap.id };
   }
 
