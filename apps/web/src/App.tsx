@@ -46,6 +46,11 @@ const AssignmentsListPage = lazy(() =>
 const CodeEditorPage = lazy(() =>
   import('@/features/editor/pages/code-editor-page').then((m) => ({ default: m.CodeEditorPage })),
 );
+const PracticeEditorPage = lazy(() =>
+  import('@/features/editor/pages/practice-editor-page').then((m) => ({
+    default: m.PracticeEditorPage,
+  })),
+);
 const PlaygroundPage = lazy(() =>
   import('@/features/playground/pages/playground-page').then((m) => ({
     default: m.PlaygroundPage,
@@ -139,12 +144,14 @@ function App() {
             </Route>
           </Route>
 
-          {/* Full-bleed editor: its own top bar, no sidebar/padding from AppShell.
-              OUTSIDE /home, so it MUST be module-wrapped explicitly (§9.8). The
-              assignment editor is gated on ASSIGNMENTS; /practice/:problemId
-              (PROBLEMS) is added by #29. */}
+          {/* Full-bleed editors: own top bar, no sidebar/padding from AppShell.
+              OUTSIDE /home, so each MUST be module-wrapped explicitly (§9.8):
+              assignment solve → ASSIGNMENTS, practice solve → PROBLEMS. */}
           <Route element={<RequireModule module={AppModuleKey.ASSIGNMENTS} />}>
             <Route path="/solve/:apId" element={<CodeEditorPage />} />
+          </Route>
+          <Route element={<RequireModule module={AppModuleKey.PROBLEMS} />}>
+            <Route path="/practice/:problemId" element={<PracticeEditorPage />} />
           </Route>
         </Route>
 

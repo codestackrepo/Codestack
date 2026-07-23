@@ -83,6 +83,22 @@ export interface EditorBootstrap {
   templates: LanguageTemplate[];
 }
 
+/**
+ * Bootstrap for the practice editor (`GET /problems/:id/editor`, #26). Mirrors
+ * the assignment shape minus assignment-only fields (assignmentId/score), plus
+ * `isJudgeReady` for the §9.11 hard-gate. NEVER carries driverCode/hidden cases.
+ */
+export interface PracticeBootstrap {
+  id: string;
+  title: string;
+  body: string;
+  difficulty: string;
+  tags: string[];
+  isJudgeReady: boolean;
+  sampleTestCases: SampleTestcase[];
+  templates: LanguageTemplate[];
+}
+
 export interface RunResultCase {
   input: string;
   expected: string;

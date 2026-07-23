@@ -1,6 +1,6 @@
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Building2, CheckCircle2, Tag as TagIcon } from 'lucide-react';
+import { ArrowLeft, Building2, CheckCircle2, Code2, Tag as TagIcon } from 'lucide-react';
 import { problemsApi } from '../api/problems.api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -69,6 +69,22 @@ export function ProblemDetailPage() {
         )}
       </div>
 
+      {/* Practice entry point (§9.11): only judge-ready problems are solvable.
+          Non-judge-ready problems show a subtle badge instead of a Solve CTA. */}
+      <div>
+        {problem.isJudgeReady ? (
+          <Button asChild className="bg-brand text-brand-foreground hover:bg-brand/90">
+            <Link to={`/practice/${problem.id}`}>
+              <Code2 className="size-4" /> Solve
+            </Link>
+          </Button>
+        ) : (
+          <Badge variant="outline" className="text-muted-foreground">
+            Not yet solvable
+          </Badge>
+        )}
+      </div>
+
       <Card>
         <CardContent>
           <MarkdownView>{problem.body}</MarkdownView>
@@ -83,7 +99,7 @@ export function ProblemDetailPage() {
               <div key={tc.id} className="rounded-lg border border-border bg-muted/40 p-3">
                 <p className="mb-1 text-xs font-medium text-muted-foreground">Example {i + 1}</p>
                 <pre className="overflow-x-auto text-xs">
-                  <span className="text-muted-foreground">Input:  </span>
+                  <span className="text-muted-foreground">Input: </span>
                   {tc.inputData}
                   {'\n'}
                   <span className="text-muted-foreground">Output: </span>
