@@ -2,6 +2,9 @@ import { useAuth } from '@/features/auth/context/auth-context';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
+import { Role } from '@/types/common';
+import { GamificationPanel } from '@/features/gamification/components/gamification-panel';
 
 function initials(firstName: string, lastName: string): string {
   return `${firstName[0] ?? ''}${lastName[0] ?? ''}`.toUpperCase();
@@ -11,8 +14,10 @@ export function ProfilePage() {
   const { user } = useAuth();
   if (!user) return null;
 
+  const isStudent = user.role === Role.STUDENT;
+
   return (
-    <div className="max-w-lg space-y-6">
+    <div className={cn('space-y-6', isStudent ? 'max-w-4xl' : 'max-w-lg')}>
       <h1 className="text-2xl font-semibold">Profile</h1>
       <Card>
         <CardHeader className="flex-row items-center gap-4">
@@ -39,6 +44,8 @@ export function ProfilePage() {
           </dl>
         </CardContent>
       </Card>
+
+      {isStudent && <GamificationPanel />}
     </div>
   );
 }

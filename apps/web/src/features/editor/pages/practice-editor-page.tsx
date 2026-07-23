@@ -1,8 +1,10 @@
 import { Link, useParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Lock } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { gamificationApi } from '@/features/gamification/api/gamification.api';
 import { editorApi } from '../api/editor.api';
 import { CodeEditorScreen } from '../components/code-editor-screen';
 
@@ -16,12 +18,30 @@ import { CodeEditorScreen } from '../components/code-editor-screen';
  */
 export function PracticeEditorPage() {
   const { problemId } = useParams<{ problemId: string }>();
+  const queryClient = useQueryClient();
 
   const { data: bootstrap, isLoading } = useQuery({
     queryKey: ['practice-editor', problemId],
     queryFn: () => editorApi.bootstrapProblem(problemId!),
     enabled: !!problemId,
   });
+
+  // §5.6/§5.8: on an accepted practice solve, refresh the gamification panels
+  // and show a "+N points • K-day streak" toast (#37). The award is written by
+  // a backend listener on submission-finalized, so it's normally committed by
+  // the time these reads resolve; if not, the panels still refresh on next view.
+  function handleAccepted() {
+    void queryClient.invalidateQueries({ queryKey: ['gamification'] });
+    void Promise.all([gamificationApi.summary(), gamificationApi.history({ limit: 1 })])
+      .then(([summary, history]) => {
+        const earned = history.data[0]?.points;
+        const streak = summary.currentStreak;
+        toast.success(earned ? `Accepted! +${earned} points` : 'Accepted!', {
+          description: streak > 0 ? `${streak}-day streak 🔥` : undefined,
+        });
+      })
+      .catch(() => toast.success('Accepted!'));
+  }
 
   if (isLoading || !bootstrap) {
     return (
@@ -61,8 +81,7 @@ export function PracticeEditorPage() {
         editorApi.runPractice(problemId!, language, code, samples)
       }
       onSubmit={(language, code) => editorApi.submitPractice(problemId!, language, code)}
-      // #37 will pass onAccepted to show "+N points • day-K streak"; until then
-      // the screen falls back to a plain "Accepted!" toast.
+      onAccepted={handleAccepted}
     />
   );
 }
