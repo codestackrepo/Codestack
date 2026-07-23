@@ -102,6 +102,7 @@ function pairings(t) {
     ['foreground', 'card', TEXT, 'card text'],
     ['muted-foreground', 'background', TEXT, 'muted text'],
     ['muted-foreground', 'card', TEXT, 'muted text on card'],
+    ['muted-foreground', 'muted', TEXT, 'text on muted panel'],
     // Filled controls: *-foreground on its fill
     ['primary-foreground', 'primary', TEXT, 'primary button'],
     ['secondary-foreground', 'secondary', TEXT, 'secondary button'],

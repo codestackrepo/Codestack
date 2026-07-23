@@ -94,9 +94,12 @@
   --primary-foreground: hsl(204 92% 97%);
   --secondary: hsl(205 32% 96%);
   --secondary-foreground: hsl(205 40% 20%);
-  --muted: hsl(205 28% 96%);
+  /* Muted sits a touch below the off-white background so hover/skeleton fills
+     (bg-muted, hover:bg-muted/50) stay perceptible on the bare page, not just
+     on white cards (§14.4 follow-up). */
+  --muted: hsl(205 26% 93%);
   --muted-foreground: hsl(205 12% 42%);
-  --accent: hsl(205 32% 94%);
+  --accent: hsl(205 32% 93%);
   --accent-foreground: hsl(205 45% 22%);
   --brand: hsl(37 91% 55%);
   --brand-foreground: hsl(205 80% 12%);

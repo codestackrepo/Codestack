@@ -285,10 +285,13 @@ export function LandingPage() {
               Join CodeStack and turn consistent practice into real progress.
             </p>
             <div className="mt-8 flex justify-center">
+              {/* On the fixed dark gradient in BOTH themes: white pill with
+                  deep-navy text. text-sidebar is deep navy in both themes;
+                  text-primary would flip to light ice-blue in dark (invisible). */}
               <Button
                 asChild
                 size="lg"
-                className="bg-white text-primary hover:bg-white/90 dark:bg-white dark:text-primary dark:hover:bg-white/90"
+                className="bg-white text-sidebar hover:bg-white/90"
               >
                 <Link to={primaryCta.to}>
                   {primaryCta.label}
