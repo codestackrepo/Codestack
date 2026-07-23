@@ -1,4 +1,6 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios';
+import { toast } from 'sonner';
+import { queryClient } from '@/lib/query-client';
 import type { ApiErrorBody } from '@/types/common';
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api/v1';
@@ -39,6 +41,17 @@ apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError<ApiErrorBody>) => {
     const config = error.config as RetryableConfig | undefined;
+
+    // A module disabled server-side (§9.7, #31) — independent of the 401 flow.
+    // Covers the race where a module is turned off while the user sits on its
+    // page: toast, then refetch the session so RequireModule re-evaluates and
+    // redirects to /home. No full reload — the guard handles navigation.
+    if (error.response?.status === 403 && error.response.data?.reason === 'module_disabled') {
+      toast.error('This section has been disabled by your administrator.');
+      void queryClient.invalidateQueries({ queryKey: ['auth', 'session'] });
+      return Promise.reject(error);
+    }
+
     const isAuthBootstrap = AUTH_BOOTSTRAP_PATHS.some((p) => config?.url?.includes(p));
 
     if (error.response?.status !== 401 || !config || config._retried || isAuthBootstrap) {

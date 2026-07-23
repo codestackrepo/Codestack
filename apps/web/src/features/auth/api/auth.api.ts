@@ -1,4 +1,5 @@
 import { apiClient } from '@/lib/api-client';
+import type { ModuleMap } from '@/types/common';
 import type { User } from '@/types/user';
 
 export interface LoginInput {
@@ -30,8 +31,10 @@ export const authApi = {
     await apiClient.post('/auth/logout');
   },
 
-  async verify(): Promise<User> {
-    const { data } = await apiClient.get<{ user: User; isValid: boolean }>('/auth/verify');
-    return data.user;
+  async verify(): Promise<{ user: User; modules: ModuleMap }> {
+    const { data } = await apiClient.get<{ user: User; isValid: boolean; modules: ModuleMap }>(
+      '/auth/verify',
+    );
+    return { user: data.user, modules: data.modules };
   },
 };

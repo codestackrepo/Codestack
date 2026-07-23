@@ -2,8 +2,8 @@ import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { AppShell } from '@/components/layout/app-shell';
-import { ProtectedRoute, RequireRole } from '@/components/layout/protected-route';
-import { Role } from '@/types/common';
+import { ProtectedRoute, RequireModule, RequireRole } from '@/components/layout/protected-route';
+import { AppModuleKey, Role } from '@/types/common';
 
 // Route-level code-splitting: each page is its own async chunk so the initial
 // bundle stays lean. The heavy screens in particular (Monaco editor + playground,
@@ -98,21 +98,38 @@ function App() {
         <Route element={<ProtectedRoute />}>
           <Route path="/home" element={<AppShell />}>
             <Route index element={<Navigate to="dashboard" replace />} />
+
+            {/* SYSTEM modules — always-on, never module-gated */}
             <Route path="dashboard" element={<DashboardPage />} />
-            <Route path="classrooms" element={<ClassroomsListPage />} />
-            <Route path="classrooms/:id" element={<ClassroomDetailPage />} />
-            <Route path="problems" element={<ProblemsListPage />} />
-            <Route path="problems/:id" element={<ProblemDetailPage />} />
-            <Route path="assignments" element={<AssignmentsListPage />} />
-            <Route path="playground" element={<PlaygroundPage />} />
-            <Route path="topics" element={<TopicsPage />} />
-            <Route path="request-access" element={<RequestAccessPage />} />
             <Route path="profile" element={<ProfilePage />} />
             <Route path="settings" element={<SettingsPage />} />
+            {/* Role-gated onboarding surfaces (not toggleable modules) */}
+            <Route path="request-access" element={<RequestAccessPage />} />
 
-            {/* Staff-only gradebook */}
+            {/* Toggleable modules (§9.7) */}
+            <Route element={<RequireModule module={AppModuleKey.CLASSROOMS} />}>
+              <Route path="classrooms" element={<ClassroomsListPage />} />
+              <Route path="classrooms/:id" element={<ClassroomDetailPage />} />
+            </Route>
+            <Route element={<RequireModule module={AppModuleKey.PROBLEMS} />}>
+              <Route path="problems" element={<ProblemsListPage />} />
+              <Route path="problems/:id" element={<ProblemDetailPage />} />
+            </Route>
+            <Route element={<RequireModule module={AppModuleKey.ASSIGNMENTS} />}>
+              <Route path="assignments" element={<AssignmentsListPage />} />
+            </Route>
+            <Route element={<RequireModule module={AppModuleKey.PLAYGROUND} />}>
+              <Route path="playground" element={<PlaygroundPage />} />
+            </Route>
+            <Route element={<RequireModule module={AppModuleKey.TOPICS} />}>
+              <Route path="topics" element={<TopicsPage />} />
+            </Route>
+
+            {/* Staff-only gradebook, additionally module-gated */}
             <Route element={<RequireRole roles={[Role.ADMIN, Role.PROFESSOR]} />}>
-              <Route path="grading" element={<GradingPage />} />
+              <Route element={<RequireModule module={AppModuleKey.GRADING} />}>
+                <Route path="grading" element={<GradingPage />} />
+              </Route>
             </Route>
 
             {/* Admin-only professor onboarding management */}
@@ -122,8 +139,13 @@ function App() {
             </Route>
           </Route>
 
-          {/* Full-bleed editor: its own top bar, no sidebar/padding from AppShell */}
-          <Route path="/solve/:apId" element={<CodeEditorPage />} />
+          {/* Full-bleed editor: its own top bar, no sidebar/padding from AppShell.
+              OUTSIDE /home, so it MUST be module-wrapped explicitly (§9.8). The
+              assignment editor is gated on ASSIGNMENTS; /practice/:problemId
+              (PROBLEMS) is added by #29. */}
+          <Route element={<RequireModule module={AppModuleKey.ASSIGNMENTS} />}>
+            <Route path="/solve/:apId" element={<CodeEditorPage />} />
+          </Route>
         </Route>
 
         <Route path="*" element={<Navigate to="/home" replace />} />

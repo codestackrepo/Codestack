@@ -20,6 +20,27 @@ export const Language = {
 } as const;
 export type Language = (typeof Language)[keyof typeof Language];
 
+/**
+ * App module keys — mirrors the backend `AppModuleKey` enum. Toggleable modules
+ * are admin-controllable per role (Module × Role matrix + backend guard); the
+ * SYSTEM group (dashboard/profile/settings) is always-on and never gated.
+ */
+export const AppModuleKey = {
+  CLASSROOMS: 'classrooms',
+  PROBLEMS: 'problems',
+  ASSIGNMENTS: 'assignments',
+  PLAYGROUND: 'playground',
+  GRADING: 'grading',
+  TOPICS: 'topics',
+  DASHBOARD: 'dashboard',
+  PROFILE: 'profile',
+  SETTINGS: 'settings',
+} as const;
+export type AppModuleKey = (typeof AppModuleKey)[keyof typeof AppModuleKey];
+
+/** Effective per-role enabled map, as returned by `/auth/verify` + `/module-access/me`. */
+export type ModuleMap = Record<AppModuleKey, boolean>;
+
 export interface PaginationMeta {
   page: number;
   limit: number;
