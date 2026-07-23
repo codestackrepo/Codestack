@@ -40,9 +40,16 @@ export interface Problem {
   source: ProblemSource;
   visibility: ProblemVisibility;
   tags: string[];
+  companies: string[];
+  isJudgeReady: boolean;
   createdById: string | null;
   createdAt: string;
   testCases?: TestCase[];
+}
+
+export interface ProblemFacets {
+  tags: { name: string; count: number }[];
+  companies: { name: string; count: number }[];
 }
 
 export interface CreateProblemInput {
@@ -50,5 +57,6 @@ export interface CreateProblemInput {
   body: string;
   difficulty?: Difficulty;
   tags?: string[];
+  companies?: string[];
   visibility?: ProblemVisibility;
 }
