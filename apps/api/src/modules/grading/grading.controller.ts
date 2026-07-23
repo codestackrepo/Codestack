@@ -2,12 +2,15 @@ import { Body, Controller, Get, Param, ParseUUIDPipe, Patch } from '@nestjs/comm
 import { ApiCookieAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
+import { AppModuleKey } from '../module-access/enums/app-module-key.enum';
+import { RequiresModule } from '../module-access/decorators/requires-module.decorator';
 import { UpdateScoreDto } from './dto/grading.dto';
 import { GradingService } from './grading.service';
 
 @ApiTags('grading')
 @ApiCookieAuth('access_token')
 @Controller('grading')
+@RequiresModule(AppModuleKey.GRADING)
 export class GradingController {
   constructor(private readonly grading: GradingService) {}
 

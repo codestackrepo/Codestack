@@ -27,6 +27,7 @@ import { AddProblemCatalog1784800000000 } from '../../src/database/migrations/17
 import { AddBatchesAndAssignmentTargeting1784900000000 } from '../../src/database/migrations/1784900000000-AddBatchesAndAssignmentTargeting';
 import { AddAssignmentItems1785000000000 } from '../../src/database/migrations/1785000000000-AddAssignmentItems';
 import { GeneralizeSubmissionTarget1785100000000 } from '../../src/database/migrations/1785100000000-GeneralizeSubmissionTarget';
+import { AddModuleAccess1785200000000 } from '../../src/database/migrations/1785200000000-AddModuleAccess';
 
 const ALL_MIGRATIONS = [
   InitUsers1784388727774,
@@ -46,6 +47,7 @@ const ALL_MIGRATIONS = [
   AddBatchesAndAssignmentTargeting1784900000000,
   AddAssignmentItems1785000000000,
   GeneralizeSubmissionTarget1785100000000,
+  AddModuleAccess1785200000000,
 ];
 
 export interface TestAppContext {

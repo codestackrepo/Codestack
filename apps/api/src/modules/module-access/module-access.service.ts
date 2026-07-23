@@ -1,0 +1,92 @@
+import { BadRequestException, Injectable, OnModuleInit } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Role } from '../../common/enums/role.enum';
+import { ModuleAccess } from './entities/module-access.entity';
+import { AppModuleKey, SYSTEM_MODULES, TOGGLEABLE_MODULES } from './enums/app-module-key.enum';
+import { MODULE_ACCESS_DEFAULTS, isToggleable } from './module-access.defaults';
+
+export interface MatrixCell {
+  moduleKey: AppModuleKey;
+  role: Role;
+  enabled: boolean;
+  locked: boolean;
+}
+
+/**
+ * Resolves effective per-role module access from DB overrides layered on the
+ * code-level DEFAULTS, backed by a single-instance in-memory cache rebuilt on
+ * every write (§10: Redis pub/sub invalidation is deferred to M3).
+ */
+@Injectable()
+export class ModuleAccessService implements OnModuleInit {
+  private overrides = new Map<string, boolean>(); // key = `${moduleKey}:${role}`
+
+  constructor(@InjectRepository(ModuleAccess) private readonly repo: Repository<ModuleAccess>) {}
+
+  async onModuleInit(): Promise<void> {
+    await this.reload();
+  }
+
+  /** Rebuild the in-memory override map from the DB. */
+  async reload(): Promise<void> {
+    const rows = await this.repo.find();
+    const next = new Map<string, boolean>();
+    for (const r of rows) next.set(`${r.moduleKey}:${r.role}`, r.enabled);
+    this.overrides = next;
+  }
+
+  /** Effective enabled = admin always true; else override if present, else DEFAULT. */
+  isEnabled(moduleKey: AppModuleKey, role: Role): boolean {
+    if (role === Role.ADMIN) return true;
+    const override = this.overrides.get(`${moduleKey}:${role}`);
+    if (override !== undefined) return override;
+    return MODULE_ACCESS_DEFAULTS[moduleKey]?.[role] ?? true;
+  }
+
+  /** Effective map for one role: every toggleable key resolved + every SYSTEM key = true. */
+  effectiveMapForRole(role: Role): Record<AppModuleKey, boolean> {
+    const map = {} as Record<AppModuleKey, boolean>;
+    for (const k of TOGGLEABLE_MODULES) map[k] = this.isEnabled(k, role);
+    for (const k of SYSTEM_MODULES) map[k] = true; // always-on
+    return map;
+  }
+
+  /** Full admin matrix: one entry per toggleable key × role (admin cells locked-on). */
+  getMatrix(): MatrixCell[] {
+    const rows: MatrixCell[] = [];
+    for (const k of TOGGLEABLE_MODULES) {
+      for (const role of [Role.ADMIN, Role.PROFESSOR, Role.STUDENT]) {
+        rows.push({
+          moduleKey: k,
+          role,
+          enabled: this.isEnabled(k, role),
+          locked: role === Role.ADMIN,
+        });
+      }
+    }
+    return rows;
+  }
+
+  /** Upsert one override cell then rebuild the cache. Rejects admin/system/unknown keys. */
+  async setCell(moduleKey: string, role: Role, enabled: boolean): Promise<void> {
+    if (!isToggleable(moduleKey)) {
+      throw new BadRequestException(`Module '${moduleKey}' is not toggleable`);
+    }
+    if (role === Role.ADMIN) {
+      throw new BadRequestException('Admin access cannot be modified');
+    }
+    const existing = await this.repo.findOne({
+      where: { moduleKey: moduleKey as AppModuleKey, role },
+    });
+    if (existing) {
+      existing.enabled = enabled;
+      await this.repo.save(existing);
+    } else {
+      await this.repo.save(
+        this.repo.create({ moduleKey: moduleKey as AppModuleKey, role, enabled }),
+      );
+    }
+    await this.reload(); // rebuild in-memory cache so the guard + /verify see it immediately
+  }
+}

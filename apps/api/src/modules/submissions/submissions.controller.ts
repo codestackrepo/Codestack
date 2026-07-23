@@ -3,12 +3,15 @@ import { ApiCookieAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Role } from '../../common/enums/role.enum';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
+import { AppModuleKey } from '../module-access/enums/app-module-key.enum';
+import { RequiresModule } from '../module-access/decorators/requires-module.decorator';
 import { SubmissionResponseDto } from './dto/submission-response.dto';
 import { SubmissionsService } from './submissions.service';
 
 @ApiTags('submissions')
 @ApiCookieAuth('access_token')
 @Controller('submissions')
+@RequiresModule(AppModuleKey.ASSIGNMENTS)
 export class SubmissionsController {
   constructor(private readonly submissions: SubmissionsService) {}
 

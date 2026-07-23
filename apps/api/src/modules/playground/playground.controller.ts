@@ -5,6 +5,9 @@ import { Public } from '../../common/decorators/public.decorator';
 import { PlaygroundRunDto } from './dto/playground.dto';
 import { PlaygroundResult, PlaygroundService } from './playground.service';
 
+// Intentionally NOT @RequiresModule-gated (§9.8): playground is @Public and
+// unauthenticated by design, so a per-role backend guard has no user to check.
+// The PLAYGROUND module toggle is enforced frontend-side (nav hide + RequireModule, #33).
 @ApiTags('playground')
 @Controller('playground')
 export class PlaygroundController {

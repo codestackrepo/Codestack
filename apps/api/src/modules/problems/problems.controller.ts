@@ -15,6 +15,8 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '../../common/enums/role.enum';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
+import { AppModuleKey } from '../module-access/enums/app-module-key.enum';
+import { RequiresModule } from '../module-access/decorators/requires-module.decorator';
 import { CreateProblemDto } from './dto/create-problem.dto';
 import {
   ProblemEditorResponseDto,
@@ -29,6 +31,7 @@ import { ProblemsService } from './problems.service';
 @ApiTags('problems')
 @ApiCookieAuth('access_token')
 @Controller('problems')
+@RequiresModule(AppModuleKey.PROBLEMS)
 export class ProblemsController {
   constructor(private readonly problems: ProblemsService) {}
 

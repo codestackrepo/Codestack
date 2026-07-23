@@ -7,6 +7,8 @@ import { AuthConfig } from '../../config/configuration';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
+import { AppModuleKey } from '../module-access/enums/app-module-key.enum';
+import { ModuleAccessService } from '../module-access/module-access.service';
 import { UserResponseDto } from '../users/dto/user-response.dto';
 import { UsersService } from '../users/users.service';
 import { AuthService } from './auth.service';
@@ -23,6 +25,7 @@ export class AuthController {
   constructor(
     private readonly auth: AuthService,
     private readonly users: UsersService,
+    private readonly moduleAccess: ModuleAccessService,
     config: ConfigService,
   ) {
     this.authCfg = config.getOrThrow<AuthConfig>('auth');
@@ -77,10 +80,18 @@ export class AuthController {
   }
 
   @Get('verify')
-  async verify(
-    @CurrentUser() user: AuthenticatedUser,
-  ): Promise<{ user: UserResponseDto; isValid: boolean }> {
+  async verify(@CurrentUser() user: AuthenticatedUser): Promise<{
+    user: UserResponseDto;
+    isValid: boolean;
+    modules: Record<AppModuleKey, boolean>;
+  }> {
+    // Use full.role (not the possibly-stale JWT role) so a just-elevated user
+    // gets the correct effective module map on refresh.
     const full = await this.users.getById(user.id);
-    return { user: UserResponseDto.from(full), isValid: true };
+    return {
+      user: UserResponseDto.from(full),
+      isValid: true,
+      modules: this.moduleAccess.effectiveMapForRole(full.role),
+    };
   }
 }

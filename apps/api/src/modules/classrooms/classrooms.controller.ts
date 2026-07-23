@@ -16,6 +16,8 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { PaginationQueryDto } from '../../common/dto/pagination.dto';
 import { Role } from '../../common/enums/role.enum';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
+import { AppModuleKey } from '../module-access/enums/app-module-key.enum';
+import { RequiresModule } from '../module-access/decorators/requires-module.decorator';
 import { UserResponseDto } from '../users/dto/user-response.dto';
 import { ClassroomsService } from './classrooms.service';
 import { ClassroomResponseDto } from './dto/classroom-response.dto';
@@ -25,6 +27,7 @@ import { UpdateClassroomDto } from './dto/update-classroom.dto';
 @ApiTags('classrooms')
 @ApiCookieAuth('access_token')
 @Controller('classrooms')
+@RequiresModule(AppModuleKey.CLASSROOMS)
 export class ClassroomsController {
   constructor(private readonly classrooms: ClassroomsService) {}
 
