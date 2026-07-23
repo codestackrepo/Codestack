@@ -2,12 +2,22 @@ import * as React from 'react';
 
 import { cn } from '@/lib/utils';
 
-function Table({ className, ...props }: React.ComponentProps<'table'>) {
+/**
+ * `density="compact"` tightens row height for dense data views (gradebook,
+ * admin users, module matrix) without a separate table component — TableHead /
+ * TableCell read it via the `group/table` data attribute (§13.6#3).
+ */
+function Table({
+  className,
+  density = 'comfortable',
+  ...props
+}: React.ComponentProps<'table'> & { density?: 'comfortable' | 'compact' }) {
   return (
     <div data-slot="table-container" className="relative w-full overflow-x-auto">
       <table
         data-slot="table"
-        className={cn('w-full caption-bottom text-sm', className)}
+        data-density={density}
+        className={cn('group/table w-full caption-bottom text-sm', className)}
         {...props}
       />
     </div>
@@ -56,7 +66,7 @@ function TableHead({ className, ...props }: React.ComponentProps<'th'>) {
     <th
       data-slot="table-head"
       className={cn(
-        'h-10 px-2 text-left align-middle font-medium whitespace-nowrap text-foreground [&:has([role=checkbox])]:pr-0',
+        'h-10 px-2 text-left align-middle font-medium whitespace-nowrap text-foreground group-data-[density=compact]/table:h-8 [&:has([role=checkbox])]:pr-0',
         className,
       )}
       {...props}
@@ -68,7 +78,10 @@ function TableCell({ className, ...props }: React.ComponentProps<'td'>) {
   return (
     <td
       data-slot="table-cell"
-      className={cn('p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0', className)}
+      className={cn(
+        'p-2 align-middle whitespace-nowrap group-data-[density=compact]/table:py-1 [&:has([role=checkbox])]:pr-0',
+        className,
+      )}
       {...props}
     />
   );
