@@ -67,6 +67,16 @@ const RequestAccessPage = lazy(() =>
     default: m.RequestAccessPage,
   })),
 );
+const AdminOverviewPage = lazy(() =>
+  import('@/features/admin/pages/admin-overview-page').then((m) => ({
+    default: m.AdminOverviewPage,
+  })),
+);
+const AdminUsersPage = lazy(() =>
+  import('@/features/admin/pages/admin-users-page').then((m) => ({
+    default: m.AdminUsersPage,
+  })),
+);
 const AdminRequestsPage = lazy(() =>
   import('@/features/onboarding/pages/admin-requests-page').then((m) => ({
     default: m.AdminRequestsPage,
@@ -137,8 +147,10 @@ function App() {
               </Route>
             </Route>
 
-            {/* Admin-only professor onboarding management */}
+            {/* Admin-only overview, user management, and professor onboarding (#40) */}
             <Route element={<RequireRole roles={[Role.ADMIN]} />}>
+              <Route path="admin" element={<AdminOverviewPage />} />
+              <Route path="admin/users" element={<AdminUsersPage />} />
               <Route path="admin/requests" element={<AdminRequestsPage />} />
               <Route path="admin/invites" element={<AdminInvitesPage />} />
             </Route>

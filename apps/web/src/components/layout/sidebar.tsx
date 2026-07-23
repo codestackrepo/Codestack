@@ -13,6 +13,7 @@ import {
   Terminal,
   Layers,
   UserPlus,
+  Users,
   Inbox,
   Mail,
 } from 'lucide-react';
@@ -27,6 +28,8 @@ interface NavItem {
   module?: AppModuleKey;
   /** Renders a muted "Soon" badge; the item still navigates (to a placeholder page). */
   comingSoon?: boolean;
+  /** Exact-match active state (NavLink `end`) — for parent paths like /home/admin. */
+  end?: boolean;
 }
 
 interface NavSection {
@@ -91,6 +94,8 @@ const NAV_SECTIONS: NavSection[] = [
   {
     heading: 'Admin',
     items: [
+      { to: '/home/admin', label: 'Overview', icon: LayoutDashboard, roles: [Role.ADMIN], end: true },
+      { to: '/home/admin/users', label: 'Users', icon: Users, roles: [Role.ADMIN] },
       { to: '/home/admin/requests', label: 'Access requests', icon: Inbox, roles: [Role.ADMIN] },
       { to: '/home/admin/invites', label: 'Invites', icon: Mail, roles: [Role.ADMIN] },
     ],
@@ -138,6 +143,7 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
               <NavLink
                 key={item.to}
                 to={item.to}
+                end={item.end}
                 onClick={onNavigate}
                 className={({ isActive }) =>
                   cn(
