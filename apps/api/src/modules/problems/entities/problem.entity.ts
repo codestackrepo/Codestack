@@ -10,7 +10,9 @@ import {
 } from 'typeorm';
 import { BaseEntity } from '../../../common/entities/base.entity';
 import { User } from '../../users/entities/user.entity';
+import type { IoSpec } from '../../code-execution/driver-synth/io-spec.types';
 import { Difficulty, ProblemSource, ProblemVisibility } from '../enums/problem.enums';
+import { Company } from './company.entity';
 import { LibraryProblemTemplate } from './library-problem-template.entity';
 import { Tag } from './tag.entity';
 import { TestCase } from './test-case.entity';
@@ -41,6 +43,16 @@ export class Problem extends BaseEntity {
   @Column({ type: 'uuid', nullable: true, name: 'generation_request_id' })
   generationRequestId!: string | null;
 
+  // ---- Structured (judge-by-synthesis) fields ----
+  // When present, drivers + testcase I/O can be deterministically synthesized
+  // from `ioSpec`/`functionName` (see code-execution/driver-synth). Nullable so
+  // legacy prose-only problems (hand-authored driver code) remain valid.
+  @Column({ type: 'varchar', length: 64, nullable: true, name: 'function_name' })
+  functionName!: string | null;
+
+  @Column({ type: 'jsonb', nullable: true, name: 'io_spec' })
+  ioSpec!: IoSpec | null;
+
   @Index('idx_problem_created_by')
   @ManyToOne(() => User, { onDelete: 'SET NULL', nullable: true })
   @JoinColumn({ name: 'created_by_id' })
@@ -56,6 +68,14 @@ export class Problem extends BaseEntity {
     inverseJoinColumn: { name: 'tag_id', referencedColumnName: 'id' },
   })
   tags!: Tag[];
+
+  @ManyToMany(() => Company, (company) => company.problems, { cascade: false })
+  @JoinTable({
+    name: 'problem_companies',
+    joinColumn: { name: 'problem_id', referencedColumnName: 'id' },
+    inverseJoinColumn: { name: 'company_id', referencedColumnName: 'id' },
+  })
+  companies!: Company[];
 
   @OneToMany(() => TestCase, (tc) => tc.problem)
   testCases!: TestCase[];

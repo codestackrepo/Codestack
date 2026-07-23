@@ -9,9 +9,15 @@ import { QueryProblemsDto } from './dto/query-problems.dto';
 import { TestCaseInputDto } from './dto/test-case.dto';
 import { UpdateProblemDto } from './dto/update-problem.dto';
 import { Difficulty, ProblemSource, ProblemVisibility, TestCaseType } from './enums/problem.enums';
+import { Company } from './entities/company.entity';
 import { Problem } from './entities/problem.entity';
 import { Tag } from './entities/tag.entity';
 import { TestCase } from './entities/test-case.entity';
+
+export interface FacetCount {
+  name: string;
+  count: number;
+}
 
 @Injectable()
 export class ProblemsService {
@@ -19,12 +25,17 @@ export class ProblemsService {
     @InjectRepository(Problem) private readonly problems: Repository<Problem>,
     @InjectRepository(TestCase) private readonly testCases: Repository<TestCase>,
     @InjectRepository(Tag) private readonly tags: Repository<Tag>,
+    @InjectRepository(Company) private readonly companies: Repository<Company>,
     private readonly dataSource: DataSource,
   ) {}
 
   async create(dto: CreateProblemDto, actor: AuthenticatedUser): Promise<Problem> {
     const id = await this.dataSource.transaction(async (manager) => {
       const tags = await this.resolveTags(dto.tags ?? [], manager.getRepository(Tag));
+      const companies = await this.resolveCompanies(
+        dto.companies ?? [],
+        manager.getRepository(Company),
+      );
       const problem = manager.getRepository(Problem).create({
         title: dto.title,
         body: dto.body,
@@ -33,6 +44,7 @@ export class ProblemsService {
         source: ProblemSource.HUMAN,
         createdById: actor.id,
         tags,
+        companies,
       });
       const saved = await manager.getRepository(Problem).save(problem);
 
@@ -62,6 +74,7 @@ export class ProblemsService {
     const qb = this.problems
       .createQueryBuilder('p')
       .leftJoinAndSelect('p.tags', 'tag')
+      .leftJoinAndSelect('p.companies', 'company')
       .orderBy('p.createdAt', 'DESC');
 
     // Visibility: shared problems or the actor's own (private problems from
@@ -91,15 +104,65 @@ export class ProblemsService {
             .getQuery(),
       ).setParameter('tagName', query.tag);
     }
+    if (query.company) {
+      qb.andWhere(
+        'p.id IN ' +
+          qb
+            .subQuery()
+            .select('pc.problem_id')
+            .from('problem_companies', 'pc')
+            .innerJoin('companies', 'c2', 'c2.id = pc.company_id')
+            .where('c2.name = :companyName')
+            .getQuery(),
+      ).setParameter('companyName', query.company);
+    }
 
     const [data, total] = await qb.skip(query.skip).take(query.limit).getManyAndCount();
     return PaginatedResult.of(data, total, query);
   }
 
+  /**
+   * Available facet values (with problem counts) for the catalog filter UI,
+   * scoped to problems the actor can see. Returns topic tags + companies.
+   */
+  async getFacets(actor: AuthenticatedUser): Promise<{ tags: FacetCount[]; companies: FacetCount[] }> {
+    const [tags, companies] = await Promise.all([
+      this.facetCounts('problem_tags', 'tags', actor),
+      this.facetCounts('problem_companies', 'companies', actor),
+    ]);
+    return { tags, companies };
+  }
+
+  private async facetCounts(
+    joinTable: string,
+    facetTable: 'tags' | 'companies',
+    actor: AuthenticatedUser,
+  ): Promise<FacetCount[]> {
+    const joinCol = facetTable === 'tags' ? 'tag_id' : 'company_id';
+    const qb = this.dataSource
+      .createQueryBuilder()
+      .select('f.name', 'name')
+      .addSelect('COUNT(DISTINCT p.id)', 'count')
+      .from(facetTable, 'f')
+      .innerJoin(joinTable, 'j', `j.${joinCol} = f.id`)
+      .innerJoin('problems', 'p', 'p.id = j.problem_id')
+      .groupBy('f.name')
+      .orderBy('count', 'DESC')
+      .addOrderBy('f.name', 'ASC');
+    if (actor.role !== Role.ADMIN) {
+      qb.where('(p.visibility = :shared OR p.created_by_id = :uid)', {
+        shared: ProblemVisibility.SHARED,
+        uid: actor.id,
+      });
+    }
+    const rows = await qb.getRawMany<{ name: string; count: string }>();
+    return rows.map((r) => ({ name: r.name, count: Number(r.count) }));
+  }
+
   async getById(id: string): Promise<Problem> {
     const problem = await this.problems.findOne({
       where: { id },
-      relations: { tags: true },
+      relations: { tags: true, companies: true },
     });
     if (!problem) throw new NotFoundException('Problem not found');
     return problem;
@@ -151,6 +214,8 @@ export class ProblemsService {
     if (dto.difficulty !== undefined) problem.difficulty = dto.difficulty;
     if (dto.visibility !== undefined) problem.visibility = dto.visibility;
     if (dto.tags !== undefined) problem.tags = await this.resolveTags(dto.tags, this.tags);
+    if (dto.companies !== undefined)
+      problem.companies = await this.resolveCompanies(dto.companies, this.companies);
 
     return this.problems.save(problem);
   }
@@ -195,6 +260,9 @@ export class ProblemsService {
         source: ProblemSource.HUMAN,
         createdById: actor.id,
         tags: source.tags,
+        companies: source.companies,
+        functionName: source.functionName,
+        ioSpec: source.ioSpec,
       });
       const saved = await manager.getRepository(Problem).save(copy);
       if (activeCases.length) {
@@ -221,6 +289,19 @@ export class ProblemsService {
     if (!clean.length) return [];
     const existing = await repo.find({ where: { name: In(clean) } });
     const existingNames = new Set(existing.map((t) => t.name));
+    const toCreate = clean
+      .filter((n) => !existingNames.has(n))
+      .map((name) => repo.create({ name }));
+    const created = toCreate.length ? await repo.save(toCreate) : [];
+    return [...existing, ...created];
+  }
+
+  /** Find-or-create companies by name (same normalization as tags). */
+  private async resolveCompanies(names: string[], repo: Repository<Company>): Promise<Company[]> {
+    const clean = [...new Set(names.map((n) => n.trim()).filter(Boolean))];
+    if (!clean.length) return [];
+    const existing = await repo.find({ where: { name: In(clean) } });
+    const existingNames = new Set(existing.map((c) => c.name));
     const toCreate = clean
       .filter((n) => !existingNames.has(n))
       .map((name) => repo.create({ name }));
