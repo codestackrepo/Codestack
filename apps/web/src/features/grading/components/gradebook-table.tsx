@@ -34,7 +34,7 @@ export function GradebookTable({ students, studentsById, canEdit, onReview }: Gr
 
   return (
     <div className="custom-scrollbar overflow-x-auto rounded-xl ring-1 ring-foreground/10">
-      <Table>
+      <Table density="compact">
         <TableHeader>
           <TableRow className="bg-muted/50 hover:bg-muted/50">
             <TableHead className="sticky left-0 z-10 bg-muted/50 backdrop-blur">Student</TableHead>
