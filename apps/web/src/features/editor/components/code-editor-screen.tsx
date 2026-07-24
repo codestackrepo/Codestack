@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import { Editor } from '@monaco-editor/react';
-import { useTheme } from 'next-themes';
+import { defineEditorThemes, useEditorTheme } from '../lib/editor-theme';
+import { EditorThemeToggle } from './editor-theme-toggle';
 import { Group, Panel, Separator } from 'react-resizable-panels';
 import { ArrowLeft, CheckCircle2, Loader2, Lock, Play, Send } from 'lucide-react';
 import { toast } from 'sonner';
@@ -92,8 +93,7 @@ export function CodeEditorScreen({
   onAccepted,
 }: CodeEditorScreenProps) {
   const navigate = useNavigate();
-  const { resolvedTheme } = useTheme();
-  const monacoTheme = resolvedTheme === 'dark' ? 'vs-dark' : 'light';
+  const { pref: editorThemePref, setPref: setEditorThemePref, monacoTheme } = useEditorTheme();
   const [language, setLanguage] = useState<Language | null>(null);
   const [submissionId, setSubmissionId] = useState<string | null>(null);
   const [runResult, setRunResult] = useState<RunResult | null>(null);
@@ -188,6 +188,7 @@ export function CodeEditorScreen({
           <h1 className="truncate text-sm font-semibold">{bootstrap.title}</h1>
         </div>
         <div className="flex items-center gap-2">
+          <EditorThemeToggle pref={editorThemePref} onChange={setEditorThemePref} />
           {effectiveLanguage && (
             <Select value={effectiveLanguage} onValueChange={(v) => setLanguage(v as Language)}>
               <SelectTrigger className="h-8 w-36">
@@ -232,7 +233,7 @@ export function CodeEditorScreen({
       </div>
 
       {reviewMode && (
-        <div className="flex items-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs font-medium text-amber-700 dark:text-amber-400">
+        <div className="flex items-center gap-2 border-b border-warning/30 bg-warning/10 px-4 py-2 text-xs font-medium text-warning">
           <Lock className="size-3.5" />
           This assignment is closed for submissions — you can still run your code against the sample
           cases.
@@ -265,6 +266,7 @@ export function CodeEditorScreen({
                 language={effectiveLanguage ? MONACO_LANGUAGE[effectiveLanguage] : 'plaintext'}
                 value={code}
                 onChange={(value) => setCode(value ?? '')}
+                beforeMount={defineEditorThemes}
                 theme={monacoTheme}
                 options={{ minimap: { enabled: false }, fontSize: 14, contextmenu: false }}
               />
