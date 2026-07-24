@@ -42,14 +42,24 @@ describe('ModuleAccessGuard', () => {
     expect(access.isEnabled).not.toHaveBeenCalled();
   });
 
-  it('bypasses for admin without consulting the service', () => {
+  it('bypasses for superadmin without consulting the service', () => {
     const access = { isEnabled: jest.fn() };
     const guard = new ModuleAccessGuard(
       reflectorFor({ required: AppModuleKey.GRADING }),
       access as never,
     );
-    expect(guard.canActivate(makeContext({ id: 'a', role: Role.ADMIN }))).toBe(true);
+    expect(guard.canActivate(makeContext({ id: 's', role: Role.SUPERADMIN }))).toBe(true);
     expect(access.isEnabled).not.toHaveBeenCalled();
+  });
+
+  it('consults the service for admin (no longer an unconditional guard bypass)', () => {
+    const access = { isEnabled: jest.fn().mockReturnValue(true) };
+    const guard = new ModuleAccessGuard(
+      reflectorFor({ required: AppModuleKey.GRADING }),
+      access as never,
+    );
+    expect(guard.canActivate(makeContext({ id: 'a', role: Role.ADMIN }))).toBe(true);
+    expect(access.isEnabled).toHaveBeenCalledWith(AppModuleKey.GRADING, Role.ADMIN);
   });
 
   it('throws module_disabled when the role has the module off', () => {

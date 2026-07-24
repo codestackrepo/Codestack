@@ -8,10 +8,12 @@ import { MODULE_KEY } from '../decorators/requires-module.decorator';
 import { ModuleAccessService } from '../module-access.service';
 
 /**
- * 3rd global guard (after JwtAuthGuard + RolesGuard): enforces per-role module
- * access. No `@RequiresModule` metadata → pass; `@Public` routes → pass (no user
- * by design); admin → bypass. Otherwise throws 403 `module_disabled` when the
- * caller's role has the required module turned off.
+ * Global module-access guard (after the auth + roles guards): enforces per-role
+ * module access. No `@RequiresModule` metadata → pass; `@Public` routes → pass
+ * (no user by design); SUPERADMIN → bypass. Every other role (incl. ADMIN) is
+ * resolved through `ModuleAccessService.isEnabled`, which keeps ADMIN enabled
+ * today but becomes the seam where a SuperAdmin org-grant can gate an org's
+ * admin (#64). Throws 403 `module_disabled` when the module is off for the role.
  */
 @Injectable()
 export class ModuleAccessGuard implements CanActivate {
@@ -35,7 +37,7 @@ export class ModuleAccessGuard implements CanActivate {
 
     const user = ctx.switchToHttp().getRequest<{ user?: AuthenticatedUser }>().user;
     if (!user) throw new ForbiddenException('Authentication required');
-    if (user.role === Role.ADMIN) return true; // admin never locked out
+    if (user.role === Role.SUPERADMIN) return true; // sole unconditional bypass
     if (!this.access.isEnabled(required, user.role)) {
       throw new ForbiddenException({ reason: 'module_disabled', module: required });
     }

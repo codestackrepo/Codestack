@@ -36,8 +36,14 @@ export class ModuleAccessService implements OnModuleInit {
     this.overrides = next;
   }
 
-  /** Effective enabled = admin always true; else override if present, else DEFAULT. */
+  /**
+   * Effective enabled: SUPERADMIN always true (sole unconditional bypass); ADMIN
+   * still true today (kept here rather than in the guard, so #64's per-org grant
+   * can later make admin gateable at this seam); else override if present, else
+   * DEFAULT.
+   */
   isEnabled(moduleKey: AppModuleKey, role: Role): boolean {
+    if (role === Role.SUPERADMIN) return true;
     if (role === Role.ADMIN) return true;
     const override = this.overrides.get(`${moduleKey}:${role}`);
     if (override !== undefined) return override;
