@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import { Link, NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { AppModuleKey, Role } from '@/types/common';
 import { useAuth } from '@/features/auth/context/auth-context';
@@ -164,32 +164,43 @@ export function Sidebar({ className, onNavigate, allowCollapse = true }: Sidebar
         className,
       )}
     >
-      {/* Header: logo + collapse toggle */}
-      <div className="flex h-16 shrink-0 items-center justify-between gap-2 px-3.5">
-        {isCollapsed ? (
-          <Logo variant="mark" className="mx-auto size-9" />
-        ) : (
-          <Logo wordmarkClassName="text-sidebar-foreground" />
-        )}
-        {allowCollapse && (
-          <button
-            type="button"
-            onClick={toggleCollapsed}
-            aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            title={isCollapsed ? 'Expand' : 'Collapse'}
-            className={cn(
-              'grid size-8 shrink-0 place-items-center rounded-lg text-sidebar-foreground/60 transition-colors hover:bg-white/10 hover:text-white',
-              isCollapsed && 'absolute -right-3 top-5 size-6 bg-sidebar text-sidebar-foreground shadow-soft ring-1 ring-sidebar-border',
-            )}
-          >
-            {isCollapsed ? (
+      {/* Header: logo (→ home) + collapse toggle. When collapsed they stack so
+          the toggle is always visible inside the rail (never clipped). */}
+      {isCollapsed ? (
+        <div className="flex shrink-0 flex-col items-center gap-2 px-2 pt-4 pb-2">
+          <Link to="/home" title="CodeStack home" onClick={onNavigate}>
+            <Logo variant="mark" className="size-9" />
+          </Link>
+          {allowCollapse && (
+            <button
+              type="button"
+              onClick={toggleCollapsed}
+              aria-label="Expand sidebar"
+              title="Expand"
+              className="grid size-8 place-items-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-white/10 hover:text-white"
+            >
               <PanelLeftOpen className="size-4" />
-            ) : (
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="flex h-16 shrink-0 items-center justify-between gap-2 px-3.5">
+          <Link to="/home" title="CodeStack home" onClick={onNavigate}>
+            <Logo wordmarkClassName="text-white" accentClassName="text-[hsl(262_78%_82%)]" />
+          </Link>
+          {allowCollapse && (
+            <button
+              type="button"
+              onClick={toggleCollapsed}
+              aria-label="Collapse sidebar"
+              title="Collapse"
+              className="grid size-8 shrink-0 place-items-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-white/10 hover:text-white"
+            >
               <PanelLeftClose className="size-4" />
-            )}
-          </button>
-        )}
-      </div>
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Nav */}
       <nav className="custom-scrollbar flex-1 space-y-4 overflow-x-hidden overflow-y-auto px-3 py-3">
@@ -210,7 +221,7 @@ export function Sidebar({ className, onNavigate, allowCollapse = true }: Sidebar
                 title={isCollapsed ? item.label : undefined}
                 className={({ isActive }) =>
                   cn(
-                    'group flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-all duration-200',
+                    'group flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]',
                     isCollapsed && 'justify-center px-0',
                     isActive
                       ? 'bg-white text-sidebar shadow-soft'
@@ -240,7 +251,7 @@ export function Sidebar({ className, onNavigate, allowCollapse = true }: Sidebar
         {isCollapsed ? (
           <div className="flex flex-col items-center gap-2">
             <Avatar className="size-9 ring-2 ring-white/15">
-              <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground text-xs font-semibold">
+              <AvatarFallback className="bg-white/15 text-xs font-semibold text-white">
                 {initials}
               </AvatarFallback>
             </Avatar>
@@ -258,7 +269,7 @@ export function Sidebar({ className, onNavigate, allowCollapse = true }: Sidebar
           <div className="rounded-xl bg-white/5 p-2.5">
             <div className="flex items-center gap-2.5">
               <Avatar className="size-9 ring-2 ring-white/15">
-                <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground text-xs font-semibold">
+                <AvatarFallback className="bg-white/15 text-xs font-semibold text-white">
                   {initials}
                 </AvatarFallback>
               </Avatar>

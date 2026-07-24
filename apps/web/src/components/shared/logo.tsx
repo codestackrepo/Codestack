@@ -7,31 +7,64 @@ interface LogoProps {
   className?: string;
   /** Extra classes for the wordmark text (color is inherited from the parent). */
   wordmarkClassName?: string;
+  /** Color class for the "Stack" accent. Override on dark surfaces where the
+   *  default violet primary would be too dark. */
+  accentClassName?: string;
 }
 
 /**
- * CodeStack brand lockup. The circular mark comes from the real brand asset
- * (`/brand/mark-256.png`); it's clipped to a disc with a slight scale so the
- * asset's white corners fall outside the clip, letting it sit cleanly on any
- * surface (light card, navy sidebar). The wordmark is themed HTML text that
- * inherits `currentColor`, so it adapts to light/dark automatically.
+ * CodeStack brand lockup. The mark is a self-contained SVG: a violet→magenta
+ * gradient rounded badge with a `</>` code glyph — reads on any surface and
+ * matches the purple-forward brand. The wordmark is themed HTML text.
  */
-export function Logo({ variant = 'full', className, wordmarkClassName }: LogoProps) {
+export function Logo({
+  variant = 'full',
+  className,
+  wordmarkClassName,
+  accentClassName = 'text-primary',
+}: LogoProps) {
   const mark = (
-    <span
-      className={cn(
-        'inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full ring-1 ring-black/5',
-        'size-8',
-        className,
-      )}
-    >
-      <img
-        src="/brand/mark-256.png"
-        alt="CodeStack"
-        width={256}
-        height={256}
-        className="size-full scale-[1.12] object-cover"
-      />
+    <span className={cn('inline-flex shrink-0 items-center justify-center', 'size-8', className)}>
+      <svg
+        viewBox="0 0 32 32"
+        role="img"
+        aria-label="CodeStack"
+        className="size-full drop-shadow-[0_2px_6px_hsl(262_70%_45%/0.4)]"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <defs>
+          <linearGradient id="cs-mark" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#7C5CFF" />
+            <stop offset="1" stopColor="#C15CEC" />
+          </linearGradient>
+        </defs>
+        <rect width="32" height="32" rx="9" fill="url(#cs-mark)" />
+        {/* subtle top highlight for depth */}
+        <rect width="32" height="16" rx="9" fill="white" fillOpacity="0.08" />
+        {/* </> code glyph */}
+        <path
+          d="M12.4 10.8 L7.6 16 L12.4 21.2"
+          stroke="white"
+          strokeWidth="2.3"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M19.6 10.8 L24.4 16 L19.6 21.2"
+          stroke="white"
+          strokeWidth="2.3"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M17.7 9 L14.3 23"
+          stroke="white"
+          strokeOpacity="0.9"
+          strokeWidth="2.3"
+          strokeLinecap="round"
+        />
+      </svg>
     </span>
   );
 
@@ -46,7 +79,7 @@ export function Logo({ variant = 'full', className, wordmarkClassName }: LogoPro
           wordmarkClassName,
         )}
       >
-        Code<span className="text-brand">Stack</span>
+        Code<span className={accentClassName}>Stack</span>
       </span>
     </span>
   );

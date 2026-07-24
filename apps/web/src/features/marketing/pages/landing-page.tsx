@@ -94,13 +94,29 @@ export function LandingPage() {
     : { to: '/register', label: 'Get started' };
 
   return (
-    <div className="custom-scrollbar h-svh overflow-y-auto bg-background text-foreground">
-      {/* Public top bar */}
-      <header className="sticky top-0 z-20 border-b border-border/70 bg-background/80 backdrop-blur-md">
-        <div className="mx-auto flex h-16 w-full max-w-[75rem] items-center justify-between px-4 md:px-6">
+    <div className="custom-scrollbar h-svh scroll-smooth overflow-y-auto bg-background text-foreground">
+      {/* Public top bar — enriched dark violet in dark mode */}
+      <header className="sticky top-0 z-20 border-b border-border/70 bg-background/80 backdrop-blur-md dark:border-white/10 dark:bg-[hsl(263_44%_13%/0.72)]">
+        <div className="mx-auto flex h-16 w-full max-w-[75rem] items-center justify-between gap-4 px-4 md:px-6">
           <Link to="/" aria-label="CodeStack home">
             <Logo />
           </Link>
+          <nav className="hidden items-center gap-1 md:flex">
+            {[
+              { label: 'Learn', href: '#features' },
+              { label: 'How it works', href: '#how' },
+              { label: 'About', href: '#about' },
+              { label: 'Support', href: 'mailto:support@codestack.dev' },
+            ].map((l) => (
+              <a
+                key={l.label}
+                href={l.href}
+                className="rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground dark:hover:bg-white/10"
+              >
+                {l.label}
+              </a>
+            ))}
+          </nav>
           <div className="flex items-center gap-1.5 sm:gap-2">
             <ThemeToggle />
             {user ? (
@@ -122,19 +138,11 @@ export function LandingPage() {
       </header>
 
       {/* Hero */}
-      <section className="relative overflow-hidden">
-        <div
-          className="pointer-events-none absolute -top-24 left-1/2 size-[36rem] -translate-x-1/2 rounded-full opacity-30 blur-3xl"
-          style={{ background: 'radial-gradient(circle, var(--primary), transparent 70%)' }}
-        />
-        <div
-          className="pointer-events-none absolute top-40 right-0 size-[28rem] rounded-full opacity-20 blur-3xl"
-          style={{ background: 'radial-gradient(circle, var(--chart-4), transparent 70%)' }}
-        />
+      <section className="hero-surface relative overflow-hidden">
         <div className="relative mx-auto grid w-full max-w-[75rem] items-center gap-12 px-4 py-16 md:px-6 md:py-24 lg:grid-cols-2">
           <div>
-            <span className="animate-fade-in-up inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-muted-foreground shadow-soft">
-              <Sparkles className="size-3.5 text-brand" />
+            <span className="animate-fade-in-up inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-muted-foreground shadow-soft dark:border-white/10 dark:bg-white/5">
+              <Sparkles className="size-3.5 text-primary" />
               A calmer place to learn to code
             </span>
             <h1
@@ -166,6 +174,20 @@ export function LandingPage() {
                   <Link to="/login">I already have an account</Link>
                 </Button>
               )}
+            </div>
+            <div
+              className="animate-fade-in-up mt-8 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground"
+              style={{ animationDelay: '320ms' }}
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <CheckCircle2 className="size-4 text-primary" /> Instant sandboxed judging
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <Code2 className="size-4 text-primary" /> Python · JS · C++ · Java
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <Trophy className="size-4 text-primary" /> Streaks &amp; points
+              </span>
             </div>
           </div>
 

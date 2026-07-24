@@ -60,6 +60,8 @@
      violet foreground hue so shadows read soft, not flat black. */
   --shadow-soft: 0 1px 2px hsl(262 40% 12% / 0.04), 0 4px 16px hsl(262 40% 12% / 0.06);
   --shadow-soft-lg: 0 2px 6px hsl(262 40% 12% / 0.06), 0 16px 40px hsl(262 40% 12% / 0.1);
+  /* Light-purple glow used on hover (user 2026-07-24). */
+  --shadow-hover: 0 12px 34px -8px hsl(262 72% 58% / 0.38), 0 4px 12px -4px hsl(262 60% 55% / 0.3);
 }
 
 /*
@@ -126,13 +128,13 @@
   --chart-5: hsl(145 55% 42%);
   --radius: 0.625rem;
   /* Enriched violet sidebar (component layers a gradient on top). */
-  --sidebar: hsl(263 46% 18%);
-  --sidebar-foreground: hsl(264 32% 88%);
+  --sidebar: hsl(263 45% 19%);
+  --sidebar-foreground: hsl(264 34% 90%);
   --sidebar-primary: hsl(37 91% 55%);
   --sidebar-primary-foreground: hsl(263 55% 12%);
-  --sidebar-accent: hsl(263 36% 28%);
+  --sidebar-accent: hsl(263 34% 33%);
   --sidebar-accent-foreground: hsl(0 0% 100%);
-  --sidebar-border: hsl(263 34% 30%);
+  --sidebar-border: hsl(263 32% 35%);
   --sidebar-ring: hsl(37 91% 55%);
 }
 
@@ -176,13 +178,13 @@
   --chart-4: hsl(292 55% 72%);
   --chart-5: hsl(145 55% 54%);
   /* Enriched violet sidebar (component adds a gradient on top). */
-  --sidebar: hsl(261 34% 16%);
-  --sidebar-foreground: hsl(260 28% 88%);
+  --sidebar: hsl(261 33% 16%);
+  --sidebar-foreground: hsl(260 30% 90%);
   --sidebar-primary: hsl(37 91% 58%);
   --sidebar-primary-foreground: hsl(261 55% 12%);
-  --sidebar-accent: hsl(261 28% 26%);
+  --sidebar-accent: hsl(261 26% 30%);
   --sidebar-accent-foreground: hsl(0 0% 100%);
-  --sidebar-border: hsl(261 24% 28%);
+  --sidebar-border: hsl(261 22% 32%);
   --sidebar-ring: hsl(37 91% 58%);
 }
 
@@ -208,7 +210,9 @@
     .animate-fade-in-up,
     .animate-scale-in,
     .animate-float,
-    .confetti-piece {
+    .confetti-piece,
+    .orb-float,
+    .twinkle {
       animation: none !important;
     }
     .reveal {
@@ -311,6 +315,31 @@
     transform: translate(var(--cx), var(--cy)) rotate(var(--cr)) scale(0.4);
   }
 }
+/* Ambient movement for the auth brand panel (§ user 2026-07-24): drifting light
+   orbs + twinkling stars. */
+@keyframes orb-float {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(24px, -28px) scale(1.1);
+  }
+  66% {
+    transform: translate(-18px, 18px) scale(0.94);
+  }
+}
+@keyframes twinkle {
+  0%,
+  100% {
+    opacity: 0.15;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+}
 
 @layer utilities {
   .animate-fade-in {
@@ -327,6 +356,12 @@
   }
   .confetti-piece {
     animation: confetti-out 900ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  .orb-float {
+    animation: orb-float 16s ease-in-out infinite;
+  }
+  .twinkle {
+    animation: twinkle 3.5s ease-in-out infinite;
   }
 
   /* Reveal-on-scroll: hidden until the useReveal hook adds `.in-view`.
@@ -352,7 +387,7 @@
   }
   .hover-lift:hover {
     transform: translateY(-5px);
-    box-shadow: var(--shadow-soft-lg);
+    box-shadow: var(--shadow-hover);
   }
 
   /* True 3D tilt on hover — for hero / feature cards. */
@@ -365,30 +400,49 @@
   }
   .hover-3d:hover {
     transform: perspective(1000px) rotateX(4deg) rotateY(-5deg) translateY(-6px);
-    box-shadow: var(--shadow-soft-lg);
+    box-shadow: var(--shadow-hover);
   }
 
-  /* Enriched sidebar surface: a soft top→bottom violet gradient for depth (3D). */
+  /* Enriched sidebar surface: a soft top→bottom violet gradient for depth (3D).
+     A solid base color is set too so combining with .glow-violet (which also
+     sets background-image) still renders a dark panel, not the page behind it. */
   .sidebar-surface {
+    background-color: var(--sidebar);
     background-image: linear-gradient(
       180deg,
-      color-mix(in oklab, var(--sidebar), white 7%) 0%,
-      var(--sidebar) 45%,
-      color-mix(in oklab, var(--sidebar), black 16%) 100%
+      color-mix(in oklab, var(--sidebar), white 12%) 0%,
+      var(--sidebar) 55%,
+      color-mix(in oklab, var(--sidebar), black 7%) 100%
     );
+  }
+
+  /* Landing hero backdrop. Light: a faint violet glow over the off-white page.
+     Dark: an ENRICHED deep-violet gradient + glows (user 2026-07-24). */
+  .hero-surface {
+    background-image: radial-gradient(
+      46rem 30rem at 80% 2%,
+      color-mix(in oklab, var(--primary) 13%, transparent),
+      transparent 62%
+    );
+  }
+  .dark .hero-surface {
+    background-image:
+      radial-gradient(50rem 34rem at 78% 0%, hsl(262 65% 36% / 0.55), transparent 60%),
+      radial-gradient(40rem 30rem at 2% 94%, hsl(292 55% 36% / 0.4), transparent 62%),
+      linear-gradient(180deg, hsl(263 46% 16%) 0%, var(--background) 52%);
   }
 
   /* Soft violet radial glow for dark hero/auth panels (replaces the hard grid). */
   .glow-violet {
     background-image:
       radial-gradient(
-        42rem 30rem at 82% 8%,
-        color-mix(in oklab, var(--primary) 30%, transparent),
-        transparent 70%
+        42rem 30rem at 82% 6%,
+        color-mix(in oklab, var(--primary) 45%, transparent),
+        transparent 68%
       ),
       radial-gradient(
-        34rem 26rem at 8% 96%,
-        color-mix(in oklab, var(--chart-4) 24%, transparent),
+        34rem 26rem at 6% 96%,
+        color-mix(in oklab, var(--chart-4) 34%, transparent),
         transparent 70%
       );
   }
