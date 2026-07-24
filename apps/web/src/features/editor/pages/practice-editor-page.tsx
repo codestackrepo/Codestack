@@ -86,6 +86,7 @@ export function PracticeEditorPage() {
       }
       onSubmit={(language, code) => editorApi.submitPractice(problemId!, language, code)}
       onAccepted={handleAccepted}
+      onFetchSubmission={(id) => editorApi.getSubmission(id)}
     />
   );
 }
