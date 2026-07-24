@@ -7,6 +7,7 @@ import {
   SubmissionFinalizedEvent,
 } from '../../common/events/submission-events';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
+import { scopeToOrg } from '../../common/tenancy/tenant-scope.util';
 import { AssignmentItem } from '../assignments/entities/assignment-item.entity';
 import { AssignmentProblem } from '../assignments/entities/assignment-problem.entity';
 import { Assignment } from '../assignments/entities/assignment.entity';
@@ -162,7 +163,7 @@ export class GradingService {
     // Self-service read of one's own score. Item scores + finalScore are hidden
     // until GRADE_PUBLISHED (§9.2); the assignment must exist so a bogus id 404s
     // instead of returning silent zeros.
-    await this.assertAssignmentExists(assignmentId);
+    await this.assertAssignmentExists(assignmentId, actor);
     return this.buildStudentScore(assignmentId, actor.id);
   }
 
@@ -455,7 +456,9 @@ export class GradingService {
   }
 
   async getAssignmentScore(assignmentId: string, actor: AuthenticatedUser) {
-    const assignment = await this.assignments.findOne({ where: { id: assignmentId } });
+    const aqb = this.assignments.createQueryBuilder('a').where('a.id = :id', { id: assignmentId });
+    scopeToOrg(aqb, 'a', actor);
+    const assignment = await aqb.getOne();
     if (!assignment) throw new NotFoundException('Assignment not found');
     const stored = await this.readAssignmentScore(assignmentId, actor.id);
     // Self-read: honor the reveal gate so finalScore never leaks pre-publish.
@@ -651,9 +654,14 @@ export class GradingService {
     return existing ?? { finalScore: 0, feedback: '' };
   }
 
-  private async assertAssignmentExists(assignmentId: string): Promise<void> {
-    const exists = await this.assignments.exist({ where: { id: assignmentId } });
-    if (!exists) throw new NotFoundException('Assignment not found');
+  private async assertAssignmentExists(
+    assignmentId: string,
+    actor: AuthenticatedUser,
+  ): Promise<void> {
+    // Org-scoped so a cross-org assignmentId 404s (no item-shell / publish leak).
+    const qb = this.assignments.createQueryBuilder('a').where('a.id = :id', { id: assignmentId });
+    scopeToOrg(qb, 'a', actor);
+    if (!(await qb.getOne())) throw new NotFoundException('Assignment not found');
   }
 
   /**

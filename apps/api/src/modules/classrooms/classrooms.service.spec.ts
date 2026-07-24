@@ -16,6 +16,7 @@ describe('ClassroomsService.removeStudent — batch purge', () => {
   beforeEach(() => {
     const classroom = {
       id: CLASSROOM_ID,
+      organizationId: 'org-test', // same org as `admin` so assertCanManage passes
       students: [{ id: STUDENT_ID }, { id: 's-2' }],
       graders: [],
       professor: null,
@@ -41,5 +42,37 @@ describe('ClassroomsService.removeStudent — batch purge', () => {
     await service.removeStudent(CLASSROOM_ID, STUDENT_ID, admin);
     const saved = classrooms.save.mock.calls[0][0] as Classroom;
     expect(saved.students.some((s) => s.id === STUDENT_ID)).toBe(false);
+  });
+});
+
+// The shared hinge that org-bounds assignments' manage-path AND all grading
+// staff reads/writes. Pure (actor, classroom) methods — no repos needed.
+describe('ClassroomsService — cross-org isolation (#50)', () => {
+  const service = new ClassroomsService({} as never, {} as never, {} as never);
+  const orgAClass = {
+    id: 'c',
+    organizationId: 'org-A',
+    createdById: 'owner',
+    professorId: null,
+    graders: [],
+  } as unknown as Classroom;
+  const mk = (role: Role, org: string | null): AuthenticatedUser => ({
+    id: 'u',
+    email: 'u@x.io',
+    role,
+    organizationId: org,
+  });
+
+  it('assertStaffOrGrader: a cross-org admin is rejected', () => {
+    expect(() => service.assertStaffOrGrader(mk(Role.ADMIN, 'org-B'), orgAClass)).toThrow();
+  });
+  it('assertStaffOrGrader: a same-org admin passes', () => {
+    expect(() => service.assertStaffOrGrader(mk(Role.ADMIN, 'org-A'), orgAClass)).not.toThrow();
+  });
+  it('assertStaffOrGrader: a superadmin passes cross-org', () => {
+    expect(() => service.assertStaffOrGrader(mk(Role.SUPERADMIN, null), orgAClass)).not.toThrow();
+  });
+  it('assertCanManage: a cross-org admin is rejected', () => {
+    expect(() => service.assertCanManage(mk(Role.ADMIN, 'org-B'), orgAClass)).toThrow();
   });
 });

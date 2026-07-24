@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Role } from '../../common/enums/role.enum';
+import { AuthenticatedUser } from '../../common/types/authenticated-user';
+import { isSuperAdmin, scopeToOrg } from '../../common/tenancy/tenant-scope.util';
 import { Assignment } from '../assignments/entities/assignment.entity';
 import { AssignmentKind } from '../assignments/enums/assignment-kind.enum';
 import { AssignmentStatus } from '../assignments/enums/assignment-status.enum';
@@ -47,7 +49,15 @@ export class AdminService {
     private readonly professorInvites: Repository<ProfessorInvite>,
   ) {}
 
-  async overview(): Promise<AdminOverview> {
+  /**
+   * Platform (SuperAdmin) or org-scoped (org-admin) overview. Every count forks
+   * on isSuperAdmin: SuperAdmin sees cross-org totals; an org-admin sees only its
+   * own org. A mis-provisioned org-admin (org=null) resolves to zeros, never the
+   * platform-wide numbers.
+   */
+  async overview(actor: AuthenticatedUser): Promise<AdminOverview> {
+    // Fresh scoped users query per count (getCount consumes the builder).
+    const scopedUsers = () => scopeToOrg(this.users.createQueryBuilder('u'), 'u', actor);
     const [
       usersTotal,
       admins,
@@ -63,26 +73,56 @@ export class AdminService {
       activeInvites,
       statusRows,
     ] = await Promise.all([
-      this.users.count(),
-      this.users.count({ where: { role: Role.ADMIN } }),
-      this.users.count({ where: { role: Role.PROFESSOR } }),
-      this.users.count({ where: { role: Role.STUDENT } }),
-      this.users.count({ where: { isActive: true } }),
-      this.classrooms.count(),
-      this.problems.count(),
-      this.assignments.count(),
-      this.assignments.count({ where: { kind: AssignmentKind.TEST } }),
-      this.submissions.count(),
-      this.professorRequests.count({ where: { status: RequestStatus.PENDING } }),
-      this.professorInvites
-        .createQueryBuilder('i')
-        .where('i.status = :pending', { pending: InviteStatus.PENDING })
-        .andWhere('(i.expires_at IS NULL OR i.expires_at > now())')
-        .getCount(),
-      this.assignments
-        .createQueryBuilder('a')
-        .select('a.status', 'status')
-        .addSelect('COUNT(*)', 'count')
+      scopedUsers().getCount(),
+      scopedUsers().andWhere('u.role = :r', { r: Role.ADMIN }).getCount(),
+      scopedUsers().andWhere('u.role = :r', { r: Role.PROFESSOR }).getCount(),
+      scopedUsers().andWhere('u.role = :r', { r: Role.STUDENT }).getCount(),
+      scopedUsers().andWhere('u.is_active = :a', { a: true }).getCount(),
+      scopeToOrg(this.classrooms.createQueryBuilder('c'), 'c', actor).getCount(),
+      // Problem has NO organization_id (owned by #56 applyVisibility). SuperAdmin
+      // gets the true platform count; org-admin gets an author-org stopgap that
+      // under-counts global/library/SET-NULL-author problems until #56 lands.
+      // MUST NOT be the platform-wide count for an org-admin (that is the leak).
+      isSuperAdmin(actor)
+        ? this.problems.count()
+        : this.problems
+            .createQueryBuilder('p')
+            .innerJoin('p.createdBy', 'pu')
+            .where('pu.organization_id = :actorOrg', { actorOrg: actor.organizationId })
+            .getCount(),
+      scopeToOrg(this.assignments.createQueryBuilder('a'), 'a', actor).getCount(),
+      scopeToOrg(
+        this.assignments.createQueryBuilder('a').where('a.kind = :k', { k: AssignmentKind.TEST }),
+        'a',
+        actor,
+      ).getCount(),
+      scopeToOrg(this.submissions.createQueryBuilder('s'), 's', actor).getCount(),
+      // Scope onboarding rows via the requester's / inviter's org (join alias).
+      scopeToOrg(
+        this.professorRequests
+          .createQueryBuilder('pr')
+          .innerJoin('pr.user', 'u')
+          .where('pr.status = :pending', { pending: RequestStatus.PENDING }),
+        'u',
+        actor,
+      ).getCount(),
+      scopeToOrg(
+        this.professorInvites
+          .createQueryBuilder('i')
+          .leftJoin('i.invitedBy', 'iu')
+          .where('i.status = :pending', { pending: InviteStatus.PENDING })
+          .andWhere('(i.expires_at IS NULL OR i.expires_at > now())'),
+        'iu',
+        actor,
+      ).getCount(),
+      scopeToOrg(
+        this.assignments
+          .createQueryBuilder('a')
+          .select('a.status', 'status')
+          .addSelect('COUNT(*)', 'count'),
+        'a',
+        actor,
+      )
         .groupBy('a.status')
         .getRawMany<{ status: AssignmentStatus; count: string }>(),
     ]);

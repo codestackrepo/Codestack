@@ -252,6 +252,14 @@ describe('GradingService — item-model rollup, grade dispatch, reveal gating (#
     const assignments: AnyRepo = {
       findOne: jest.fn().mockResolvedValue({ id: ASSIGNMENT_ID, classroomId: 'c1' }),
       exist: jest.fn().mockResolvedValue(true),
+      // assertAssignmentExists / getAssignmentScore are now org-scoped via a QB.
+      createQueryBuilder: jest.fn(() => {
+        const qb: Record<string, jest.Mock> = {};
+        qb.where = jest.fn().mockReturnValue(qb);
+        qb.andWhere = jest.fn().mockReturnValue(qb); // scopeToOrg appends this for non-superadmins
+        qb.getOne = jest.fn().mockResolvedValue({ id: ASSIGNMENT_ID, classroomId: 'c1' });
+        return qb;
+      }),
     };
     const items: AnyRepo = { findOne: jest.fn(), find: jest.fn().mockResolvedValue([]) };
     const mcqResponses: AnyRepo = {

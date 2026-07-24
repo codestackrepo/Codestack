@@ -1,54 +1,95 @@
 import { Role } from '../../common/enums/role.enum';
+import { AssignmentKind } from '../assignments/enums/assignment-kind.enum';
 import { AssignmentStatus } from '../assignments/enums/assignment-status.enum';
+import { AuthenticatedUser } from '../../common/types/authenticated-user';
 import { AdminService } from './admin.service';
+
+/**
+ * Chainable QueryBuilder stub. Records where/andWhere params (so scopeToOrg's
+ * org predicate and role filters can drive getCount), returns configurable
+ * counts / raw rows. Methods assigned after `qb` is created to avoid a
+ * self-referential type-inference cycle.
+ */
+function makeQb(count: (p: Record<string, unknown>) => number, rawMany: unknown[] = []) {
+  const params: Record<string, unknown> = {};
+  const qb: Record<string, jest.Mock> = {};
+  const ret = (): Record<string, jest.Mock> => qb;
+  const record = (_sql: string, p?: Record<string, unknown>): Record<string, jest.Mock> => {
+    if (p) Object.assign(params, p);
+    return qb;
+  };
+  qb.where = jest.fn(record);
+  qb.andWhere = jest.fn(record);
+  qb.innerJoin = jest.fn(ret);
+  qb.leftJoin = jest.fn(ret);
+  qb.select = jest.fn(ret);
+  qb.addSelect = jest.fn(ret);
+  qb.groupBy = jest.fn(ret);
+  qb.getCount = jest.fn(async () => count(params));
+  qb.getRawMany = jest.fn(async () => rawMany);
+  return qb;
+}
+
+const STATUS_ROWS = [
+  { status: AssignmentStatus.ACTIVE, count: '2' },
+  { status: AssignmentStatus.DRAFT, count: '1' },
+];
+
+function build() {
+  const users = {
+    createQueryBuilder: jest.fn(() =>
+      makeQb((p) => {
+        if (p.r === Role.ADMIN) return 1;
+        if (p.r === Role.PROFESSOR) return 3;
+        if (p.r === Role.STUDENT) return 6;
+        if (p.a === true) return 8;
+        return 10; // total
+      }),
+    ),
+  };
+  const classrooms = { createQueryBuilder: jest.fn(() => makeQb(() => 4)) };
+  const problems = {
+    count: jest.fn().mockResolvedValue(20), // superadmin platform-wide
+    createQueryBuilder: jest.fn(() => makeQb(() => 7)), // org-admin author-scoped stopgap
+  };
+  const assignments = {
+    createQueryBuilder: jest.fn(() =>
+      makeQb((p) => (p.k === AssignmentKind.TEST ? 2 : 5), STATUS_ROWS),
+    ),
+  };
+  const submissions = { createQueryBuilder: jest.fn(() => makeQb(() => 42)) };
+  const professorRequests = { createQueryBuilder: jest.fn(() => makeQb(() => 3)) };
+  const professorInvites = { createQueryBuilder: jest.fn(() => makeQb(() => 2)) };
+
+  const service = new AdminService(
+    users as never,
+    classrooms as never,
+    problems as never,
+    assignments as never,
+    submissions as never,
+    professorRequests as never,
+    professorInvites as never,
+  );
+  return { service, problems };
+}
+
+const superAdmin: AuthenticatedUser = {
+  id: 'sa',
+  email: 'sa@x.io',
+  role: Role.SUPERADMIN,
+  organizationId: null,
+};
+const orgAdmin: AuthenticatedUser = {
+  id: 'a',
+  email: 'a@x.io',
+  role: Role.ADMIN,
+  organizationId: 'org-A',
+};
 
 describe('AdminService.overview', () => {
   it('shapes the KPI object with per-role split, byStatus, and onboarding counts', async () => {
-    const users = {
-      count: jest.fn(async (opts?: { where?: { role?: Role; isActive?: boolean } }) => {
-        if (!opts?.where) return 10;
-        if (opts.where.role === Role.ADMIN) return 1;
-        if (opts.where.role === Role.PROFESSOR) return 3;
-        if (opts.where.role === Role.STUDENT) return 6;
-        if (opts.where.isActive === true) return 8;
-        return 0;
-      }),
-    };
-    const classrooms = { count: jest.fn().mockResolvedValue(4) };
-    const problems = { count: jest.fn().mockResolvedValue(20) };
-    const statusQb = {
-      select: jest.fn().mockReturnThis(),
-      addSelect: jest.fn().mockReturnThis(),
-      groupBy: jest.fn().mockReturnThis(),
-      getRawMany: jest.fn().mockResolvedValue([
-        { status: AssignmentStatus.ACTIVE, count: '2' },
-        { status: AssignmentStatus.DRAFT, count: '1' },
-      ]),
-    };
-    const assignments = {
-      count: jest.fn(async (opts?: { where?: { kind?: string } }) => (opts?.where?.kind ? 2 : 5)),
-      createQueryBuilder: jest.fn(() => statusQb),
-    };
-    const submissions = { count: jest.fn().mockResolvedValue(42) };
-    const professorRequests = { count: jest.fn().mockResolvedValue(3) };
-    const inviteQb = {
-      where: jest.fn().mockReturnThis(),
-      andWhere: jest.fn().mockReturnThis(),
-      getCount: jest.fn().mockResolvedValue(2),
-    };
-    const professorInvites = { createQueryBuilder: jest.fn(() => inviteQb) };
-
-    const service = new AdminService(
-      users as never,
-      classrooms as never,
-      problems as never,
-      assignments as never,
-      submissions as never,
-      professorRequests as never,
-      professorInvites as never,
-    );
-
-    const o = await service.overview();
+    const { service } = build();
+    const o = await service.overview(orgAdmin);
 
     expect(o.users).toEqual({
       total: 10,
@@ -59,7 +100,6 @@ describe('AdminService.overview', () => {
       inactive: 2,
     });
     expect(o.classrooms.total).toBe(4);
-    expect(o.problems.total).toBe(20);
     expect(o.assignments.total).toBe(5);
     expect(o.assignments.tests).toBe(2);
     expect(o.assignments.byStatus[AssignmentStatus.ACTIVE]).toBe(2);
@@ -67,5 +107,21 @@ describe('AdminService.overview', () => {
     expect(o.assignments.byStatus[AssignmentStatus.COMPLETED]).toBe(0);
     expect(o.submissions.total).toBe(42);
     expect(o.onboarding).toEqual({ pendingRequests: 3, activeInvites: 2 });
+  });
+
+  it('org-admin problemsTotal uses the author-scoped count (NOT the platform-wide count)', async () => {
+    const { service, problems } = build();
+    const o = await service.overview(orgAdmin);
+    expect(o.problems.total).toBe(7); // author-org stopgap
+    expect(problems.count).not.toHaveBeenCalled(); // never the platform-wide leak
+    expect(problems.createQueryBuilder).toHaveBeenCalled();
+  });
+
+  it('superadmin problemsTotal is the platform-wide count', async () => {
+    const { service, problems } = build();
+    const o = await service.overview(superAdmin);
+    expect(o.problems.total).toBe(20);
+    expect(problems.count).toHaveBeenCalled();
+    expect(problems.createQueryBuilder).not.toHaveBeenCalled(); // no author-scoped fork
   });
 });

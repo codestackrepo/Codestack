@@ -10,6 +10,7 @@ import { Repository } from 'typeorm';
 import { PaginatedResult, PaginationQueryDto } from '../../common/dto/pagination.dto';
 import { Role } from '../../common/enums/role.enum';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
+import { assertSameOrg, scopeToOrg } from '../../common/tenancy/tenant-scope.util';
 import { NotificationType } from '../notifications/enums/notification-type.enum';
 import { NotificationsService } from '../notifications/notifications.service';
 import { UsersService } from '../users/users.service';
@@ -47,13 +48,19 @@ export class OnboardingService {
     return this.invites.save(invite);
   }
 
-  async listInvites(query: PaginationQueryDto): Promise<PaginatedResult<ProfessorInvite>> {
-    const [data, total] = await this.invites
+  async listInvites(
+    query: PaginationQueryDto,
+    actor: AuthenticatedUser,
+  ): Promise<PaginatedResult<ProfessorInvite>> {
+    // Org-scoped via the inviter (SuperAdmin sees all). Invites whose inviter was
+    // deleted (invited_by_id NULL) are invisible to org-admins — acceptable until
+    // #51 reworks invites via Clerk with a denormalized org column.
+    const qb = this.invites
       .createQueryBuilder('i')
-      .orderBy('i.createdAt', 'DESC')
-      .skip(query.skip)
-      .take(query.limit)
-      .getManyAndCount();
+      .leftJoin('i.invitedBy', 'iu')
+      .orderBy('i.createdAt', 'DESC');
+    scopeToOrg(qb, 'iu', actor);
+    const [data, total] = await qb.skip(query.skip).take(query.limit).getManyAndCount();
     return PaginatedResult.of(data, total, query);
   }
 
@@ -128,6 +135,7 @@ export class OnboardingService {
 
   async listRequests(
     query: PaginationQueryDto,
+    actor: AuthenticatedUser,
     status?: RequestStatus,
   ): Promise<PaginatedResult<ProfessorRequest>> {
     const qb = this.requests
@@ -135,36 +143,45 @@ export class OnboardingService {
       .leftJoinAndSelect('r.user', 'user')
       .orderBy('r.createdAt', 'DESC');
     if (status) qb.andWhere('r.status = :status', { status });
+    scopeToOrg(qb, 'user', actor); // org-scope via the requester (SuperAdmin sees all)
     const [data, total] = await qb.skip(query.skip).take(query.limit).getManyAndCount();
     return PaginatedResult.of(data, total, query);
   }
 
-  async approveRequest(id: string, adminId: string): Promise<ProfessorRequest> {
+  async approveRequest(id: string, actor: AuthenticatedUser): Promise<ProfessorRequest> {
     const req = await this.getPendingRequest(id);
+    // Block cross-org privilege escalation: an org-admin may only approve a
+    // requester in their own org (SuperAdmin may approve cross-org).
+    assertSameOrg(actor, req.user.organizationId);
     // Elevate the user's role. Their existing session keeps its old role until
     // the next token refresh / re-verify, so we notify them to reload.
     await this.users.setRole(req.userId, Role.PROFESSOR);
     req.status = RequestStatus.APPROVED;
-    req.reviewedById = adminId;
+    req.reviewedById = actor.id;
     req.reviewedAt = new Date();
     await this.requests.save(req);
-    await this.notifyDecision(req, adminId);
+    await this.notifyDecision(req, actor.id);
     return this.reloadWithUser(id);
   }
 
-  async rejectRequest(id: string, adminId: string, reason: string): Promise<ProfessorRequest> {
+  async rejectRequest(
+    id: string,
+    actor: AuthenticatedUser,
+    reason: string,
+  ): Promise<ProfessorRequest> {
     const req = await this.getPendingRequest(id);
+    assertSameOrg(actor, req.user.organizationId);
     req.status = RequestStatus.REJECTED;
-    req.reviewedById = adminId;
+    req.reviewedById = actor.id;
     req.reviewedAt = new Date();
     req.decisionReason = reason;
     await this.requests.save(req);
-    await this.notifyDecision(req, adminId);
+    await this.notifyDecision(req, actor.id);
     return this.reloadWithUser(id);
   }
 
   private async getPendingRequest(id: string): Promise<ProfessorRequest> {
-    const req = await this.requests.findOne({ where: { id } });
+    const req = await this.requests.findOne({ where: { id }, relations: { user: true } });
     if (!req) throw new NotFoundException('Request not found');
     if (req.status !== RequestStatus.PENDING) {
       throw new ConflictException('This request has already been reviewed');
