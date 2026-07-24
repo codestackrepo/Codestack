@@ -36,8 +36,8 @@ export class OnboardingController {
 
   @Get('invites')
   @Roles(Role.ADMIN)
-  async listInvites(@Query() query: PaginationQueryDto) {
-    const page = await this.onboarding.listInvites(query);
+  async listInvites(@Query() query: PaginationQueryDto, @CurrentUser() actor: AuthenticatedUser) {
+    const page = await this.onboarding.listInvites(query, actor);
     return { data: page.data.map(InviteResponseDto.from), meta: page.meta };
   }
 
@@ -74,8 +74,11 @@ export class OnboardingController {
 
   @Get('requests')
   @Roles(Role.ADMIN)
-  async listRequests(@Query() query: ListRequestsQueryDto) {
-    const page = await this.onboarding.listRequests(query, query.status);
+  async listRequests(
+    @Query() query: ListRequestsQueryDto,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
+    const page = await this.onboarding.listRequests(query, actor, query.status);
     return { data: page.data.map(ProfessorRequestResponseDto.from), meta: page.meta };
   }
 
@@ -84,9 +87,9 @@ export class OnboardingController {
   @HttpCode(200)
   async approve(
     @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser('id') adminId: string,
+    @CurrentUser() actor: AuthenticatedUser,
   ): Promise<ProfessorRequestResponseDto> {
-    return ProfessorRequestResponseDto.from(await this.onboarding.approveRequest(id, adminId));
+    return ProfessorRequestResponseDto.from(await this.onboarding.approveRequest(id, actor));
   }
 
   @Post('requests/:id/reject')
@@ -95,10 +98,10 @@ export class OnboardingController {
   async reject(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: RejectRequestDto,
-    @CurrentUser('id') adminId: string,
+    @CurrentUser() actor: AuthenticatedUser,
   ): Promise<ProfessorRequestResponseDto> {
     return ProfessorRequestResponseDto.from(
-      await this.onboarding.rejectRequest(id, adminId, dto.reason ?? ''),
+      await this.onboarding.rejectRequest(id, actor, dto.reason ?? ''),
     );
   }
 }

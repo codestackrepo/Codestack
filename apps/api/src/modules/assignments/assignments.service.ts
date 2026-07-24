@@ -19,6 +19,7 @@ import { PaginatedResult } from '../../common/dto/pagination.dto';
 import { Language } from '../../common/enums/language.enum';
 import { Role } from '../../common/enums/role.enum';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
+import { assertSameOrg, isSuperAdmin, scopeToOrg } from '../../common/tenancy/tenant-scope.util';
 import { ClassroomsService } from '../classrooms/classrooms.service';
 import { Batch } from '../classrooms/entities/batch.entity';
 import { Classroom } from '../classrooms/entities/classroom.entity';
@@ -82,7 +83,7 @@ export class AssignmentsService {
     const classroom = await this.classroomsService.getDetail(dto.classroomId);
     this.assertCanManage(actor, classroom);
 
-    const targeting = await this.resolveTargeting(dto.classroomId, dto);
+    const targeting = await this.resolveTargeting(dto.classroomId, dto, actor, classroom.organizationId);
 
     const assignment = this.assignments.create({
       title: dto.title,
@@ -116,6 +117,8 @@ export class AssignmentsService {
       durationMinutes?: number | null;
       targetBatchIds?: string[];
     },
+    actor: AuthenticatedUser,
+    orgId: string,
   ): Promise<{
     kind: AssignmentKind;
     targetType: AssignmentTargetType;
@@ -142,6 +145,7 @@ export class AssignmentsService {
       if (targetBatches.length !== ids.length) {
         throw new BadRequestException('One or more target batches do not belong to this classroom');
       }
+      assertSameOrg(actor, orgId); // defense-in-depth over the classroomId subset check
     }
     return { kind, targetType, durationMinutes, targetBatches };
   }
@@ -179,6 +183,8 @@ export class AssignmentsService {
         { uid: actor.id, visible: VISIBLE_TO_STUDENTS },
       );
     }
+
+    scopeToOrg(qb, 'a', actor);
 
     const [rows, total] = await qb.skip(query.skip).take(query.limit).getManyAndCount();
     await this.refreshStatuses(rows);
@@ -225,12 +231,17 @@ export class AssignmentsService {
       dto.durationMinutes !== undefined ||
       dto.targetBatchIds !== undefined
     ) {
-      const targeting = await this.resolveTargeting(assignment.classroomId, {
-        kind: dto.kind ?? assignment.kind,
-        targetType: dto.targetType ?? assignment.targetType,
-        durationMinutes: dto.durationMinutes ?? assignment.durationMinutes,
-        targetBatchIds: dto.targetBatchIds ?? (assignment.targetBatches ?? []).map((b) => b.id),
-      });
+      const targeting = await this.resolveTargeting(
+        assignment.classroomId,
+        {
+          kind: dto.kind ?? assignment.kind,
+          targetType: dto.targetType ?? assignment.targetType,
+          durationMinutes: dto.durationMinutes ?? assignment.durationMinutes,
+          targetBatchIds: dto.targetBatchIds ?? (assignment.targetBatches ?? []).map((b) => b.id),
+        },
+        actor,
+        assignment.organizationId,
+      );
       assignment.kind = targeting.kind;
       assignment.targetType = targeting.targetType;
       assignment.durationMinutes = targeting.durationMinutes;
@@ -502,7 +513,7 @@ export class AssignmentsService {
       .leftJoinAndSelect('a.targetBatches', 'tb')
       .where('a.status = :active', { active: AssignmentStatus.ACTIVE })
       .orderBy('a.end_date', 'ASC');
-    if (actor.role !== Role.ADMIN) {
+    if (!isSuperAdmin(actor) && actor.role !== Role.ADMIN) {
       // Site #2 of the three-site batch filter (§9.10). Creator/professor and
       // graders stay exempt; the batch predicate is applied only to plain
       // enrolled students.
@@ -517,6 +528,7 @@ export class AssignmentsService {
         { uid: actor.id },
       );
     }
+    scopeToOrg(qb, 'a', actor);
     return qb.getMany();
   }
 
@@ -693,7 +705,11 @@ export class AssignmentsService {
   }
 
   private async assertCanView(actor: AuthenticatedUser, assignment: Assignment): Promise<void> {
-    if (actor.role === Role.ADMIN) return;
+    if (isSuperAdmin(actor)) return;
+    if (actor.role === Role.ADMIN) {
+      assertSameOrg(actor, assignment.organizationId);
+      return;
+    }
     const classroom = await this.classroomsService.getDetail(assignment.classroomId);
     if (classroom.createdById === actor.id || classroom.professorId === actor.id) return;
     const isGrader = classroom.graders?.some((g) => g.id === actor.id);

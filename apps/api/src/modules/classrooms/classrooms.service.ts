@@ -9,6 +9,7 @@ import { DataSource, In, Repository } from 'typeorm';
 import { PaginatedResult, PaginationQueryDto } from '../../common/dto/pagination.dto';
 import { Role } from '../../common/enums/role.enum';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
+import { assertSameOrg, isSuperAdmin, scopeToOrg } from '../../common/tenancy/tenant-scope.util';
 import { User } from '../users/entities/user.entity';
 import { CreateClassroomDto } from './dto/create-classroom.dto';
 import { UpdateClassroomDto } from './dto/update-classroom.dto';
@@ -27,9 +28,12 @@ export class ClassroomsService {
     const end = new Date(dto.endDate);
     if (start >= end) throw new BadRequestException('startDate must be before endDate');
 
-    const { professor, students, graders } = await this.resolveMembers(dto, actor.id);
+    const { professor, students, graders } = await this.resolveMembers(dto, actor);
 
     const classroom = this.classrooms.create({
+      // Org = the creating actor's org (admin/professor). SuperAdmin has no org
+      // and must use an explicit target org (out of scope) -> undefined -> NOT NULL.
+      organizationId: actor.organizationId ?? undefined,
       courseId: dto.courseId,
       title: dto.title,
       description: dto.description ?? '',
@@ -65,6 +69,8 @@ export class ClassroomsService {
         { uid: actor.id },
       );
     }
+
+    scopeToOrg(qb, 'c', actor);
 
     const [data, total] = await qb.skip(query.skip).take(query.limit).getManyAndCount();
     return PaginatedResult.of(data, total, query);
@@ -108,7 +114,7 @@ export class ClassroomsService {
 
     // Additive membership: add new students/graders (never removes here).
     if (dto.studentIds?.length) {
-      const toAdd = await this.loadUsers(dto.studentIds);
+      const toAdd = await this.loadUsers(dto.studentIds, actor);
       const existing = new Set(classroom.students.map((s) => s.id));
       const graderIds = new Set(classroom.graders.map((g) => g.id));
       for (const u of toAdd) {
@@ -119,7 +125,7 @@ export class ClassroomsService {
       }
     }
     if (dto.graderIds?.length) {
-      const toAdd = await this.loadUsers(dto.graderIds);
+      const toAdd = await this.loadUsers(dto.graderIds, actor);
       const existing = new Set(classroom.graders.map((g) => g.id));
       const studentIds = new Set(classroom.students.map((s) => s.id));
       for (const u of toAdd) {
@@ -133,7 +139,7 @@ export class ClassroomsService {
       }
     }
     if (dto.professorId !== undefined) {
-      classroom.professor = dto.professorId ? await this.loadProfessor(dto.professorId) : null;
+      classroom.professor = dto.professorId ? await this.loadProfessor(dto.professorId, actor) : null;
       classroom.professorId = classroom.professor?.id ?? null;
     }
 
@@ -166,9 +172,12 @@ export class ClassroomsService {
   }
 
   async removeProfessor(id: string, actor: AuthenticatedUser): Promise<Classroom> {
-    if (actor.role !== Role.ADMIN)
-      throw new ForbiddenException('Only admins can remove a professor');
     const classroom = await this.getDetail(id);
+    if (!isSuperAdmin(actor)) {
+      assertSameOrg(actor, classroom.organizationId);
+      if (actor.role !== Role.ADMIN)
+        throw new ForbiddenException('Only admins can remove a professor');
+    }
     classroom.professor = null;
     classroom.professorId = null;
     classroom.totalUsers = classroom.students.length + classroom.graders.length;
@@ -209,7 +218,7 @@ export class ClassroomsService {
 
   private async resolveMembers(
     dto: CreateClassroomDto,
-    creatorId: string,
+    actor: AuthenticatedUser,
   ): Promise<{ professor: User | null; students: User[]; graders: User[] }> {
     const studentIds = [...new Set(dto.studentIds ?? [])];
     const graderIds = [...new Set(dto.graderIds ?? [])];
@@ -222,13 +231,13 @@ export class ClassroomsService {
     ) {
       throw new BadRequestException('Professor cannot also be a student/grader');
     }
-    if (studentIds.includes(creatorId) || graderIds.includes(creatorId)) {
+    if (studentIds.includes(actor.id) || graderIds.includes(actor.id)) {
       throw new BadRequestException('Creator cannot be a student/grader');
     }
 
-    const professor = dto.professorId ? await this.loadProfessor(dto.professorId) : null;
-    const students = studentIds.length ? await this.loadUsers(studentIds) : [];
-    const graders = graderIds.length ? await this.loadUsers(graderIds) : [];
+    const professor = dto.professorId ? await this.loadProfessor(dto.professorId, actor) : null;
+    const students = studentIds.length ? await this.loadUsers(studentIds, actor) : [];
+    const graders = graderIds.length ? await this.loadUsers(graderIds, actor) : [];
 
     const nonStudentGrader = graders.find((g) => g.role !== Role.STUDENT);
     if (nonStudentGrader) throw new BadRequestException('Graders must have the student role');
@@ -236,25 +245,30 @@ export class ClassroomsService {
     return { professor, students, graders };
   }
 
-  private async loadUsers(ids: string[]): Promise<User[]> {
+  private async loadUsers(ids: string[], actor: AuthenticatedUser): Promise<User[]> {
     const users = await this.users.find({ where: { id: In(ids) } });
     if (users.length !== new Set(ids).size) {
       throw new BadRequestException('One or more users not found');
     }
+    // Block cross-org member IDOR: every resolved user must be in the actor's org.
+    for (const u of users) assertSameOrg(actor, u.organizationId);
     return users;
   }
 
-  private async loadProfessor(id: string): Promise<User> {
+  private async loadProfessor(id: string, actor: AuthenticatedUser): Promise<User> {
     const user = await this.users.findOne({ where: { id } });
     if (!user) throw new BadRequestException('Professor not found');
     if (user.role !== Role.PROFESSOR && user.role !== Role.ADMIN) {
       throw new BadRequestException('Assigned professor must have professor/admin role');
     }
+    assertSameOrg(actor, user.organizationId);
     return user;
   }
 
   /** Roster/structure management (professor/admin only — graders excluded by design). */
   assertCanManage(actor: AuthenticatedUser, classroom: Classroom): void {
+    if (isSuperAdmin(actor)) return;
+    assertSameOrg(actor, classroom.organizationId);
     if (actor.role === Role.ADMIN) return;
     if (
       actor.role === Role.PROFESSOR &&
@@ -266,6 +280,8 @@ export class ClassroomsService {
   }
 
   private assertCanView(actor: AuthenticatedUser, classroom: Classroom): void {
+    if (isSuperAdmin(actor)) return;
+    assertSameOrg(actor, classroom.organizationId);
     if (actor.role === Role.ADMIN) return;
     if (classroom.createdById === actor.id || classroom.professorId === actor.id) return;
     const isMember =
@@ -282,6 +298,8 @@ export class ClassroomsService {
    * so assignments/grading/submissions all enforce the identical rule.
    */
   assertStaffOrGrader(actor: AuthenticatedUser, classroom: Classroom): void {
+    if (isSuperAdmin(actor)) return;
+    assertSameOrg(actor, classroom.organizationId);
     if (actor.role === Role.ADMIN) return;
     if (classroom.createdById === actor.id || classroom.professorId === actor.id) return;
     if (classroom.graders?.some((g) => g.id === actor.id)) return;

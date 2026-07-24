@@ -10,6 +10,7 @@ import { Brackets, Repository } from 'typeorm';
 import { PaginatedResult, PaginationQueryDto } from '../../common/dto/pagination.dto';
 import { Role } from '../../common/enums/role.enum';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
+import { assertSameOrg, isSuperAdmin, scopeToOrg } from '../../common/tenancy/tenant-scope.util';
 import { CreateUserDto } from './dto/create-user.dto';
 import { SearchUsersDto } from './dto/search-users.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -38,6 +39,9 @@ export class UsersService {
       firstName: dto.firstName,
       lastName: dto.lastName,
       role,
+      // Stamp the actor's org (admin/professor add). No-actor self-register stays
+      // null -> fails chk_users_org_required until Clerk onboarding (#51).
+      organizationId: actor?.organizationId ?? null,
       passwordHash: await this.hashPassword(dto.password),
     });
     return this.users.save(user);
@@ -76,6 +80,9 @@ export class UsersService {
       qb.andWhere('u.role = :student', { student: Role.STUDENT });
     }
 
+    // Org bound (omit includeGlobal: org-null SUPERADMIN rows must not surface).
+    scopeToOrg(qb, 'u', actor);
+
     const [data, total] = await qb.skip(query.skip).take(query.limit).getManyAndCount();
     return PaginatedResult.of(data, total, query);
   }
@@ -87,7 +94,7 @@ export class UsersService {
     const requestedType = actor.role === Role.STUDENT ? 'student' : dto.type;
     const roles =
       requestedType === 'both' ? [Role.STUDENT, Role.PROFESSOR] : [requestedType as Role];
-    return this.users
+    const qb = this.users
       .createQueryBuilder('u')
       .where('u.role IN (:...roles)', { roles })
       .andWhere(
@@ -96,9 +103,9 @@ export class UsersService {
             .orWhere('u.firstName ILIKE :q', { q: `%${dto.q}%` })
             .orWhere('u.lastName ILIKE :q', { q: `%${dto.q}%` });
         }),
-      )
-      .limit(dto.limit)
-      .getMany();
+      );
+    scopeToOrg(qb, 'u', actor);
+    return qb.limit(dto.limit).getMany();
   }
 
   /** Role-scoped single-user lookup for the public GET /users/:id route. */
@@ -109,8 +116,10 @@ export class UsersService {
   }
 
   private canView(actor: AuthenticatedUser, target: User): boolean {
-    if (actor.role === Role.ADMIN) return true;
+    if (isSuperAdmin(actor)) return true;
     if (actor.id === target.id) return true;
+    if (actor.organizationId !== target.organizationId) return false; // org bound
+    if (actor.role === Role.ADMIN) return true;
     if (actor.role === Role.PROFESSOR) return target.role !== Role.ADMIN;
     return target.role === Role.STUDENT;
   }
@@ -166,8 +175,10 @@ export class UsersService {
 
   /** Non-admins may only modify students or themselves. */
   private assertCanModify(actor: AuthenticatedUser, target: User): void {
-    if (actor.role === Role.ADMIN) return;
+    if (isSuperAdmin(actor)) return;
     if (actor.id === target.id) return;
+    assertSameOrg(actor, target.organizationId); // block cross-org modify/delete IDOR
+    if (actor.role === Role.ADMIN) return;
     if (actor.role === Role.PROFESSOR && target.role === Role.STUDENT) return;
     throw new ForbiddenException('You cannot modify this user');
   }
