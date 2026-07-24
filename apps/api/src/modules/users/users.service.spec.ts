@@ -23,7 +23,12 @@ describe('UsersService.create — role assignment', () => {
     role,
   });
 
-  const actor = (role: Role): AuthenticatedUser => ({ id: 'actor-id', email: 'actor@x.dev', role });
+  const actor = (role: Role): AuthenticatedUser => ({
+    id: 'actor-id',
+    email: 'actor@x.dev',
+    role,
+    organizationId: 'org-test',
+  });
 
   beforeEach(() => {
     repo = {
