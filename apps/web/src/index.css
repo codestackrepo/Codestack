@@ -290,6 +290,18 @@
     transform: translateY(-8px);
   }
 }
+/* Celebration burst for the Accepted verdict (§13.5). Each piece carries its own
+   --cx/--cy/--cr trajectory as inline style. Reduced motion collapses it. */
+@keyframes confetti-out {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) rotate(0deg) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--cx), var(--cy)) rotate(var(--cr)) scale(0.4);
+  }
+}
 
 @layer utilities {
   .animate-fade-in {
@@ -303,6 +315,9 @@
   }
   .animate-float {
     animation: float-y 6s ease-in-out infinite;
+  }
+  .confetti-piece {
+    animation: confetti-out 900ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
 
   /* Reveal-on-scroll: hidden until the useReveal hook adds `.in-view`.

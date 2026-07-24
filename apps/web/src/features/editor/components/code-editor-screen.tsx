@@ -4,7 +4,7 @@ import { useMutation } from '@tanstack/react-query';
 import { Editor } from '@monaco-editor/react';
 import { useTheme } from 'next-themes';
 import { Group, Panel, Separator } from 'react-resizable-panels';
-import { ArrowLeft, Loader2, Lock, Play, Send } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Loader2, Lock, Play, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -20,6 +20,7 @@ import { DifficultyBadge } from '@/components/shared/difficulty-badge';
 import { Logo } from '@/components/shared/logo';
 import { MarkdownView } from '@/components/shared/markdown-view';
 import { VerdictBadge } from '@/components/shared/verdict-badge';
+import { AcceptedBurst } from './accepted-burst';
 import { useSubmissionSocket } from '../hooks/use-submission-socket';
 import { usePersistedCode } from '../hooks/use-persisted-code';
 import { parseApiError } from '@/lib/api-client';
@@ -327,13 +328,29 @@ export function CodeEditorScreen({
                       <div className="space-y-2">
                         {liveStatus ? (
                           <>
-                            <div className="flex items-center gap-2">
-                              <VerdictBadge status={liveStatus.status} />
-                              <span className="text-sm text-muted-foreground">
-                                {liveStatus.passedTestcaseCount}/{liveStatus.totalTestcaseCount}{' '}
-                                passed
-                              </span>
-                            </div>
+                            {liveStatus.status === SubmissionStatus.ACCEPTED ? (
+                              <div className="animate-scale-in relative flex items-center gap-2.5 overflow-visible rounded-xl bg-success/10 p-3">
+                                <AcceptedBurst key={submissionId} />
+                                <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-success text-success-foreground">
+                                  <CheckCircle2 className="size-5" />
+                                </span>
+                                <div className="leading-tight">
+                                  <p className="font-semibold text-success">Accepted!</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {liveStatus.passedTestcaseCount}/
+                                    {liveStatus.totalTestcaseCount} tests passed
+                                  </p>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                <VerdictBadge status={liveStatus.status} />
+                                <span className="text-sm text-muted-foreground">
+                                  {liveStatus.passedTestcaseCount}/{liveStatus.totalTestcaseCount}{' '}
+                                  passed
+                                </span>
+                              </div>
+                            )}
                             {Object.values(testcaseVerdicts)
                               .sort((a, b) => a.ordinal - b.ordinal)
                               .map((tc) => (
