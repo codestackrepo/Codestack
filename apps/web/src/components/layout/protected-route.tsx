@@ -1,7 +1,7 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '@/features/auth/context/auth-context';
 import { useModuleAccess } from '@/features/auth/hooks/use-module-access';
-import { AppModuleKey, Role } from '@/types/common';
+import { AppModuleKey, Role, atLeast } from '@/types/common';
 
 export function ProtectedRoute() {
   const { user, isLoading } = useAuth();
@@ -13,13 +13,30 @@ export function ProtectedRoute() {
   return <Outlet />;
 }
 
-/** Nest inside <ProtectedRoute> to additionally restrict by role (admin always passes). */
+/**
+ * Nest inside <ProtectedRoute> to additionally restrict by role. Rank-aware:
+ * an actor passes when it outranks or equals the lowest required role (so
+ * SUPERADMIN and ADMIN still pass every existing staff route), mirroring the
+ * backend RolesGuard.
+ */
 export function RequireRole({ roles }: { roles: Role[] }) {
   const { user } = useAuth();
   if (!user) return null;
-  if (user.role !== Role.ADMIN && !roles.includes(user.role)) {
+  if (!roles.some((r) => atLeast(user.role, r))) {
     return <Navigate to="/home" replace />;
   }
+  return <Outlet />;
+}
+
+/**
+ * Platform-only gate. Unlike the module/feature gates it fails CLOSED: it blocks
+ * until the session resolves and then requires an explicit SUPERADMIN role,
+ * never defaulting visible.
+ */
+export function RequireSuperAdmin() {
+  const { user, isLoading } = useAuth();
+  if (isLoading) return null;
+  if (!user || user.role !== Role.SUPERADMIN) return <Navigate to="/home" replace />;
   return <Outlet />;
 }
 

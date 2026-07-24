@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { AppModuleKey, Role } from '@/types/common';
+import { AppModuleKey, Role, atLeast } from '@/types/common';
 import { useAuth } from '@/features/auth/context/auth-context';
 import { useModuleAccess } from '@/features/auth/hooks/use-module-access';
 import { Logo } from '@/components/shared/logo';
@@ -25,6 +25,7 @@ import {
 
 const COLLAPSE_KEY = 'codestack-sidebar-collapsed';
 const ROLE_LABEL: Record<string, string> = {
+  superadmin: 'Super Admin',
   admin: 'Administrator',
   professor: 'Professor',
   student: 'Student',
@@ -143,7 +144,7 @@ export function Sidebar({ className, onNavigate, allowCollapse = true }: Sidebar
   };
 
   const canSee = (item: NavItem) =>
-    (!item.roles || !user || user.role === Role.ADMIN || item.roles.includes(user.role)) &&
+    (!item.roles || !user || item.roles.some((r) => atLeast(user.role, r))) &&
     (!item.module || canAccess(item.module));
 
   const sections = NAV_SECTIONS.map((section) => ({
