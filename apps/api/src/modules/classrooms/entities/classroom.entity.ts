@@ -2,13 +2,21 @@ import { Column, Entity, Index, JoinColumn, JoinTable, ManyToMany, ManyToOne } f
 import { BaseEntity } from '../../../common/entities/base.entity';
 import { User } from '../../users/entities/user.entity';
 
+// course_id / title are unique WITHIN an org (not globally) so two universities
+// can each own a "CS101". Composite uniques replace the former global ones (#55).
+@Index('uq_classroom_org_course', ['organizationId', 'courseId'], { unique: true })
+@Index('uq_classroom_org_title', ['organizationId', 'title'], { unique: true })
 @Entity('classrooms')
 export class Classroom extends BaseEntity {
-  @Index('idx_classroom_course_id', { unique: true })
-  @Column({ type: 'varchar', length: 255, unique: true, name: 'course_id' })
+  // Tenant FK (direct column — classrooms always belong to an org).
+  @Index('idx_classroom_organization')
+  @Column({ type: 'uuid', name: 'organization_id' })
+  organizationId!: string;
+
+  @Column({ type: 'varchar', length: 255, name: 'course_id' })
   courseId!: string;
 
-  @Column({ type: 'varchar', length: 255, unique: true })
+  @Column({ type: 'varchar', length: 255 })
   title!: string;
 
   @Column({ type: 'text', default: '' })
