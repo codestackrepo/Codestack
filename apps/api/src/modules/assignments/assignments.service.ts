@@ -35,12 +35,14 @@ import {
   UpdateAssignmentDto,
 } from './dto/assignment.dto';
 import { syncCodingPoints } from './coding-points.util';
+import { AssignmentAttempt } from './entities/assignment-attempt.entity';
 import { AssignmentProblem } from './entities/assignment-problem.entity';
 import { Assignment } from './entities/assignment.entity';
 import { ProblemTemplate } from './entities/problem-template.entity';
 import { AssignmentKind } from './enums/assignment-kind.enum';
 import { AssignmentStatus, VISIBLE_TO_STUDENTS } from './enums/assignment-status.enum';
 import { AssignmentTargetType } from './enums/assignment-target-type.enum';
+import { AttemptStatus } from './enums/attempt-status.enum';
 
 @Injectable()
 export class AssignmentsService {
@@ -65,6 +67,8 @@ export class AssignmentsService {
     @InjectRepository(LibraryProblemTemplate)
     private readonly libraryTemplates: Repository<LibraryProblemTemplate>,
     @InjectRepository(Batch) private readonly batches: Repository<Batch>,
+    @InjectRepository(AssignmentAttempt)
+    private readonly attempts: Repository<AssignmentAttempt>,
     private readonly classroomsService: ClassroomsService,
     private readonly dataSource: DataSource,
     private readonly emitter: EventEmitter2,
@@ -585,6 +589,91 @@ export class AssignmentsService {
     const changed = assignments.filter((a) => a.applyTimeTransition(now));
     if (changed.length) await this.assignments.save(changed);
     return changed.length > 0;
+  }
+
+  /**
+   * Zero-traffic status sweep (#38, §5.2): flips every stale assignment's
+   * time-based status independent of any user query. Reuses applyTimeTransition
+   * (the single source of truth); the WHERE only pre-filters to bound the row
+   * set. Driven by QUEUE_ASSIGNMENT_SWEEP every ~60s in the worker. Returns the
+   * number of transitions persisted. Manual states are never touched.
+   */
+  async sweepStatuses(): Promise<number> {
+    const now = new Date();
+    const candidates = await this.assignments
+      .createQueryBuilder('a')
+      .where(
+        '(a.status = :scheduled AND a.start_date <= :now) OR (a.status = :active AND a.end_date <= :now)',
+        { scheduled: AssignmentStatus.SCHEDULED, active: AssignmentStatus.ACTIVE, now },
+      )
+      .getMany();
+    if (!candidates.length) return 0;
+    const changed = candidates.filter((a) => a.applyTimeTransition(now));
+    if (changed.length) await this.assignments.save(changed);
+    return changed.length;
+  }
+
+  /**
+   * Server-authoritative per-attempt deadline gate for timed tests (#39, §9.9).
+   * Plain assignments have no per-attempt clock (returns immediately). For a
+   * test: lazily anchors the attempt on first submit (deadline capped at the
+   * assignment's endDate), rejects a submitted/expired attempt, and auto-submits
+   * on expiry. The client countdown is untrusted — this is the real gate.
+   */
+  async assertTestAttemptOpen(assignment: Assignment, userId: string): Promise<void> {
+    if (assignment.kind !== AssignmentKind.TEST) return;
+
+    let attempt = await this.attempts.findOne({
+      where: { assignmentId: assignment.id, userId },
+    });
+
+    if (!attempt) {
+      const now = new Date();
+      const durationMs = (assignment.durationMinutes ?? 0) * 60_000;
+      const cappedDeadline = Math.min(now.getTime() + durationMs, assignment.endDate.getTime());
+      try {
+        attempt = await this.attempts.save(
+          this.attempts.create({
+            assignmentId: assignment.id,
+            userId,
+            startedAt: now,
+            deadlineAt: new Date(cappedDeadline),
+            status: AttemptStatus.IN_PROGRESS,
+          }),
+        );
+      } catch {
+        // Unique (assignment_id, user_id) — a concurrent first-submit won the
+        // race; re-select its row.
+        attempt = await this.attempts.findOneOrFail({
+          where: { assignmentId: assignment.id, userId },
+        });
+      }
+    }
+
+    if (attempt.status !== AttemptStatus.IN_PROGRESS) {
+      throw new ForbiddenException('Your attempt has already been submitted');
+    }
+    if (new Date() > attempt.deadlineAt) {
+      // Auto-submit, then reject this (late) submission.
+      attempt.status = AttemptStatus.AUTO_SUBMITTED;
+      attempt.submittedAt = new Date();
+      await this.attempts.save(attempt);
+      throw new ForbiddenException('Time is up for this test');
+    }
+  }
+
+  /**
+   * Zero-traffic auto-submit of expired attempts (#39), driven by the same
+   * sweep tick as sweepStatuses. Idempotent: only touches in_progress rows.
+   */
+  async finalizeExpiredAttempts(): Promise<number> {
+    const res = await this.attempts
+      .createQueryBuilder()
+      .update()
+      .set({ status: AttemptStatus.AUTO_SUBMITTED, submittedAt: () => 'now()' })
+      .where('status = :open AND deadline_at <= now()', { open: AttemptStatus.IN_PROGRESS })
+      .execute();
+    return res.affected ?? 0;
   }
 
   private assertCanManage(actor: AuthenticatedUser, classroom: Classroom): void {

@@ -1,12 +1,15 @@
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, GraduationCap } from 'lucide-react';
+import { ArrowLeft, GraduationCap, Pencil } from 'lucide-react';
 import { classroomsApi } from '../api/classrooms.api';
+import { BatchManagementCard } from '../components/batch-management-card';
+import { useAuth } from '@/features/auth/context/auth-context';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { STAFF_ROLES } from '@/types/common';
 
 function initials(firstName: string, lastName: string): string {
   return `${firstName[0] ?? ''}${lastName[0] ?? ''}`.toUpperCase();
@@ -37,6 +40,8 @@ function MemberRow({ member }: { member: Member }) {
 
 export function ClassroomDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const { user } = useAuth();
+  const isStaff = !!user && STAFF_ROLES.includes(user.role);
 
   const { data: classroom, isLoading } = useQuery({
     queryKey: ['classrooms', id],
@@ -84,10 +89,21 @@ export function ClassroomDetailPage() {
             )}
           </div>
         </div>
+        {isStaff && (
+          <Button asChild variant="outline" size="sm" className="sm:ml-auto">
+            <Link to={`/home/classrooms/${classroom.id}/edit`}>
+              <Pencil className="size-3.5" /> Edit
+            </Link>
+          </Button>
+        )}
       </div>
 
       {classroom.description && (
         <p className="text-sm leading-relaxed text-muted-foreground">{classroom.description}</p>
+      )}
+
+      {isStaff && (
+        <BatchManagementCard classroomId={classroom.id} students={classroom.students ?? []} />
       )}
 
       {students.length > 0 && (

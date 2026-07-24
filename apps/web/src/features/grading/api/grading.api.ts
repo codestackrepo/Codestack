@@ -1,6 +1,8 @@
 import { apiClient } from '@/lib/api-client';
 import type {
   AssignmentScoreRow,
+  ItemReview,
+  ItemScore,
   ProblemScoreEntity,
   StudentScore,
   UpdateScoreInput,
@@ -35,7 +37,7 @@ export const gradingApi = {
     return data;
   },
 
-  /** Manual per-problem override for a student — staff/grader only. */
+  /** Legacy coding-only per-problem override — staff/grader only. */
   async updateScore(
     assignmentProblemId: string,
     studentId: string,
@@ -44,6 +46,27 @@ export const gradingApi = {
     const { data } = await apiClient.patch<ProblemScoreEntity>(
       `/grading/problems/${assignmentProblemId}/students/${studentId}`,
       input,
+    );
+    return data;
+  },
+
+  /** Item-keyed manual grade (coding/quiz/mcq-override) — staff/grader only. */
+  async updateItemScore(
+    itemId: string,
+    studentId: string,
+    input: UpdateScoreInput,
+  ): Promise<ItemScore> {
+    const { data } = await apiClient.patch<ItemScore>(
+      `/grading/items/${itemId}/students/${studentId}`,
+      input,
+    );
+    return data;
+  },
+
+  /** Staff item-review detail for the review drawer — staff/grader only. */
+  async itemReview(itemId: string, studentId: string): Promise<ItemReview> {
+    const { data } = await apiClient.get<ItemReview>(
+      `/grading/items/${itemId}/students/${studentId}`,
     );
     return data;
   },

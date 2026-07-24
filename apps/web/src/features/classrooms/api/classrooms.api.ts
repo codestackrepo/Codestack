@@ -1,5 +1,5 @@
 import { apiClient } from '@/lib/api-client';
-import type { Classroom, CreateClassroomInput } from '@/types/classroom';
+import type { Classroom, CreateClassroomInput, UpdateClassroomInput } from '@/types/classroom';
 import type { PaginatedResult } from '@/types/common';
 
 export const classroomsApi = {
@@ -17,6 +17,11 @@ export const classroomsApi = {
 
   async create(input: CreateClassroomInput): Promise<Classroom> {
     const { data } = await apiClient.post<Classroom>('/classrooms', input);
+    return data;
+  },
+
+  async update(id: string, input: UpdateClassroomInput): Promise<Classroom> {
+    const { data } = await apiClient.patch<Classroom>(`/classrooms/${id}`, input);
     return data;
   },
 };

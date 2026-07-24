@@ -9,7 +9,9 @@ import { QueryProblemsDto } from './dto/query-problems.dto';
 import { TestCaseInputDto } from './dto/test-case.dto';
 import { UpdateProblemDto } from './dto/update-problem.dto';
 import { Difficulty, ProblemSource, ProblemVisibility, TestCaseType } from './enums/problem.enums';
+import { Language } from '../../common/enums/language.enum';
 import { Company } from './entities/company.entity';
+import { LibraryProblemTemplate } from './entities/library-problem-template.entity';
 import { Problem } from './entities/problem.entity';
 import { Tag } from './entities/tag.entity';
 import { TestCase } from './entities/test-case.entity';
@@ -19,6 +21,13 @@ export interface FacetCount {
   count: number;
 }
 
+/** Pieces the practice code-editor screen needs to bootstrap (§9.11). */
+export interface ProblemEditorBootstrap {
+  problem: Problem;
+  sampleCases: TestCase[];
+  templates: { language: Language; starterCode: string }[];
+}
+
 @Injectable()
 export class ProblemsService {
   constructor(
@@ -26,6 +35,8 @@ export class ProblemsService {
     @InjectRepository(TestCase) private readonly testCases: Repository<TestCase>,
     @InjectRepository(Tag) private readonly tags: Repository<Tag>,
     @InjectRepository(Company) private readonly companies: Repository<Company>,
+    @InjectRepository(LibraryProblemTemplate)
+    private readonly libraryTemplates: Repository<LibraryProblemTemplate>,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -205,6 +216,30 @@ export class ProblemsService {
       qb.andWhere('tc.type = :sample', { sample: TestCaseType.SAMPLE });
     }
     return qb.getMany();
+  }
+
+  /**
+   * Everything the practice code-editor screen needs to bootstrap: statement,
+   * SAMPLE testcases only, and per-language starter code. NEVER returns
+   * driverCode or hidden test cases — the judge harness stays server-side.
+   * Respects catalog visibility (same rule as findOne).
+   */
+  async getEditorBootstrap(id: string, actor: AuthenticatedUser): Promise<ProblemEditorBootstrap> {
+    const problem = await this.getById(id);
+    this.assertVisible(actor, problem);
+    const sampleCases = await this.testCases.find({
+      where: { problemId: id, type: TestCaseType.SAMPLE, isActive: true },
+      order: { orderIndex: 'ASC' },
+    });
+    const templates = await this.libraryTemplates.find({
+      where: { problemId: id },
+      order: { language: 'ASC' },
+    });
+    return {
+      problem,
+      sampleCases,
+      templates: templates.map((t) => ({ language: t.language, starterCode: t.starterCode })),
+    };
   }
 
   async update(id: string, dto: UpdateProblemDto, actor: AuthenticatedUser): Promise<Problem> {

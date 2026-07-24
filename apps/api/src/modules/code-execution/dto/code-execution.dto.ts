@@ -1,16 +1,19 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayNotEmpty,
   IsArray,
   IsEnum,
+  IsOptional,
   IsString,
   IsUUID,
   MaxLength,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { Language } from '../../../common/enums/language.enum';
+import { SubmissionContext } from '../../submissions/enums/submission-context.enum';
 
 const CODE_MAX = 65536;
 const STDIN_MAX = 65536;
@@ -20,9 +23,22 @@ const STDIN_MAX = 65536;
 const SAMPLE_TESTCASES_MAX = 20;
 
 export class SubmitCodeDto {
+  @ApiPropertyOptional({ enum: SubmissionContext, default: SubmissionContext.ASSIGNMENT })
+  @IsOptional()
+  @IsEnum(SubmissionContext)
+  context: SubmissionContext = SubmissionContext.ASSIGNMENT;
+
+  // Exactly-one-target, matching the DB CHECK: assignment → assignmentProblemId,
+  // practice → problemId.
   @ApiProperty()
+  @ValidateIf((o: SubmitCodeDto) => o.context !== SubmissionContext.PRACTICE)
   @IsUUID()
   assignmentProblemId!: string;
+
+  @ApiPropertyOptional()
+  @ValidateIf((o: SubmitCodeDto) => o.context === SubmissionContext.PRACTICE)
+  @IsUUID()
+  problemId!: string;
 
   @ApiProperty({ enum: Language })
   @IsEnum(Language)
@@ -47,9 +63,20 @@ export class SampleTestcaseDto {
 }
 
 export class RunCodeDto {
+  @ApiPropertyOptional({ enum: SubmissionContext, default: SubmissionContext.ASSIGNMENT })
+  @IsOptional()
+  @IsEnum(SubmissionContext)
+  context: SubmissionContext = SubmissionContext.ASSIGNMENT;
+
   @ApiProperty()
+  @ValidateIf((o: RunCodeDto) => o.context !== SubmissionContext.PRACTICE)
   @IsUUID()
   assignmentProblemId!: string;
+
+  @ApiPropertyOptional()
+  @ValidateIf((o: RunCodeDto) => o.context === SubmissionContext.PRACTICE)
+  @IsUUID()
+  problemId!: string;
 
   @ApiProperty({ enum: Language })
   @IsEnum(Language)

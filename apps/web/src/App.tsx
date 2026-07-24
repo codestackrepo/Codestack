@@ -2,8 +2,8 @@ import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { AppShell } from '@/components/layout/app-shell';
-import { ProtectedRoute, RequireRole } from '@/components/layout/protected-route';
-import { Role } from '@/types/common';
+import { ProtectedRoute, RequireModule, RequireRole } from '@/components/layout/protected-route';
+import { AppModuleKey, Role } from '@/types/common';
 
 // Route-level code-splitting: each page is its own async chunk so the initial
 // bundle stays lean. The heavy screens in particular (Monaco editor + playground,
@@ -28,6 +28,11 @@ const ClassroomDetailPage = lazy(() =>
     default: m.ClassroomDetailPage,
   })),
 );
+const ClassroomFormPage = lazy(() =>
+  import('@/features/classrooms/pages/classroom-form-page').then((m) => ({
+    default: m.ClassroomFormPage,
+  })),
+);
 const ProblemsListPage = lazy(() =>
   import('@/features/problems/pages/problems-list-page').then((m) => ({
     default: m.ProblemsListPage,
@@ -43,8 +48,28 @@ const AssignmentsListPage = lazy(() =>
     default: m.AssignmentsListPage,
   })),
 );
+const AssignmentFormPage = lazy(() =>
+  import('@/features/assignments/pages/assignment-form-page').then((m) => ({
+    default: m.AssignmentFormPage,
+  })),
+);
+const AssignmentBuilderPage = lazy(() =>
+  import('@/features/assignments/pages/assignment-builder-page').then((m) => ({
+    default: m.AssignmentBuilderPage,
+  })),
+);
+const AssignmentTakePage = lazy(() =>
+  import('@/features/assignments/pages/assignment-take-page').then((m) => ({
+    default: m.AssignmentTakePage,
+  })),
+);
 const CodeEditorPage = lazy(() =>
   import('@/features/editor/pages/code-editor-page').then((m) => ({ default: m.CodeEditorPage })),
+);
+const PracticeEditorPage = lazy(() =>
+  import('@/features/editor/pages/practice-editor-page').then((m) => ({
+    default: m.PracticeEditorPage,
+  })),
 );
 const PlaygroundPage = lazy(() =>
   import('@/features/playground/pages/playground-page').then((m) => ({
@@ -60,6 +85,16 @@ const TopicsPage = lazy(() =>
 const RequestAccessPage = lazy(() =>
   import('@/features/onboarding/pages/request-access-page').then((m) => ({
     default: m.RequestAccessPage,
+  })),
+);
+const AdminOverviewPage = lazy(() =>
+  import('@/features/admin/pages/admin-overview-page').then((m) => ({
+    default: m.AdminOverviewPage,
+  })),
+);
+const AdminUsersPage = lazy(() =>
+  import('@/features/admin/pages/admin-users-page').then((m) => ({
+    default: m.AdminUsersPage,
   })),
 );
 const AdminRequestsPage = lazy(() =>
@@ -98,32 +133,71 @@ function App() {
         <Route element={<ProtectedRoute />}>
           <Route path="/home" element={<AppShell />}>
             <Route index element={<Navigate to="dashboard" replace />} />
+
+            {/* SYSTEM modules — always-on, never module-gated */}
             <Route path="dashboard" element={<DashboardPage />} />
-            <Route path="classrooms" element={<ClassroomsListPage />} />
-            <Route path="classrooms/:id" element={<ClassroomDetailPage />} />
-            <Route path="problems" element={<ProblemsListPage />} />
-            <Route path="problems/:id" element={<ProblemDetailPage />} />
-            <Route path="assignments" element={<AssignmentsListPage />} />
-            <Route path="playground" element={<PlaygroundPage />} />
-            <Route path="topics" element={<TopicsPage />} />
-            <Route path="request-access" element={<RequestAccessPage />} />
             <Route path="profile" element={<ProfilePage />} />
             <Route path="settings" element={<SettingsPage />} />
+            {/* Role-gated onboarding surfaces (not toggleable modules) */}
+            <Route path="request-access" element={<RequestAccessPage />} />
 
-            {/* Staff-only gradebook */}
-            <Route element={<RequireRole roles={[Role.ADMIN, Role.PROFESSOR]} />}>
-              <Route path="grading" element={<GradingPage />} />
+            {/* Toggleable modules (§9.7) */}
+            <Route element={<RequireModule module={AppModuleKey.CLASSROOMS} />}>
+              <Route path="classrooms" element={<ClassroomsListPage />} />
+              <Route path="classrooms/:id" element={<ClassroomDetailPage />} />
+              {/* Staff-only classroom create/edit (#23) */}
+              <Route element={<RequireRole roles={[Role.ADMIN, Role.PROFESSOR]} />}>
+                <Route path="classrooms/new" element={<ClassroomFormPage />} />
+                <Route path="classrooms/:id/edit" element={<ClassroomFormPage />} />
+              </Route>
+            </Route>
+            <Route element={<RequireModule module={AppModuleKey.PROBLEMS} />}>
+              <Route path="problems" element={<ProblemsListPage />} />
+              <Route path="problems/:id" element={<ProblemDetailPage />} />
+            </Route>
+            <Route element={<RequireModule module={AppModuleKey.ASSIGNMENTS} />}>
+              <Route path="assignments" element={<AssignmentsListPage />} />
+              {/* Student/member take surface (#22); server assertCanView gates access. */}
+              <Route path="assignments/:id/take" element={<AssignmentTakePage />} />
+              {/* Staff-only create/edit (#23) + item builder (#22) */}
+              <Route element={<RequireRole roles={[Role.ADMIN, Role.PROFESSOR]} />}>
+                <Route path="assignments/new" element={<AssignmentFormPage />} />
+                <Route path="assignments/:id/edit" element={<AssignmentFormPage />} />
+                <Route path="assignments/:id/build" element={<AssignmentBuilderPage />} />
+              </Route>
+            </Route>
+            <Route element={<RequireModule module={AppModuleKey.PLAYGROUND} />}>
+              <Route path="playground" element={<PlaygroundPage />} />
+            </Route>
+            <Route element={<RequireModule module={AppModuleKey.TOPICS} />}>
+              <Route path="topics" element={<TopicsPage />} />
             </Route>
 
-            {/* Admin-only professor onboarding management */}
+            {/* Staff-only gradebook, additionally module-gated */}
+            <Route element={<RequireRole roles={[Role.ADMIN, Role.PROFESSOR]} />}>
+              <Route element={<RequireModule module={AppModuleKey.GRADING} />}>
+                <Route path="grading" element={<GradingPage />} />
+              </Route>
+            </Route>
+
+            {/* Admin-only overview, user management, and professor onboarding (#40) */}
             <Route element={<RequireRole roles={[Role.ADMIN]} />}>
+              <Route path="admin" element={<AdminOverviewPage />} />
+              <Route path="admin/users" element={<AdminUsersPage />} />
               <Route path="admin/requests" element={<AdminRequestsPage />} />
               <Route path="admin/invites" element={<AdminInvitesPage />} />
             </Route>
           </Route>
 
-          {/* Full-bleed editor: its own top bar, no sidebar/padding from AppShell */}
-          <Route path="/solve/:apId" element={<CodeEditorPage />} />
+          {/* Full-bleed editors: own top bar, no sidebar/padding from AppShell.
+              OUTSIDE /home, so each MUST be module-wrapped explicitly (§9.8):
+              assignment solve → ASSIGNMENTS, practice solve → PROBLEMS. */}
+          <Route element={<RequireModule module={AppModuleKey.ASSIGNMENTS} />}>
+            <Route path="/solve/:apId" element={<CodeEditorPage />} />
+          </Route>
+          <Route element={<RequireModule module={AppModuleKey.PROBLEMS} />}>
+            <Route path="/practice/:problemId" element={<PracticeEditorPage />} />
+          </Route>
         </Route>
 
         <Route path="*" element={<Navigate to="/home" replace />} />

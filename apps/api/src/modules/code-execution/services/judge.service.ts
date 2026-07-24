@@ -8,10 +8,12 @@ import {
 } from '../../../common/events/submission-events';
 import { AssignmentProblem } from '../../assignments/entities/assignment-problem.entity';
 import { ProblemTemplate } from '../../assignments/entities/problem-template.entity';
+import { LibraryProblemTemplate } from '../../problems/entities/library-problem-template.entity';
 import { TestCase } from '../../problems/entities/test-case.entity';
 import { ExecutionJob, ExecutionJobStatus } from '../../submissions/entities/execution-job.entity';
 import { Submission } from '../../submissions/entities/submission.entity';
 import { TestCaseResult } from '../../submissions/entities/test-case-result.entity';
+import { SubmissionContext } from '../../submissions/enums/submission-context.enum';
 import { SubmissionStatus } from '../../submissions/enums/submission-status.enum';
 import { RawRun } from '../piston/piston.types';
 import { DriverMergeService } from './driver-merge.service';
@@ -42,6 +44,8 @@ export class JudgeService {
     @InjectRepository(TestCase) private readonly testCases: Repository<TestCase>,
     @InjectRepository(AssignmentProblem)
     private readonly assignmentProblems: Repository<AssignmentProblem>,
+    @InjectRepository(LibraryProblemTemplate)
+    private readonly libraryTemplates: Repository<LibraryProblemTemplate>,
     private readonly executor: ExecutorService,
     private readonly verdict: VerdictService,
     private readonly driverMerge: DriverMergeService,
@@ -64,21 +68,11 @@ export class JudgeService {
     await this.markRunning(submission);
 
     try {
-      const ap = await this.assignmentProblems.findOne({
-        where: { id: submission.assignmentProblemId },
-      });
-      if (!ap) return this.finalize(submission, SubmissionStatus.INTERNAL_ERROR, [], 0);
+      const inputs = await this.resolveJudgeInputs(submission);
+      if (!inputs) return this.finalize(submission, SubmissionStatus.INTERNAL_ERROR, [], 0);
 
-      const template = await this.templates.findOne({
-        where: { assignmentProblemId: ap.id, language: submission.language },
-      });
-      const cases = await this.testCases.find({
-        where: { problemId: ap.problemId, isActive: true },
-        order: { orderIndex: 'ASC' },
-      });
-
-      const fullCode = this.driverMerge.merge(template?.driverCode ?? '', submission.userCode);
-      const outcomes = await this.runAll(submission, cases, fullCode);
+      const fullCode = this.driverMerge.merge(inputs.driverCode, submission.userCode);
+      const outcomes = await this.runAll(submission, inputs.cases, fullCode);
 
       // Compile/syntax errors short-circuit the aggregate to that verdict.
       const compileFail = outcomes.find(
@@ -91,13 +85,48 @@ export class JudgeService {
         submission,
         this.aggregate(outcomes),
         outcomes,
-        cases.length,
+        inputs.cases.length,
         compileFail,
       );
     } catch (err) {
       this.logger.error(`Judge failed for ${submissionId}: ${String(err)}`);
       await this.finalize(submission, SubmissionStatus.INTERNAL_ERROR, [], 0);
     }
+  }
+
+  /**
+   * Resolve the driver + test cases for the submission's target context.
+   * Practice reads the library-level driver + the problem's active test cases;
+   * assignment reads the per-AP ProblemTemplate + the AP's problem cases.
+   * Returns null if the target can't be resolved (→ INTERNAL_ERROR).
+   */
+  private async resolveJudgeInputs(
+    submission: Submission,
+  ): Promise<{ driverCode: string; cases: TestCase[] } | null> {
+    if (submission.context === SubmissionContext.PRACTICE) {
+      if (!submission.problemId) return null;
+      const template = await this.libraryTemplates.findOne({
+        where: { problemId: submission.problemId, language: submission.language },
+      });
+      const cases = await this.testCases.find({
+        where: { problemId: submission.problemId, isActive: true },
+        order: { orderIndex: 'ASC' },
+      });
+      return { driverCode: template?.driverCode ?? '', cases };
+    }
+
+    const ap = await this.assignmentProblems.findOne({
+      where: { id: submission.assignmentProblemId },
+    });
+    if (!ap) return null;
+    const template = await this.templates.findOne({
+      where: { assignmentProblemId: ap.id, language: submission.language },
+    });
+    const cases = await this.testCases.find({
+      where: { problemId: ap.problemId, isActive: true },
+      order: { orderIndex: 'ASC' },
+    });
+    return { driverCode: template?.driverCode ?? '', cases };
   }
 
   private async markRunning(submission: Submission): Promise<void> {
@@ -227,15 +256,28 @@ export class JudgeService {
 
   // ---- helpers ----
 
+  /**
+   * Assignment coding submit is BLIND (§9.1, decision #3): the student sees no
+   * verdict/counts/runtime/per-test detail. Blind at the emit SOURCE so nothing
+   * real ever reaches Redis (the socket auto-joins user:{id}). Practice is fully
+   * visible to its owner.
+   */
+  private isBlind(submission: Submission): boolean {
+    return submission.context === SubmissionContext.ASSIGNMENT;
+  }
+
   private async emitStatus(submission: Submission): Promise<void> {
-    const payload = {
-      submissionId: submission.id,
-      status: submission.status,
-      passedTestcaseCount: submission.passedTestcaseCount,
-      totalTestcaseCount: submission.totalTestcaseCount,
-      runtimeMs: submission.runtimeMs,
-      memoryBytes: submission.memoryBytes,
-    };
+    // Coarse, socket-only sentinel for assignment; never a real SubmissionStatus.
+    const payload = this.isBlind(submission)
+      ? { submissionId: submission.id, status: 'submitted' }
+      : {
+          submissionId: submission.id,
+          status: submission.status,
+          passedTestcaseCount: submission.passedTestcaseCount,
+          totalTestcaseCount: submission.totalTestcaseCount,
+          runtimeMs: submission.runtimeMs,
+          memoryBytes: submission.memoryBytes,
+        };
     await this.events.cacheSnapshot(submission.id, payload);
     await this.events.publish({
       type: 'status',
@@ -250,6 +292,8 @@ export class JudgeService {
     ordinal: number,
     verdict: SubmissionStatus,
   ): Promise<void> {
+    // Per-test events would leak the verdict for a blind assignment submit.
+    if (this.isBlind(submission)) return;
     await this.events.publish({
       type: 'testcase',
       submissionId: submission.id,

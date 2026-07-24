@@ -1,7 +1,17 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { CalendarRange, ChevronDown, ChevronRight, Code2, Eye, Lock } from 'lucide-react';
+import {
+  CalendarRange,
+  ChevronDown,
+  ChevronRight,
+  Code2,
+  Eye,
+  Hammer,
+  Lock,
+  PlayCircle,
+  Plus,
+} from 'lucide-react';
 import { assignmentsApi } from '../api/assignments.api';
 import { useAuth } from '@/features/auth/context/auth-context';
 import { StudentGradesCard } from '@/features/grading/components/student-grades-card';
@@ -12,7 +22,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
-import { Role } from '@/types/common';
+import { Role, STAFF_ROLES } from '@/types/common';
 import { AssignmentStatus } from '@/types/assignment';
 import { Difficulty } from '@/types/problem';
 
@@ -34,11 +44,15 @@ const STATUS_LABEL: Record<AssignmentStatus, string> = {
 
 export function AssignmentStatusBadge({ status }: { status: AssignmentStatus }) {
   return (
-    <Badge className={cn('border-transparent', STATUS_STYLES[status])}>{STATUS_LABEL[status]}</Badge>
+    <Badge className={cn('border-transparent', STATUS_STYLES[status])}>
+      {STATUS_LABEL[status]}
+    </Badge>
   );
 }
 
 export function AssignmentsListPage() {
+  const { user } = useAuth();
+  const isStaff = !!user && STAFF_ROLES.includes(user.role);
   const { data, isLoading } = useQuery({
     queryKey: ['assignments', 'list'],
     queryFn: () => assignmentsApi.list(),
@@ -50,6 +64,15 @@ export function AssignmentsListPage() {
       <PageHeader
         title="Assignments"
         description="Coursework across your classrooms — expand one to open its problems."
+        actions={
+          isStaff ? (
+            <Button asChild className="bg-brand text-brand-foreground hover:bg-brand/90">
+              <Link to="/home/assignments/new">
+                <Plus className="size-4" /> New assignment
+              </Link>
+            </Button>
+          ) : undefined
+        }
       />
 
       {isLoading && (
@@ -121,11 +144,13 @@ function AssignmentProblemsPanel({
   status: AssignmentStatus;
 }) {
   const { user } = useAuth();
+  const isStaff = !!user && STAFF_ROLES.includes(user.role);
   const isActive = status === AssignmentStatus.ACTIVE;
-  const notYetOpen =
-    status === AssignmentStatus.DRAFT || status === AssignmentStatus.SCHEDULED;
-  // Grades/feedback are visible as soon as they exist, so show a student their
-  // running grade on any open/closed assignment (not just after publish).
+  const notYetOpen = status === AssignmentStatus.DRAFT || status === AssignmentStatus.SCHEDULED;
+  // The card is reveal-gated internally (§9.2): pre-publish it shows per-item
+  // "Submitted / Awaiting review" states, post-publish the full breakdown. So
+  // mount it for any open/closed assignment; the backend hides scores until
+  // GRADE_PUBLISHED.
   const showGrades = user?.role === Role.STUDENT && !notYetOpen;
 
   const { data, isLoading } = useQuery({
@@ -135,6 +160,26 @@ function AssignmentProblemsPanel({
 
   return (
     <div className="space-y-4 border-t border-border bg-muted/20 p-4">
+      {/* Primary entry points (#22): staff build the item list; students take the
+          assignment (mixed items) — the per-problem Solve links below remain the
+          direct route into the coding editor. */}
+      <div className="flex flex-wrap gap-2">
+        {isStaff && (
+          <Button asChild size="sm" variant="outline">
+            <Link to={`/home/assignments/${assignmentId}/build`}>
+              <Hammer className="size-4" /> Build items
+            </Link>
+          </Button>
+        )}
+        {!isStaff && isActive && (
+          <Button asChild size="sm" className="bg-brand text-brand-foreground hover:bg-brand/90">
+            <Link to={`/home/assignments/${assignmentId}/take`}>
+              <PlayCircle className="size-4" /> Start / Continue
+            </Link>
+          </Button>
+        )}
+      </div>
+
       {showGrades && <StudentGradesCard assignmentId={assignmentId} />}
 
       {!isActive && (

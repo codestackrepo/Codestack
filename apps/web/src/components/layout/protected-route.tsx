@@ -1,6 +1,7 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '@/features/auth/context/auth-context';
-import { Role } from '@/types/common';
+import { useModuleAccess } from '@/features/auth/hooks/use-module-access';
+import { AppModuleKey, Role } from '@/types/common';
 
 export function ProtectedRoute() {
   const { user, isLoading } = useAuth();
@@ -19,5 +20,18 @@ export function RequireRole({ roles }: { roles: Role[] }) {
   if (user.role !== Role.ADMIN && !roles.includes(user.role)) {
     return <Navigate to="/home" replace />;
   }
+  return <Outlet />;
+}
+
+/**
+ * Nest inside <ProtectedRoute> to gate a route on a toggleable module (§9.8).
+ * Admin always passes; a disabled module redirects to /home. Cosmetic only —
+ * the backend guard (#31) is the real enforcement.
+ */
+export function RequireModule({ module }: { module: AppModuleKey }) {
+  const { user } = useAuth();
+  const { canAccess } = useModuleAccess();
+  if (!user) return null;
+  if (!canAccess(module)) return <Navigate to="/home" replace />;
   return <Outlet />;
 }

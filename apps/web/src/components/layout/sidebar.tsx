@@ -1,7 +1,8 @@
 import { NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { Role } from '@/types/common';
+import { AppModuleKey, Role } from '@/types/common';
 import { useAuth } from '@/features/auth/context/auth-context';
+import { useModuleAccess } from '@/features/auth/hooks/use-module-access';
 import { Logo } from '@/components/shared/logo';
 import {
   LayoutDashboard,
@@ -12,6 +13,7 @@ import {
   Terminal,
   Layers,
   UserPlus,
+  Users,
   Inbox,
   Mail,
 } from 'lucide-react';
@@ -22,8 +24,12 @@ interface NavItem {
   icon: typeof LayoutDashboard;
   /** Restrict to these roles. Omitted = visible to everyone. Admin always sees all. */
   roles?: Role[];
+  /** Hide when this toggleable module is disabled for the user's role. Admin always sees all. */
+  module?: AppModuleKey;
   /** Renders a muted "Soon" badge; the item still navigates (to a placeholder page). */
   comingSoon?: boolean;
+  /** Exact-match active state (NavLink `end`) — for parent paths like /home/admin. */
+  end?: boolean;
 }
 
 interface NavSection {
@@ -41,23 +47,40 @@ const NAV_SECTIONS: NavSection[] = [
   {
     heading: 'Learn',
     items: [
-      { to: '/home/problems', label: 'Problems', icon: FileCode2 },
-      { to: '/home/topics', label: 'Topics', icon: Layers, comingSoon: true },
+      { to: '/home/problems', label: 'Problems', icon: FileCode2, module: AppModuleKey.PROBLEMS },
+      {
+        to: '/home/topics',
+        label: 'Topics',
+        icon: Layers,
+        module: AppModuleKey.TOPICS,
+        comingSoon: true,
+      },
       // Visible to everyone: the backend scopes students to their enrolled,
       // student-visible assignments, so this is how students reach the solve editor.
-      { to: '/home/assignments', label: 'Assignments', icon: ClipboardList },
-      { to: '/home/playground', label: 'Playground', icon: Terminal },
+      {
+        to: '/home/assignments',
+        label: 'Assignments',
+        icon: ClipboardList,
+        module: AppModuleKey.ASSIGNMENTS,
+      },
+      { to: '/home/playground', label: 'Playground', icon: Terminal, module: AppModuleKey.PLAYGROUND },
     ],
   },
   {
     heading: 'Classroom',
     items: [
-      { to: '/home/classrooms', label: 'Classrooms', icon: GraduationCap },
+      {
+        to: '/home/classrooms',
+        label: 'Classrooms',
+        icon: GraduationCap,
+        module: AppModuleKey.CLASSROOMS,
+      },
       {
         to: '/home/grading',
         label: 'Gradebook',
         icon: ClipboardCheck,
         roles: [Role.ADMIN, Role.PROFESSOR],
+        module: AppModuleKey.GRADING,
       },
       // Students can ask to become a professor; staff never see this.
       {
@@ -71,6 +94,8 @@ const NAV_SECTIONS: NavSection[] = [
   {
     heading: 'Admin',
     items: [
+      { to: '/home/admin', label: 'Overview', icon: LayoutDashboard, roles: [Role.ADMIN], end: true },
+      { to: '/home/admin/users', label: 'Users', icon: Users, roles: [Role.ADMIN] },
       { to: '/home/admin/requests', label: 'Access requests', icon: Inbox, roles: [Role.ADMIN] },
       { to: '/home/admin/invites', label: 'Invites', icon: Mail, roles: [Role.ADMIN] },
     ],
@@ -85,9 +110,11 @@ interface SidebarProps {
 
 export function Sidebar({ className, onNavigate }: SidebarProps) {
   const { user } = useAuth();
+  const { canAccess } = useModuleAccess();
 
   const canSee = (item: NavItem) =>
-    !item.roles || !user || user.role === Role.ADMIN || item.roles.includes(user.role);
+    (!item.roles || !user || user.role === Role.ADMIN || item.roles.includes(user.role)) &&
+    (!item.module || canAccess(item.module));
 
   const sections = NAV_SECTIONS.map((section) => ({
     ...section,
@@ -116,6 +143,7 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
               <NavLink
                 key={item.to}
                 to={item.to}
+                end={item.end}
                 onClick={onNavigate}
                 className={({ isActive }) =>
                   cn(

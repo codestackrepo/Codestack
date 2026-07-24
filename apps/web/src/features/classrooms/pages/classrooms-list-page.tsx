@@ -1,14 +1,20 @@
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { GraduationCap, Users } from 'lucide-react';
+import { GraduationCap, Plus, Users } from 'lucide-react';
 import { classroomsApi } from '../api/classrooms.api';
+import { useAuth } from '@/features/auth/context/auth-context';
 import { EmptyState } from '@/components/shared/empty-state';
 import { PageHeader } from '@/components/shared/page-header';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { STAFF_ROLES } from '@/types/common';
 
 export function ClassroomsListPage() {
+  const { user } = useAuth();
+  const isStaff = !!user && STAFF_ROLES.includes(user.role);
+
   const { data, isLoading } = useQuery({
     queryKey: ['classrooms', 'list'],
     queryFn: () => classroomsApi.list(),
@@ -19,6 +25,15 @@ export function ClassroomsListPage() {
       <PageHeader
         title="Classrooms"
         description="Courses you teach, grade, or are enrolled in."
+        actions={
+          isStaff ? (
+            <Button asChild className="bg-brand text-brand-foreground hover:bg-brand/90">
+              <Link to="/home/classrooms/new">
+                <Plus className="size-4" /> New classroom
+              </Link>
+            </Button>
+          ) : undefined
+        }
       />
 
       {isLoading && (

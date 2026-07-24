@@ -90,4 +90,13 @@ export class Problem extends BaseEntity {
     inverseJoinColumn: { name: 'list_id', referencedColumnName: 'id' },
   })
   lists!: UserProblemList[];
+
+  /**
+   * Derived (not a column): a problem is judge-ready when it carries the
+   * structured fields needed to synthesize drivers + testcase I/O. Practice
+   * judging is hard-gated on this (§9.11); the catalog UI surfaces it too.
+   */
+  get isJudgeReady(): boolean {
+    return !!this.ioSpec && !!this.functionName;
+  }
 }

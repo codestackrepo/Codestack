@@ -14,6 +14,7 @@ import { AppThrottlerGuard } from './common/guards/app-throttler.guard';
 import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { OnboardingModule } from './modules/onboarding/onboarding.module';
+import { ModuleAccessModule } from './modules/module-access/module-access.module';
 import { ProblemsModule } from './modules/problems/problems.module';
 import { ClassroomsModule } from './modules/classrooms/classrooms.module';
 import { AssignmentsModule } from './modules/assignments/assignments.module';
@@ -22,6 +23,8 @@ import { CodeExecutionModule } from './modules/code-execution/code-execution.mod
 import { GradingModule } from './modules/grading/grading.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { PlaygroundModule } from './modules/playground/playground.module';
+import { GamificationModule } from './modules/gamification/gamification.module';
+import { AdminModule } from './modules/admin/admin.module';
 import { DemoModule } from './modules/demo/demo.module';
 // AiModule and BillingModule are intentionally NOT imported (M0 — "Disable & hide
 // AI + Billing"). Their source and migrations remain on disk so the feature can be
@@ -58,6 +61,7 @@ import { DemoModule } from './modules/demo/demo.module';
     UsersModule,
     AuthModule,
     OnboardingModule,
+    ModuleAccessModule,
     ProblemsModule,
     ClassroomsModule,
     AssignmentsModule,
@@ -66,6 +70,10 @@ import { DemoModule } from './modules/demo/demo.module';
     GradingModule,
     NotificationsModule,
     PlaygroundModule,
+    // Registered here (not only where its controller lives) so the
+    // SUBMISSION_FINALIZED listener also runs in the worker process (§5.6).
+    GamificationModule,
+    AdminModule,
     DemoModule,
   ],
   providers: [

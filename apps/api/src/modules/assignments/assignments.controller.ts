@@ -15,6 +15,8 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '../../common/enums/role.enum';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
+import { AppModuleKey } from '../module-access/enums/app-module-key.enum';
+import { RequiresModule } from '../module-access/decorators/requires-module.decorator';
 import { AssignmentsService } from './assignments.service';
 import {
   AssignmentProblemEditorResponseDto,
@@ -33,6 +35,7 @@ import {
 @ApiTags('assignments')
 @ApiCookieAuth('access_token')
 @Controller('assignments')
+@RequiresModule(AppModuleKey.ASSIGNMENTS)
 export class AssignmentsController {
   constructor(private readonly assignments: AssignmentsService) {}
 

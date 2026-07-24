@@ -21,13 +21,13 @@ import type { User } from '@/types/user';
 import { gradingApi } from '../api/grading.api';
 import { GradebookTable } from '../components/gradebook-table';
 import { ScoreDistributionChart } from '../components/score-distribution-chart';
-import { EditScoreDialog } from '../components/edit-score-dialog';
-import { formatScore, scorePercent, type ProblemScore } from '../types';
+import { ItemReviewDrawer } from '../components/item-review-drawer';
+import { formatScore, scorePercent, type ItemScore } from '../types';
 
-interface EditTarget {
+interface ReviewTarget {
   studentId: string;
   studentName: string;
-  problem: ProblemScore;
+  item: ItemScore;
 }
 
 export function GradingPage() {
@@ -36,7 +36,7 @@ export function GradingPage() {
 
   const [classroomId, setClassroomId] = useState<string | null>(null);
   const [assignmentId, setAssignmentId] = useState<string | null>(null);
-  const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
+  const [reviewTarget, setReviewTarget] = useState<ReviewTarget | null>(null);
 
   const classroomsQuery = useQuery({
     queryKey: ['grading', 'classrooms'],
@@ -75,12 +75,14 @@ export function GradingPage() {
   const summary = useMemo(() => {
     if (scores.length === 0) return null;
     const maxScore = scores[0].assignmentScore.maxScore;
-    const totalFinal = scores.reduce((sum, s) => sum + s.assignmentScore.finalScore, 0);
+    // Staff endpoint is never reveal-gated, so finalScore is populated here;
+    // coalesce null defensively (the type allows it for the student view).
+    const totalFinal = scores.reduce((sum, s) => sum + (s.assignmentScore.finalScore ?? 0), 0);
     const totalPct = scores.reduce(
       (sum, s) => sum + scorePercent(s.assignmentScore.finalScore, s.assignmentScore.maxScore),
       0,
     );
-    const graded = scores.filter((s) => s.assignmentScore.finalScore > 0).length;
+    const graded = scores.filter((s) => (s.assignmentScore.finalScore ?? 0) > 0).length;
     return {
       count: scores.length,
       maxScore,
@@ -222,21 +224,21 @@ export function GradingPage() {
             students={scores}
             studentsById={studentsById}
             canEdit
-            onEdit={(studentId, studentName, problem) =>
-              setEditTarget({ studentId, studentName, problem })
+            onReview={(studentId, studentName, item) =>
+              setReviewTarget({ studentId, studentName, item })
             }
           />
         </div>
       )}
 
-      {editTarget && assignmentId && (
-        <EditScoreDialog
-          key={`${editTarget.studentId}:${editTarget.problem.assignmentProblemId}`}
+      {reviewTarget && assignmentId && (
+        <ItemReviewDrawer
+          key={`${reviewTarget.studentId}:${reviewTarget.item.itemId}`}
           assignmentId={assignmentId}
-          studentId={editTarget.studentId}
-          studentName={editTarget.studentName}
-          problem={editTarget.problem}
-          onClose={() => setEditTarget(null)}
+          studentId={reviewTarget.studentId}
+          studentName={reviewTarget.studentName}
+          item={reviewTarget.item}
+          onClose={() => setReviewTarget(null)}
         />
       )}
     </div>

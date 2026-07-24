@@ -2,7 +2,9 @@ import { Column, Entity, Index, JoinColumn, ManyToOne, OneToMany } from 'typeorm
 import { BaseEntity } from '../../../common/entities/base.entity';
 import { Language } from '../../../common/enums/language.enum';
 import { AssignmentProblem } from '../../assignments/entities/assignment-problem.entity';
+import { Problem } from '../../problems/entities/problem.entity';
 import { User } from '../../users/entities/user.entity';
+import { SubmissionContext } from '../enums/submission-context.enum';
 import { SubmissionStatus } from '../enums/submission-status.enum';
 import { TestCaseResult } from './test-case-result.entity';
 
@@ -16,6 +18,7 @@ export interface FailedTestcaseDetail {
 
 @Entity('submissions')
 @Index('idx_submission_user_ap_created', ['userId', 'assignmentProblemId', 'createdAt'])
+@Index('idx_submission_user_problem_created', ['userId', 'problemId', 'createdAt'])
 @Index('idx_submission_status', ['status'])
 export class Submission extends BaseEntity {
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
@@ -25,12 +28,28 @@ export class Submission extends BaseEntity {
   @Column({ type: 'uuid', name: 'user_id' })
   userId!: string;
 
-  @ManyToOne(() => AssignmentProblem, { onDelete: 'CASCADE' })
+  // Discriminates the submission target (practice vs assignment). Default
+  // 'assignment' preserves legacy behavior (migration 5, issue #25).
+  @Column({ type: 'enum', enum: SubmissionContext, default: SubmissionContext.ASSIGNMENT })
+  context!: SubmissionContext;
+
+  @ManyToOne(() => AssignmentProblem, { onDelete: 'CASCADE', nullable: true })
   @JoinColumn({ name: 'assignment_problem_id' })
   assignmentProblem!: AssignmentProblem;
 
-  @Column({ type: 'uuid', name: 'assignment_problem_id' })
+  // nullable in DB (migration 5); typed non-null until #26 introduces the
+  // practice writer that branches on context.
+  @Column({ type: 'uuid', name: 'assignment_problem_id', nullable: true })
   assignmentProblemId!: string;
+
+  // Practice target — a standalone library problem. Null for assignment
+  // submissions (exactly-one-target enforced by chk_submission_single_target).
+  @ManyToOne(() => Problem, { onDelete: 'CASCADE', nullable: true })
+  @JoinColumn({ name: 'problem_id' })
+  problem!: Problem | null;
+
+  @Column({ type: 'uuid', name: 'problem_id', nullable: true })
+  problemId!: string | null;
 
   @Column({ type: 'enum', enum: Language })
   language!: Language;

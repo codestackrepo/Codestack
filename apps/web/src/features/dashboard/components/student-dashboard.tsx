@@ -5,6 +5,7 @@ import { problemsApi } from '@/features/problems/api/problems.api';
 import type { User } from '@/types/user';
 import { PageHeader } from '@/components/shared/page-header';
 import { StatCard } from '@/components/shared/stat-card';
+import { GamificationPanel } from '@/features/gamification/components/gamification-panel';
 import {
   byDeadline,
   daysUntilLabel,
@@ -64,6 +65,8 @@ export function StudentDashboard({ user }: { user: User }) {
         <DeadlinesCard deadlines={sorted} isLoading={isLoading} className="lg:col-span-2" />
         <QuickActionsCard actions={ACTIONS} />
       </div>
+
+      <GamificationPanel />
     </div>
   );
 }

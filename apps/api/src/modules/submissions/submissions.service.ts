@@ -7,6 +7,7 @@ import { AssignmentProblem } from '../assignments/entities/assignment-problem.en
 import { ClassroomsService } from '../classrooms/classrooms.service';
 import { Submission } from './entities/submission.entity';
 import { TestCaseResult } from './entities/test-case-result.entity';
+import { SubmissionContext } from './enums/submission-context.enum';
 
 @Injectable()
 export class SubmissionsService {
@@ -55,6 +56,26 @@ export class SubmissionsService {
       throw new ForbiddenException('You cannot view this submission');
     }
     await this.assertStaffOrGraderForProblem(actor, submission.assignmentProblemId);
+  }
+
+  /**
+   * Whether the actor may read the FULL verdict/per-test detail of a submission
+   * (§9.1). True for admin, for staff/graders of an assignment submission's
+   * classroom, and for the owner of a PRACTICE submission. False for a student
+   * viewing their own ASSIGNMENT submission (blind submit).
+   */
+  async canViewFullDetail(actor: AuthenticatedUser, submission: Submission): Promise<boolean> {
+    if (actor.role === Role.ADMIN) return true;
+    if (submission.context === SubmissionContext.PRACTICE) {
+      return submission.userId === actor.id; // practice owner sees full
+    }
+    // Assignment: staff/grader of the classroom see full; the student does not.
+    try {
+      await this.assertStaffOrGraderForProblem(actor, submission.assignmentProblemId);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /** Admin bypasses; professor/grader must belong to the owning classroom. */

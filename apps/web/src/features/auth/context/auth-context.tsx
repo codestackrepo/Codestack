@@ -1,12 +1,15 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { authApi, type LoginInput, type RegisterInput } from '../api/auth.api';
+import type { ModuleMap } from '@/types/common';
 import type { User } from '@/types/user';
 
 const SESSION_QUERY_KEY = ['auth', 'session'] as const;
 
 interface AuthContextValue {
   user: User | null;
+  /** Effective per-role module map from `/auth/verify`; null while the session loads. */
+  modules: ModuleMap | null;
   isLoading: boolean;
   login: (input: LoginInput) => Promise<User>;
   register: (input: RegisterInput) => Promise<User>;
@@ -25,14 +28,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     staleTime: 5 * 60_000,
   });
 
+  // login/register resolve to a bare User (no module map), so we invalidate the
+  // session query on success and let `verify` refetch { user, modules } as the
+  // single source of truth. logout clears it outright.
   const loginMutation = useMutation({
     mutationFn: authApi.login,
-    onSuccess: (user) => queryClient.setQueryData(SESSION_QUERY_KEY, user),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: SESSION_QUERY_KEY }),
   });
 
   const registerMutation = useMutation({
     mutationFn: authApi.register,
-    onSuccess: (user) => queryClient.setQueryData(SESSION_QUERY_KEY, user),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: SESSION_QUERY_KEY }),
   });
 
   const logoutMutation = useMutation({
@@ -42,7 +48,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AuthContextValue>(
     () => ({
-      user: sessionQuery.data ?? null,
+      user: sessionQuery.data?.user ?? null,
+      modules: sessionQuery.data?.modules ?? null,
       isLoading: sessionQuery.isLoading,
       login: loginMutation.mutateAsync,
       register: registerMutation.mutateAsync,

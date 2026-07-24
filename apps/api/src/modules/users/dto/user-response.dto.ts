@@ -9,6 +9,10 @@ export class UserResponseDto {
   @ApiProperty() firstName!: string;
   @ApiProperty() lastName!: string;
   @ApiProperty({ enum: Role }) role!: Role;
+  // Admin-relevant, non-sensitive fields for the user-management table (#40).
+  @ApiProperty() isActive!: boolean;
+  @ApiProperty({ nullable: true }) lastLoginAt!: Date | null;
+  @ApiProperty() createdAt!: Date;
 
   static from(user: User): UserResponseDto {
     return {
@@ -17,6 +21,9 @@ export class UserResponseDto {
       firstName: user.firstName,
       lastName: user.lastName,
       role: user.role,
+      isActive: user.isActive,
+      lastLoginAt: user.lastLoginAt,
+      createdAt: user.createdAt,
     };
   }
 }
