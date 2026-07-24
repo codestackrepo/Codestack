@@ -19,8 +19,13 @@ export class User extends BaseEntity {
   passwordHash!: string;
 
   @Index('idx_user_role')
-  @Column({ type: 'enum', enum: Role, default: Role.STUDENT })
+  @Column({ type: 'varchar', length: 20, default: Role.STUDENT })
   role!: Role;
+
+  // Tenant FK. NULL only for SUPERADMIN (DB-enforced by chk_users_org_required).
+  @Index('idx_user_organization')
+  @Column({ type: 'uuid', name: 'organization_id', nullable: true })
+  organizationId!: string | null;
 
   @Column({ type: 'boolean', default: true, name: 'is_active' })
   isActive!: boolean;

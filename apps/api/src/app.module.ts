@@ -15,6 +15,7 @@ import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { OnboardingModule } from './modules/onboarding/onboarding.module';
 import { ModuleAccessModule } from './modules/module-access/module-access.module';
+import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { ProblemsModule } from './modules/problems/problems.module';
 import { ClassroomsModule } from './modules/classrooms/classrooms.module';
 import { AssignmentsModule } from './modules/assignments/assignments.module';
@@ -58,6 +59,8 @@ import { DemoModule } from './modules/demo/demo.module';
     RedisModule,
     QueueModule,
     HealthModule,
+    // Tenant backbone — foundational, registered before feature modules.
+    OrganizationsModule,
     UsersModule,
     AuthModule,
     OnboardingModule,
