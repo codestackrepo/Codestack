@@ -36,7 +36,7 @@ export class ProblemsController {
   constructor(private readonly problems: ProblemsService) {}
 
   @Post()
-  @Roles(Role.ADMIN, Role.PROFESSOR)
+  @Roles(Role.ADMIN, Role.PROFESSOR, Role.SUPERADMIN)
   async create(
     @Body() dto: CreateProblemDto,
     @CurrentUser() actor: AuthenticatedUser,

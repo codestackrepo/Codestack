@@ -37,7 +37,6 @@ describe('AssignmentsService — kind/targeting validation', () => {
       {} as never, // assignments
       {} as never, // assignmentProblems
       {} as never, // templates
-      {} as never, // problems
       {} as never, // testCases
       {} as never, // libraryTemplates
       batches as never,
@@ -45,6 +44,7 @@ describe('AssignmentsService — kind/targeting validation', () => {
       classroomsService as never,
       {} as never, // dataSource
       {} as never, // emitter
+      { getVisible: jest.fn() } as never, // problemsService (#57)
     );
   });
 
@@ -106,17 +106,17 @@ function makeSweepService(overrides: {
   };
   const noop = {} as never;
   const service = new AssignmentsService(
-    assignmentsRepo as never,
-    noop,
-    noop,
-    noop,
-    noop,
-    noop,
-    noop,
-    attemptsRepo as never,
-    noop,
-    noop,
-    noop,
+    assignmentsRepo as never, // assignments
+    noop, // assignmentProblems
+    noop, // templates
+    noop, // testCases
+    noop, // libraryTemplates
+    noop, // batches
+    attemptsRepo as never, // attempts
+    noop, // classroomsService
+    noop, // dataSource
+    noop, // emitter
+    noop, // problemsService (#57)
   );
   return { service, assignmentsRepo, attemptsRepo };
 }

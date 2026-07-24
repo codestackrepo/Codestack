@@ -10,7 +10,7 @@ import {
   MaxLength,
   ValidateNested,
 } from 'class-validator';
-import { Difficulty, ProblemVisibility } from '../enums/problem.enums';
+import { Difficulty, ProblemScope, ProblemVisibility } from '../enums/problem.enums';
 import { TestCaseInputDto } from './test-case.dto';
 
 export class CreateProblemDto {
@@ -48,6 +48,15 @@ export class CreateProblemDto {
   @IsOptional()
   @IsEnum(ProblemVisibility)
   visibility?: ProblemVisibility;
+
+  @ApiPropertyOptional({
+    enum: ProblemScope,
+    description:
+      'Superadmin only. Org staff problems are always org-scoped; a non-superadmin sending scope=global is rejected.',
+  })
+  @IsOptional()
+  @IsEnum(ProblemScope)
+  scope?: ProblemScope;
 
   @ApiPropertyOptional({ type: [TestCaseInputDto] })
   @IsOptional()

@@ -21,12 +21,13 @@ import { Role } from '../../common/enums/role.enum';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
 import { assertSameOrg, isSuperAdmin, scopeToOrg } from '../../common/tenancy/tenant-scope.util';
 import { ClassroomsService } from '../classrooms/classrooms.service';
+import { ProblemsService } from '../problems/problems.service';
 import { Batch } from '../classrooms/entities/batch.entity';
 import { Classroom } from '../classrooms/entities/classroom.entity';
 import { LibraryProblemTemplate } from '../problems/entities/library-problem-template.entity';
 import { Problem } from '../problems/entities/problem.entity';
 import { TestCase } from '../problems/entities/test-case.entity';
-import { ProblemSource, ProblemVisibility } from '../problems/enums/problem.enums';
+import { ProblemScope, ProblemSource, ProblemVisibility } from '../problems/enums/problem.enums';
 import {
   CloneProblemDto,
   CreateAssignmentDto,
@@ -63,7 +64,6 @@ export class AssignmentsService {
     @InjectRepository(AssignmentProblem)
     private readonly assignmentProblems: Repository<AssignmentProblem>,
     @InjectRepository(ProblemTemplate) private readonly templates: Repository<ProblemTemplate>,
-    @InjectRepository(Problem) private readonly problems: Repository<Problem>,
     @InjectRepository(TestCase) private readonly testCases: Repository<TestCase>,
     @InjectRepository(LibraryProblemTemplate)
     private readonly libraryTemplates: Repository<LibraryProblemTemplate>,
@@ -73,6 +73,7 @@ export class AssignmentsService {
     private readonly classroomsService: ClassroomsService,
     private readonly dataSource: DataSource,
     private readonly emitter: EventEmitter2,
+    private readonly problemsService: ProblemsService,
   ) {}
 
   async create(dto: CreateAssignmentDto, actor: AuthenticatedUser): Promise<Assignment> {
@@ -350,8 +351,9 @@ export class AssignmentsService {
     const assignment = await this.getById(assignmentId);
     await this.assertCanManageAssignment(actor, assignment);
 
-    const source = await this.problems.findOne({ where: { id: dto.sourceProblemId } });
-    if (!source) throw new BadRequestException('Source problem not found');
+    // #57: gated read — getVisible throws 404/403 (was an ungated raw lookup
+    // that leaked any problem by id across users/tenants).
+    const source = await this.problemsService.getVisible(dto.sourceProblemId, actor);
 
     const dup = await this.assignmentProblems.findOne({
       where: { assignmentId, problemId: source.id },
@@ -374,11 +376,9 @@ export class AssignmentsService {
     const assignment = await this.getById(assignmentId);
     await this.assertCanManageAssignment(actor, assignment);
 
-    const source = await this.problems.findOne({
-      where: { id: dto.sourceProblemId },
-      relations: { tags: true },
-    });
-    if (!source) throw new BadRequestException('Source problem not found');
+    // #57: gated read (getVisible eager-loads tags/companies; clone only reads
+    // source.difficulty/id below, so behavior is preserved).
+    const source = await this.problemsService.getVisible(dto.sourceProblemId, actor);
     const activeCases = await this.testCases.find({
       where: { problemId: source.id, isActive: true },
     });
@@ -389,6 +389,9 @@ export class AssignmentsService {
         body: dto.problem.body,
         difficulty: dto.problem.difficulty ?? source.difficulty,
         visibility: ProblemVisibility.PRIVATE,
+        // Clone lands as an org-private copy in the assignment's tenant (#57).
+        scope: ProblemScope.ORG,
+        organizationId: actor.organizationId ?? assignment.organizationId,
         source: ProblemSource.HUMAN,
         createdById: actor.id,
       });

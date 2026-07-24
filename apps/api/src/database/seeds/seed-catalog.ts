@@ -13,6 +13,7 @@ import { TestCase } from '../../modules/problems/entities/test-case.entity';
 import { LibraryProblemTemplate } from '../../modules/problems/entities/library-problem-template.entity';
 import {
   Difficulty,
+  ProblemScope,
   ProblemSource,
   ProblemVisibility,
   TestCaseType,
@@ -188,6 +189,9 @@ async function upsertCatalogProblem(
   problem.difficulty = difficultyOf(cp.difficulty);
   problem.source = ProblemSource.HUMAN;
   problem.visibility = ProblemVisibility.SHARED;
+  // Seed catalog is the platform-global pool (published = scope=global + shared).
+  problem.scope = ProblemScope.GLOBAL;
+  problem.organizationId = null;
   problem.functionName = cp.functionName;
   problem.ioSpec = cp.ioSpec as IoSpec;
   problem.tags = tags;
