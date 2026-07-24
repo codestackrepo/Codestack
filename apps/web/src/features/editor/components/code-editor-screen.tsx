@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Editor } from '@monaco-editor/react';
-import { useTheme } from 'next-themes';
+import { defineEditorThemes, useEditorTheme } from '../lib/editor-theme';
+import { EditorThemeToggle } from './editor-theme-toggle';
 import { Group, Panel, Separator } from 'react-resizable-panels';
 import {
   ArrowLeft,
@@ -30,9 +31,10 @@ import { DifficultyBadge } from '@/components/shared/difficulty-badge';
 import { Logo } from '@/components/shared/logo';
 import { MarkdownView } from '@/components/shared/markdown-view';
 import { VerdictBadge } from '@/components/shared/verdict-badge';
+import { AcceptedBurst } from './accepted-burst';
+import { CasePills, IoField } from './solve-io';
 import { useSubmissionSocket } from '../hooks/use-submission-socket';
 import { usePersistedCode } from '../hooks/use-persisted-code';
-import { CasePills, IoField } from './solve-io';
 import { parseApiError } from '@/lib/api-client';
 import type { Language } from '@/types/common';
 import { Difficulty } from '@/types/problem';
@@ -97,8 +99,8 @@ interface CodeEditorScreenProps {
   /**
    * Practice only: fetches the finalized submission once judging is terminal, so
    * the result panel can show the failing case's input/expected/output (like
-   * LeetCode). Omitted for the blind assignment path — there the backend
-   * coarsens the payload anyway, so no detail could leak.
+   * LeetCode). Omitted for the blind assignment path — the backend coarsens the
+   * payload there anyway, so no detail could leak.
    */
   onFetchSubmission?: (submissionId: string) => Promise<Submission>;
 }
@@ -119,8 +121,7 @@ export function CodeEditorScreen({
   onFetchSubmission,
 }: CodeEditorScreenProps) {
   const navigate = useNavigate();
-  const { resolvedTheme } = useTheme();
-  const monacoTheme = resolvedTheme === 'dark' ? 'vs-dark' : 'light';
+  const { pref: editorThemePref, setPref: setEditorThemePref, monacoTheme } = useEditorTheme();
   const [language, setLanguage] = useState<Language | null>(null);
   const [submissionId, setSubmissionId] = useState<string | null>(null);
   const [runResult, setRunResult] = useState<RunResult | null>(null);
@@ -232,7 +233,9 @@ export function CodeEditorScreen({
 
   const failedDetail = submissionDetail?.failedTestcaseDetail ?? null;
   const submitAccepted = liveStatus?.status === SubmissionStatus.ACCEPTED;
-  const submitMemory = formatMemory(submissionDetail?.memoryBytes ?? liveStatus?.memoryBytes ?? null);
+  const submitMemory = formatMemory(
+    submissionDetail?.memoryBytes ?? liveStatus?.memoryBytes ?? null,
+  );
   const submitRuntime = submissionDetail?.runtimeMs ?? liveStatus?.runtimeMs ?? null;
 
   return (
@@ -246,6 +249,7 @@ export function CodeEditorScreen({
           <h1 className="truncate text-sm font-semibold">{bootstrap.title}</h1>
         </div>
         <div className="flex items-center gap-2">
+          <EditorThemeToggle pref={editorThemePref} onChange={setEditorThemePref} />
           {effectiveLanguage && (
             <Select value={effectiveLanguage} onValueChange={(v) => setLanguage(v as Language)}>
               <SelectTrigger className="h-8 w-36">
@@ -290,7 +294,7 @@ export function CodeEditorScreen({
       </div>
 
       {reviewMode && (
-        <div className="flex items-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs font-medium text-amber-700 dark:text-amber-400">
+        <div className="flex items-center gap-2 border-b border-warning/30 bg-warning/10 px-4 py-2 text-xs font-medium text-warning">
           <Lock className="size-3.5" />
           This assignment is closed for submissions — you can still run your code against the sample
           cases.
@@ -323,6 +327,7 @@ export function CodeEditorScreen({
                 language={effectiveLanguage ? MONACO_LANGUAGE[effectiveLanguage] : 'plaintext'}
                 value={code}
                 onChange={(value) => setCode(value ?? '')}
+                beforeMount={defineEditorThemes}
                 theme={monacoTheme}
                 options={{ minimap: { enabled: false }, fontSize: 14, contextmenu: false }}
               />
@@ -342,6 +347,7 @@ export function CodeEditorScreen({
                     <TabsTrigger value="result">Test Result</TabsTrigger>
                   </TabsList>
 
+                  {/* ---- Test Cases: sample inputs, LeetCode-style case drill-in ---- */}
                   <TabsContent
                     value="testcases"
                     className="custom-scrollbar h-full space-y-3 overflow-y-auto p-4"
@@ -372,11 +378,12 @@ export function CodeEditorScreen({
                     )}
                   </TabsContent>
 
+                  {/* ---- Test Result: Run detail, then submit verdict + failing case ---- */}
                   <TabsContent
                     value="result"
                     className="custom-scrollbar h-full space-y-4 overflow-y-auto p-4"
                   >
-                    {/* ---- Run result: full per-case Input / Your Output / Expected ---- */}
+                    {/* Run: full per-case Input / Your Output / Expected */}
                     {runResult && (
                       <div className="space-y-3">
                         <div className="flex items-center gap-3">
@@ -393,9 +400,7 @@ export function CodeEditorScreen({
                         />
                         {runCases[runIdx] && (
                           <div className="space-y-3">
-                            <div className="flex items-center gap-2">
-                              <VerdictBadge status={runCases[runIdx].status} />
-                            </div>
+                            <VerdictBadge status={runCases[runIdx].status} />
                             <IoField label="Input" value={runCases[runIdx].input} />
                             <IoField
                               label="Your Output"
@@ -419,7 +424,7 @@ export function CodeEditorScreen({
                       </div>
                     )}
 
-                    {/* ---- Submission: live progress, then verdict + failing case ---- */}
+                    {/* Submission: live progress, then verdict + failing-case detail */}
                     {submissionId && !runResult && (
                       <div className="space-y-4">
                         {!liveStatus && (
@@ -430,25 +435,38 @@ export function CodeEditorScreen({
 
                         {liveStatus && (
                           <>
-                            <div className="flex flex-wrap items-center gap-3">
-                              {submitAccepted ? (
-                                <span className="flex items-center gap-1.5 text-base font-semibold text-emerald-600 dark:text-emerald-400">
-                                  <CheckCircle2 className="size-5" /> Accepted
+                            {submitAccepted ? (
+                              <div className="animate-scale-in relative flex items-center gap-2.5 overflow-visible rounded-xl bg-success/10 p-3">
+                                <AcceptedBurst key={submissionId} />
+                                <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-success text-success-foreground">
+                                  <CheckCircle2 className="size-5" />
                                 </span>
-                              ) : isJudging ? (
-                                <span className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
-                                  <Loader2 className="size-4 animate-spin" /> Judging…
+                                <div className="leading-tight">
+                                  <p className="font-semibold text-success">Accepted!</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {liveStatus.passedTestcaseCount}/{liveStatus.totalTestcaseCount}{' '}
+                                    tests passed
+                                  </p>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex flex-wrap items-center gap-3">
+                                {isJudging ? (
+                                  <span className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
+                                    <Loader2 className="size-4 animate-spin" /> Judging…
+                                  </span>
+                                ) : (
+                                  <span className="flex items-center gap-2">
+                                    <XCircle className="size-5 text-red-600 dark:text-red-400" />
+                                    <VerdictBadge status={liveStatus.status} />
+                                  </span>
+                                )}
+                                <span className="text-xs text-muted-foreground">
+                                  {liveStatus.passedTestcaseCount} / {liveStatus.totalTestcaseCount}{' '}
+                                  testcases passed
                                 </span>
-                              ) : (
-                                <span className="flex items-center gap-1.5 text-base font-semibold text-red-600 dark:text-red-400">
-                                  <XCircle className="size-5" /> {liveStatus.status}
-                                </span>
-                              )}
-                              <span className="text-xs text-muted-foreground">
-                                {liveStatus.passedTestcaseCount} / {liveStatus.totalTestcaseCount}{' '}
-                                testcases passed
-                              </span>
-                            </div>
+                              </div>
+                            )}
 
                             {(submitRuntime != null || submitMemory) && (
                               <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
@@ -465,7 +483,6 @@ export function CodeEditorScreen({
                               </div>
                             )}
 
-                            {/* Per-testcase verdict dots as they stream in. */}
                             {Object.keys(testcaseVerdicts).length > 0 && (
                               <CasePills
                                 count={
@@ -480,25 +497,26 @@ export function CodeEditorScreen({
                               />
                             )}
 
-                            {/* First failing case detail (practice; blind assignment omits it). */}
                             {failedDetail && !submitAccepted && (
                               <div className="space-y-3 border-t border-border pt-3">
                                 <p className="text-xs font-semibold text-muted-foreground">
                                   First failing case
                                 </p>
                                 <IoField label="Input" value={failedDetail.input} />
-                                <IoField label="Your Output" value={failedDetail.output} tone="bad" />
-                                <IoField label="Expected" value={failedDetail.expected} tone="good" />
+                                <IoField
+                                  label="Your Output"
+                                  value={failedDetail.output}
+                                  tone="bad"
+                                />
+                                <IoField
+                                  label="Expected"
+                                  value={failedDetail.expected}
+                                  tone="good"
+                                />
                                 {failedDetail.error && (
                                   <IoField label="Stderr" value={failedDetail.error} tone="bad" />
                                 )}
                               </div>
-                            )}
-
-                            {submitAccepted && (
-                              <p className="text-sm text-muted-foreground">
-                                All test cases passed. Nice work!
-                              </p>
                             )}
                           </>
                         )}

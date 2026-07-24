@@ -82,7 +82,7 @@ export function ModuleAccessMatrix() {
     data.matrix.find((c) => c.moduleKey === moduleKey && c.role === role);
 
   return (
-    <Table>
+    <Table density="compact">
       <TableHeader>
         <TableRow>
           <TableHead>Module</TableHead>

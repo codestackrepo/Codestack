@@ -107,7 +107,7 @@ export function AdminUsersPage() {
         <EmptyState title="No users" description="There are no users to show." />
       ) : (
         <div className="rounded-lg border border-border">
-          <Table>
+          <Table density="compact">
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>

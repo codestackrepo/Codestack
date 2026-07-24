@@ -211,16 +211,16 @@ function ReviewBody({ review }: { review: ItemReview }) {
                 className={cn(
                   'flex items-center gap-2 rounded-md border px-3 py-2 text-sm',
                   o.isCorrect
-                    ? 'border-emerald-500/40 bg-emerald-500/10'
+                    ? 'border-success/40 bg-success/12'
                     : picked
-                      ? 'border-red-500/40 bg-red-500/10'
+                      ? 'border-destructive/40 bg-destructive/12'
                       : 'border-border',
                 )}
               >
                 {o.isCorrect ? (
-                  <Check className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                  <Check className="size-4 shrink-0 text-success" />
                 ) : picked ? (
-                  <X className="size-4 shrink-0 text-red-600 dark:text-red-400" />
+                  <X className="size-4 shrink-0 text-destructive" />
                 ) : (
                   <span className="size-4 shrink-0" />
                 )}

@@ -42,21 +42,27 @@ export function StudentDashboard({ user }: { user: User }) {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard
+          className="animate-fade-in-up"
           label="Upcoming deadlines"
           value={deadlines?.length ?? '—'}
           icon={<CalendarClock className="size-5" />}
+          accent="var(--brand)"
           hint={next ? `Next ${daysUntilLabel(next.endDate)}` : 'Nothing due soon'}
         />
         <StatCard
+          className="animate-fade-in-up [animation-delay:80ms]"
           label="Problems available"
           value={problems?.meta.total ?? '—'}
           icon={<FileCode2 className="size-5" />}
+          accent="var(--chart-1)"
           hint="Ready to solve"
         />
         <StatCard
+          className="animate-fade-in-up [animation-delay:160ms]"
           label="Assignments"
           value={deadlines?.length ?? '—'}
           icon={<ClipboardList className="size-5" />}
+          accent="var(--chart-3)"
           hint="With an open deadline"
         />
       </div>

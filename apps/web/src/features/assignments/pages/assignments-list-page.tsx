@@ -28,9 +28,9 @@ import { Difficulty } from '@/types/problem';
 
 const STATUS_STYLES: Record<AssignmentStatus, string> = {
   [AssignmentStatus.DRAFT]: 'bg-muted text-muted-foreground',
-  [AssignmentStatus.SCHEDULED]: 'bg-blue-500/15 text-blue-600 dark:text-blue-400',
-  [AssignmentStatus.ACTIVE]: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
-  [AssignmentStatus.COMPLETED]: 'bg-amber-500/15 text-amber-600 dark:text-amber-400',
+  [AssignmentStatus.SCHEDULED]: 'bg-info/12 text-info',
+  [AssignmentStatus.ACTIVE]: 'bg-success/12 text-success',
+  [AssignmentStatus.COMPLETED]: 'bg-warning/12 text-warning',
   [AssignmentStatus.GRADE_PUBLISHED]: 'bg-primary/15 text-primary',
 };
 
