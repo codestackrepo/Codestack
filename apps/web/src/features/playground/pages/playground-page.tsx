@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { Editor } from '@monaco-editor/react';
-import { useTheme } from 'next-themes';
+import { defineEditorThemes, useEditorTheme } from '@/features/editor/lib/editor-theme';
+import { EditorThemeToggle } from '@/features/editor/components/editor-theme-toggle';
 import { Group, Panel, Separator } from 'react-resizable-panels';
 import { Loader2, Play, Terminal, Timer } from 'lucide-react';
 import { toast } from 'sonner';
@@ -36,8 +37,7 @@ function initialCodeByLanguage(): Record<Language, string> {
 }
 
 export function PlaygroundPage() {
-  const { resolvedTheme } = useTheme();
-  const monacoTheme = resolvedTheme === 'dark' ? 'vs-dark' : 'light';
+  const { pref: editorThemePref, setPref: setEditorThemePref, monacoTheme } = useEditorTheme();
   const [language, setLanguage] = useState<Language>(Language.PYTHON);
   const [codeByLanguage, setCodeByLanguage] =
     useState<Record<Language, string>>(initialCodeByLanguage);
@@ -103,6 +103,7 @@ export function PlaygroundPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <EditorThemeToggle pref={editorThemePref} onChange={setEditorThemePref} />
           <Select value={language} onValueChange={(v) => setLanguage(v as Language)}>
             <SelectTrigger className="h-8 w-36" aria-label="Language">
               <SelectValue />
@@ -142,6 +143,7 @@ export function PlaygroundPage() {
                   language={MONACO_LANGUAGE[language]}
                   value={code}
                   onChange={(value) => setCode(value ?? '')}
+                  beforeMount={defineEditorThemes}
                   theme={monacoTheme}
                   options={{ minimap: { enabled: false }, fontSize: 14, contextmenu: false }}
                 />

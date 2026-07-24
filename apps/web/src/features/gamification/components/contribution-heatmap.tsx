@@ -22,10 +22,10 @@ const WEEKDAY_LABELS = ['', 'Mon', '', 'Wed', '', 'Fri', ''];
 /** Emerald intensity ramp by activity count; theme-aware via Tailwind opacity. */
 function levelClass(count: number): string {
   if (count <= 0) return 'bg-muted';
-  if (count === 1) return 'bg-emerald-500/30';
-  if (count <= 3) return 'bg-emerald-500/50';
-  if (count <= 6) return 'bg-emerald-500/70';
-  return 'bg-emerald-500';
+  if (count === 1) return 'bg-success/30';
+  if (count <= 3) return 'bg-success/50';
+  if (count <= 6) return 'bg-success/70';
+  return 'bg-success';
 }
 
 interface Cell {

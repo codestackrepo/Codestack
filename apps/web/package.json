@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint . --fix",
     "typecheck": "tsc -b --noEmit",
+    "contrast:check": "node scripts/check-contrast.mjs",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
     "preview": "vite preview"
   },

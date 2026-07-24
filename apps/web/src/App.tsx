@@ -9,6 +9,9 @@ import { AppModuleKey, Role } from '@/types/common';
 // bundle stays lean. The heavy screens in particular (Monaco editor + playground,
 // recharts gradebook, react-markdown AI preview) only load when navigated to.
 // Named exports are adapted to the default-export shape React.lazy expects.
+const LandingPage = lazy(() =>
+  import('@/features/marketing/pages/landing-page').then((m) => ({ default: m.LandingPage })),
+);
 const LoginPage = lazy(() =>
   import('@/features/auth/pages/login-page').then((m) => ({ default: m.LoginPage })),
 );
@@ -126,7 +129,7 @@ function App() {
   return (
     <Suspense fallback={<RouteFallback />}>
       <Routes>
-        <Route path="/" element={<Navigate to="/home" replace />} />
+        <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
 

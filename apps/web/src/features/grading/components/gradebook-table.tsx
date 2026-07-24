@@ -34,7 +34,7 @@ export function GradebookTable({ students, studentsById, canEdit, onReview }: Gr
 
   return (
     <div className="custom-scrollbar overflow-x-auto rounded-xl ring-1 ring-foreground/10">
-      <Table>
+      <Table density="compact">
         <TableHeader>
           <TableRow className="bg-muted/50 hover:bg-muted/50">
             <TableHead className="sticky left-0 z-10 bg-muted/50 backdrop-blur">Student</TableHead>
@@ -78,7 +78,7 @@ export function GradebookTable({ students, studentsById, canEdit, onReview }: Gr
                     <TableCell key={col.itemId} className="text-center">
                       <div className="flex items-center justify-center gap-1.5">
                         {item.solved && (
-                          <Check className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                          <Check className="size-3.5 text-success" />
                         )}
                         {item.score === null ? (
                           <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">

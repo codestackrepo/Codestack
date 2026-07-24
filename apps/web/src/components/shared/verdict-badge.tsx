@@ -2,17 +2,19 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { SubmissionStatus } from '@/types/submission';
 
+// Aligned to the semantic status tokens (§13.6) rather than hardcoded Tailwind
+// palette colors, so verdicts follow the theme + pass the contrast gate's hues.
 const VERDICT_STYLES: Record<SubmissionStatus, string> = {
   [SubmissionStatus.PENDING]: 'bg-muted text-muted-foreground',
-  [SubmissionStatus.RUNNING]: 'bg-blue-500/15 text-blue-600 dark:text-blue-400',
-  [SubmissionStatus.ACCEPTED]: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
-  [SubmissionStatus.WRONG_ANSWER]: 'bg-red-500/15 text-red-600 dark:text-red-400',
-  [SubmissionStatus.TIME_LIMIT_EXCEEDED]: 'bg-amber-500/15 text-amber-600 dark:text-amber-400',
-  [SubmissionStatus.MEMORY_LIMIT_EXCEEDED]: 'bg-amber-500/15 text-amber-600 dark:text-amber-400',
-  [SubmissionStatus.RUNTIME_ERROR]: 'bg-red-500/15 text-red-600 dark:text-red-400',
-  [SubmissionStatus.SYNTAX_ERROR]: 'bg-red-500/15 text-red-600 dark:text-red-400',
-  [SubmissionStatus.COMPILE_ERROR]: 'bg-red-500/15 text-red-600 dark:text-red-400',
-  [SubmissionStatus.INTERNAL_ERROR]: 'bg-red-500/15 text-red-600 dark:text-red-400',
+  [SubmissionStatus.RUNNING]: 'bg-info/12 text-info',
+  [SubmissionStatus.ACCEPTED]: 'bg-success/12 text-success',
+  [SubmissionStatus.WRONG_ANSWER]: 'bg-destructive/12 text-destructive',
+  [SubmissionStatus.TIME_LIMIT_EXCEEDED]: 'bg-warning/12 text-warning',
+  [SubmissionStatus.MEMORY_LIMIT_EXCEEDED]: 'bg-warning/12 text-warning',
+  [SubmissionStatus.RUNTIME_ERROR]: 'bg-destructive/12 text-destructive',
+  [SubmissionStatus.SYNTAX_ERROR]: 'bg-destructive/12 text-destructive',
+  [SubmissionStatus.COMPILE_ERROR]: 'bg-destructive/12 text-destructive',
+  [SubmissionStatus.INTERNAL_ERROR]: 'bg-destructive/12 text-destructive',
   [SubmissionStatus.FINISHED]: 'bg-muted text-muted-foreground',
 };
 

@@ -47,7 +47,7 @@ export function RequestAccessPage() {
       {!isLoading && approved && (
         <Card>
           <CardContent className="flex items-start gap-3 py-6">
-            <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-emerald-600" />
+            <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-success" />
             <div>
               <p className="font-medium">You have professor access</p>
               <p className="text-sm text-muted-foreground">
@@ -61,7 +61,7 @@ export function RequestAccessPage() {
       {!isLoading && pending && (
         <Card>
           <CardContent className="flex items-start gap-3 py-6">
-            <Clock className="mt-0.5 size-5 shrink-0 text-amber-600" />
+            <Clock className="mt-0.5 size-5 shrink-0 text-warning" />
             <div>
               <p className="font-medium">Your request is pending review</p>
               <p className="text-sm text-muted-foreground">

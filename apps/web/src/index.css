@@ -22,8 +22,16 @@
   --color-chart-1: var(--chart-1);
   --color-ring: var(--ring);
   --color-input: var(--input);
+  --color-input-border: var(--input-border);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
   --color-brand-foreground: var(--brand-foreground);
   --color-brand: var(--brand);
   --color-accent-foreground: var(--accent-foreground);
@@ -47,91 +55,130 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* Soft "floating card" elevation (reference board §14.4). Tinted with the
+     violet foreground hue so shadows read soft, not flat black. */
+  --shadow-soft: 0 1px 2px hsl(262 40% 12% / 0.04), 0 4px 16px hsl(262 40% 12% / 0.06);
+  --shadow-soft-lg: 0 2px 6px hsl(262 40% 12% / 0.06), 0 16px 40px hsl(262 40% 12% / 0.1);
 }
 
 /*
- * CodeStack brand system.
- *   --primary : logo navy  #1D5A87  (hsl 205 65% 32%)
- *   --brand   : logo amber #F5A623  (hsl 37 91% 55%) — used for CTAs/highlights,
- *               kept separate from shadcn's --accent so component hover states
- *               don't read as brand highlights. --brand-foreground is a deep navy
- *               so text on the amber CTA meets contrast.
- * Neutrals carry a faint cool (blue) cast so greys sit under the navy primary
- * instead of looking sterile. Dark mode is navy-tinted to match the dark-variant
- * logo (#0F2438), and the sidebar rail stays deep navy in BOTH themes.
+ * CodeStack design tokens — light is the DEFAULT theme (UI revamp).
+ * Visual language: calm, coder-friendly dev-platform skin (not a gov portal).
+ * Palette direction set by the user 2026-07-24: PURPLE-FORWARD (violet primary),
+ * amber kept as the highlight/reward accent. All pairings below are AA-verified
+ * by `scripts/check-contrast.mjs` (pnpm contrast:check), which gates every phase.
+ *
+ *   --primary : violet (hsl 262 60% 42%) — links + CTAs, passes on white + white-on-it
+ *   --brand   : amber  (hsl 37 91% 55%)  — HIGHLIGHT/celebration ONLY, never a
+ *               text/CTA color (amber-on-white is 2.05:1). Kept separate from
+ *               shadcn's neutral --accent so menu hovers never flash amber
+ *               (§13.3). --brand-foreground is deep plum so text ON amber passes.
+ *   status    : --success / --warning / --info / --destructive, each with a
+ *               *-foreground for filled badges/buttons. As text on the page they
+ *               all clear 4.5:1; amber (--brand) is deliberately NOT in this set.
+ * Neutrals carry a faint violet cast so greys sit under the purple primary. Dark
+ * mode is plum-tinted; the sidebar rail is deep plum in BOTH themes (institutional
+ * shell + warm reward layer, §13.5).
  */
 :root {
-  --background: hsl(0 0% 100%);
-  --foreground: hsl(205 30% 12%);
+  /* Soft off-white app surface so white cards visibly float on it (reference
+     board §14.4). Cards/popovers stay pure white. */
+  --background: hsl(265 30% 98%);
+  --foreground: hsl(262 25% 13%);
   --card: hsl(0 0% 100%);
-  --card-foreground: hsl(205 30% 12%);
+  --card-foreground: hsl(262 25% 13%);
   --popover: hsl(0 0% 100%);
-  --popover-foreground: hsl(205 30% 12%);
-  --primary: hsl(205 65% 32%);
-  --primary-foreground: hsl(204 92% 96%);
-  --secondary: hsl(205 32% 96%);
-  --secondary-foreground: hsl(205 40% 20%);
-  --muted: hsl(205 28% 96%);
-  --muted-foreground: hsl(205 12% 42%);
-  --accent: hsl(205 32% 94%);
-  --accent-foreground: hsl(205 45% 22%);
+  --popover-foreground: hsl(262 25% 13%);
+  --primary: hsl(262 60% 42%);
+  --primary-foreground: hsl(265 60% 97%);
+  --secondary: hsl(265 30% 94%);
+  --secondary-foreground: hsl(262 38% 24%);
+  /* Muted sits a touch below the off-white background so hover/skeleton fills
+     (bg-muted, hover:bg-muted/50) stay perceptible on the bare page, not just
+     on white cards (§14.4 follow-up). */
+  --muted: hsl(265 24% 93%);
+  --muted-foreground: hsl(262 12% 42%);
+  --accent: hsl(265 30% 93%);
+  --accent-foreground: hsl(262 40% 24%);
   --brand: hsl(37 91% 55%);
-  --brand-foreground: hsl(205 80% 12%);
-  --destructive: hsl(0 72% 48%);
-  --border: hsl(205 24% 89%);
-  --input: hsl(205 24% 89%);
-  --ring: hsl(205 65% 32% / 0.45);
-  --chart-1: hsl(205 70% 45%);
+  --brand-foreground: hsl(262 60% 14%);
+  --destructive: hsl(0 72% 45%);
+  --destructive-foreground: hsl(0 0% 100%);
+  --success: hsl(152 60% 30%);
+  --success-foreground: hsl(0 0% 100%);
+  --warning: hsl(32 95% 34%);
+  --warning-foreground: hsl(0 0% 100%);
+  --info: hsl(205 82% 37%);
+  --info-foreground: hsl(0 0% 100%);
+  --border: hsl(265 22% 89%);
+  /* --input keeps the light hairline: it is also used as a low-alpha FILL
+     (bg-input/30, disabled:bg-input/50) by the shadcn field primitives, so it
+     must stay pale. Form-control BOUNDARIES use the stronger --input-border
+     below (border-input -> border-input-border, §13.4). */
+  --input: hsl(265 22% 89%);
+  --input-border: hsl(262 12% 55%);
+  --ring: hsl(262 60% 42%);
+  --chart-1: hsl(262 60% 55%);
   --chart-2: hsl(37 91% 55%);
   --chart-3: hsl(172 55% 40%);
-  --chart-4: hsl(265 55% 62%);
+  --chart-4: hsl(292 50% 55%);
   --chart-5: hsl(145 55% 42%);
   --radius: 0.625rem;
-  --sidebar: hsl(206 55% 13%);
-  --sidebar-foreground: hsl(205 38% 86%);
+  --sidebar: hsl(265 45% 14%);
+  --sidebar-foreground: hsl(265 30% 86%);
   --sidebar-primary: hsl(37 91% 55%);
-  --sidebar-primary-foreground: hsl(206 55% 12%);
-  --sidebar-accent: hsl(206 44% 21%);
+  --sidebar-primary-foreground: hsl(265 55% 12%);
+  --sidebar-accent: hsl(265 40% 22%);
   --sidebar-accent-foreground: hsl(0 0% 100%);
-  --sidebar-border: hsl(206 40% 22%);
+  --sidebar-border: hsl(265 36% 23%);
   --sidebar-ring: hsl(37 91% 55%);
 }
 
 .dark {
-  --background: hsl(206 44% 8%);
-  --foreground: hsl(205 30% 92%);
-  --card: hsl(206 40% 12%);
-  --card-foreground: hsl(205 30% 92%);
-  --popover: hsl(206 42% 11%);
-  --popover-foreground: hsl(205 30% 92%);
-  /* Dark mode keeps a pale ice-blue primary (matching the dark-variant logo)
-     instead of a dark navy that would lose contrast on the navy surface. */
-  --primary: hsl(202 55% 78%);
-  --primary-foreground: hsl(206 55% 12%);
-  --secondary: hsl(206 34% 18%);
-  --secondary-foreground: hsl(205 30% 92%);
-  --muted: hsl(206 34% 16%);
-  --muted-foreground: hsl(205 20% 64%);
-  --accent: hsl(206 34% 19%);
-  --accent-foreground: hsl(205 30% 92%);
+  --background: hsl(265 35% 8%);
+  --foreground: hsl(265 25% 92%);
+  --card: hsl(265 32% 12%);
+  --card-foreground: hsl(265 25% 92%);
+  --popover: hsl(265 34% 11%);
+  --popover-foreground: hsl(265 25% 92%);
+  /* Dark mode uses a pale lavender primary instead of a deep violet that would
+     lose contrast on the dark plum surface. */
+  --primary: hsl(262 65% 76%);
+  --primary-foreground: hsl(265 55% 12%);
+  --secondary: hsl(265 28% 18%);
+  --secondary-foreground: hsl(265 25% 92%);
+  --muted: hsl(265 26% 16%);
+  --muted-foreground: hsl(265 18% 65%);
+  --accent: hsl(265 28% 19%);
+  --accent-foreground: hsl(265 25% 92%);
   --brand: hsl(37 92% 58%);
-  --brand-foreground: hsl(206 60% 10%);
-  --destructive: hsl(0 68% 58%);
-  --border: hsl(206 30% 22%);
-  --input: hsl(206 30% 24%);
-  --ring: hsl(202 55% 60%);
-  --chart-1: hsl(202 72% 62%);
+  --brand-foreground: hsl(265 60% 10%);
+  /* Per-hue dark values (the blanket "+12% L" rule broke red — §13.2). */
+  --destructive: hsl(0 75% 64%);
+  --destructive-foreground: hsl(0 40% 10%);
+  --success: hsl(152 48% 55%);
+  --success-foreground: hsl(152 45% 8%);
+  --warning: hsl(36 92% 60%);
+  --warning-foreground: hsl(32 60% 8%);
+  --info: hsl(205 78% 66%);
+  --info-foreground: hsl(205 55% 8%);
+  --border: hsl(265 26% 22%);
+  --input: hsl(265 26% 24%);
+  --input-border: hsl(260 14% 48%);
+  --ring: hsl(262 65% 68%);
+  --chart-1: hsl(262 70% 74%);
   --chart-2: hsl(37 92% 58%);
   --chart-3: hsl(172 55% 50%);
-  --chart-4: hsl(265 60% 70%);
+  --chart-4: hsl(292 55% 70%);
   --chart-5: hsl(145 55% 52%);
-  --sidebar: hsl(206 52% 10%);
-  --sidebar-foreground: hsl(205 38% 86%);
+  --sidebar: hsl(265 42% 10%);
+  --sidebar-foreground: hsl(265 30% 86%);
   --sidebar-primary: hsl(37 91% 55%);
-  --sidebar-primary-foreground: hsl(206 55% 12%);
-  --sidebar-accent: hsl(206 40% 17%);
+  --sidebar-primary-foreground: hsl(265 55% 12%);
+  --sidebar-accent: hsl(265 34% 17%);
   --sidebar-accent-foreground: hsl(0 0% 100%);
-  --sidebar-border: hsl(206 34% 19%);
+  --sidebar-border: hsl(265 30% 19%);
   --sidebar-ring: hsl(37 91% 55%);
 }
 
@@ -147,6 +194,22 @@
   }
   html {
     @apply font-sans;
+  }
+  /* Motion accessibility (§14.2): honor the OS reduced-motion setting — collapse
+     every animation/transition to ~instant and reveal any scroll-in content. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+    .reveal {
+      opacity: 1 !important;
+      transform: none !important;
+    }
   }
 }
 
@@ -172,5 +235,103 @@
       linear-gradient(to right, color-mix(in oklab, var(--border) 60%, transparent) 1px, transparent 1px),
       linear-gradient(to bottom, color-mix(in oklab, var(--border) 60%, transparent) 1px, transparent 1px);
     background-size: 28px 28px;
+  }
+
+  /* Brand gradient for hero / promo-CTA cards (reference board §14.4): a vivid
+     violet → magenta → amber sweep. Text on it should use a light foreground. */
+  .bg-gradient-brand {
+    background-image: linear-gradient(
+      135deg,
+      hsl(262 60% 38%) 0%,
+      hsl(292 55% 45%) 55%,
+      hsl(37 91% 48%) 130%
+    );
+  }
+}
+
+/* ─── Motion layer (§14.2) ─────────────────────────────────────────────────
+ * Calm, quick (150–400ms) entrances + a gentle idle float. Reveal-on-scroll is
+ * driven by the useReveal() hook toggling `.in-view`. All neutralized by the
+ * reduced-motion guard in @layer base. */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes float-y {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+/* Celebration burst for the Accepted verdict (§13.5). Each piece carries its own
+   --cx/--cy/--cr trajectory as inline style. Reduced motion collapses it. */
+@keyframes confetti-out {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) rotate(0deg) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--cx), var(--cy)) rotate(var(--cr)) scale(0.4);
+  }
+}
+
+@layer utilities {
+  .animate-fade-in {
+    animation: fade-in 0.4s ease-out both;
+  }
+  .animate-fade-in-up {
+    animation: fade-in-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .animate-scale-in {
+    animation: scale-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .animate-float {
+    animation: float-y 6s ease-in-out infinite;
+  }
+  .confetti-piece {
+    animation: confetti-out 900ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  /* Reveal-on-scroll: hidden until the useReveal hook adds `.in-view`.
+     Stagger children with inline `style="--reveal-delay: 80ms"`. */
+  .reveal {
+    opacity: 0;
+    transform: translateY(16px);
+    transition:
+      opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+      transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    transition-delay: var(--reveal-delay, 0ms);
+  }
+  .reveal.in-view {
+    opacity: 1;
+    transform: none;
   }
 }
