@@ -57,52 +57,56 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 
   /* Soft "floating card" elevation (reference board §14.4). Tinted with the
-     violet foreground hue so shadows read soft, not flat black. */
-  --shadow-soft: 0 1px 2px hsl(262 40% 12% / 0.04), 0 4px 16px hsl(262 40% 12% / 0.06);
-  --shadow-soft-lg: 0 2px 6px hsl(262 40% 12% / 0.06), 0 16px 40px hsl(262 40% 12% / 0.1);
+     indigo foreground hue so shadows read soft, not flat black. */
+  --shadow-soft: 0 1px 2px hsl(246 40% 12% / 0.04), 0 4px 16px hsl(246 40% 12% / 0.06);
+  --shadow-soft-lg: 0 2px 6px hsl(246 40% 12% / 0.06), 0 16px 40px hsl(246 40% 12% / 0.1);
+  /* Soft indigo glow used on hover (matte indigo/navy palette, user 2026-07-24). */
+  --shadow-hover: 0 12px 34px -8px hsl(246 55% 52% / 0.38), 0 4px 12px -4px hsl(246 50% 50% / 0.3);
 }
 
 /*
  * CodeStack design tokens — light is the DEFAULT theme (UI revamp).
  * Visual language: calm, coder-friendly dev-platform skin (not a gov portal).
- * Palette direction set by the user 2026-07-24: PURPLE-FORWARD (violet primary),
- * amber kept as the highlight/reward accent. All pairings below are AA-verified
- * by `scripts/check-contrast.mjs` (pnpm contrast:check), which gates every phase.
+ * Palette direction (user 2026-07-24, revised): MATTE INDIGO / NAVY — the primary
+ * moved off the vivid violet to a darker, desaturated indigo (hue ~246) so it
+ * reads sophisticated, not neon. Amber stays the highlight/reward accent. All
+ * pairings below are AA-verified by `scripts/check-contrast.mjs`
+ * (pnpm contrast:check), which gates every phase.
  *
- *   --primary : violet (hsl 262 60% 42%) — links + CTAs, passes on white + white-on-it
+ *   --primary : indigo (hsl 246 46% 40%) — links + CTAs, passes on white + white-on-it
  *   --brand   : amber  (hsl 37 91% 55%)  — HIGHLIGHT/celebration ONLY, never a
  *               text/CTA color (amber-on-white is 2.05:1). Kept separate from
  *               shadcn's neutral --accent so menu hovers never flash amber
- *               (§13.3). --brand-foreground is deep plum so text ON amber passes.
+ *               (§13.3). --brand-foreground is deep indigo so text ON amber passes.
  *   status    : --success / --warning / --info / --destructive, each with a
  *               *-foreground for filled badges/buttons. As text on the page they
  *               all clear 4.5:1; amber (--brand) is deliberately NOT in this set.
- * Neutrals carry a faint violet cast so greys sit under the purple primary. Dark
- * mode is plum-tinted; the sidebar rail is deep plum in BOTH themes (institutional
- * shell + warm reward layer, §13.5).
+ * Neutrals carry a faint indigo cast so greys sit under the primary. Dark mode is
+ * navy-slate tinted; the sidebar rail is deep indigo-navy in BOTH themes
+ * (institutional shell + warm reward layer, §13.5).
  */
 :root {
   /* Soft off-white app surface so white cards visibly float on it (reference
      board §14.4). Cards/popovers stay pure white. */
-  --background: hsl(265 30% 98%);
-  --foreground: hsl(262 25% 13%);
+  --background: hsl(248 28% 98%);
+  --foreground: hsl(246 26% 13%);
   --card: hsl(0 0% 100%);
-  --card-foreground: hsl(262 25% 13%);
+  --card-foreground: hsl(246 26% 13%);
   --popover: hsl(0 0% 100%);
-  --popover-foreground: hsl(262 25% 13%);
-  --primary: hsl(262 60% 42%);
-  --primary-foreground: hsl(265 60% 97%);
-  --secondary: hsl(265 30% 94%);
-  --secondary-foreground: hsl(262 38% 24%);
+  --popover-foreground: hsl(246 26% 13%);
+  --primary: hsl(246 46% 40%);
+  --primary-foreground: hsl(248 55% 97%);
+  --secondary: hsl(248 26% 94%);
+  --secondary-foreground: hsl(246 34% 25%);
   /* Muted sits a touch below the off-white background so hover/skeleton fills
      (bg-muted, hover:bg-muted/50) stay perceptible on the bare page, not just
      on white cards (§14.4 follow-up). */
-  --muted: hsl(265 24% 93%);
-  --muted-foreground: hsl(262 12% 42%);
-  --accent: hsl(265 30% 93%);
-  --accent-foreground: hsl(262 40% 24%);
+  --muted: hsl(248 22% 93%);
+  --muted-foreground: hsl(246 13% 42%);
+  --accent: hsl(248 26% 93%);
+  --accent-foreground: hsl(246 36% 25%);
   --brand: hsl(37 91% 55%);
-  --brand-foreground: hsl(262 60% 14%);
+  --brand-foreground: hsl(246 55% 14%);
   --destructive: hsl(0 72% 45%);
   --destructive-foreground: hsl(0 0% 100%);
   --success: hsl(152 60% 30%);
@@ -111,75 +115,79 @@
   --warning-foreground: hsl(0 0% 100%);
   --info: hsl(205 82% 37%);
   --info-foreground: hsl(0 0% 100%);
-  --border: hsl(265 22% 89%);
+  --border: hsl(248 22% 89%);
   /* --input keeps the light hairline: it is also used as a low-alpha FILL
      (bg-input/30, disabled:bg-input/50) by the shadcn field primitives, so it
      must stay pale. Form-control BOUNDARIES use the stronger --input-border
      below (border-input -> border-input-border, §13.4). */
-  --input: hsl(265 22% 89%);
-  --input-border: hsl(262 12% 55%);
-  --ring: hsl(262 60% 42%);
-  --chart-1: hsl(262 60% 55%);
+  --input: hsl(248 22% 89%);
+  --input-border: hsl(246 13% 52%);
+  --ring: hsl(246 46% 40%);
+  --chart-1: hsl(246 52% 54%);
   --chart-2: hsl(37 91% 55%);
   --chart-3: hsl(172 55% 40%);
-  --chart-4: hsl(292 50% 55%);
+  --chart-4: hsl(280 44% 52%);
   --chart-5: hsl(145 55% 42%);
   --radius: 0.625rem;
-  --sidebar: hsl(265 45% 14%);
-  --sidebar-foreground: hsl(265 30% 86%);
+  /* Enriched deep indigo-navy sidebar (component layers a gradient on top). */
+  --sidebar: hsl(244 40% 19%);
+  --sidebar-foreground: hsl(246 30% 90%);
   --sidebar-primary: hsl(37 91% 55%);
-  --sidebar-primary-foreground: hsl(265 55% 12%);
-  --sidebar-accent: hsl(265 40% 22%);
+  --sidebar-primary-foreground: hsl(244 55% 12%);
+  --sidebar-accent: hsl(244 32% 33%);
   --sidebar-accent-foreground: hsl(0 0% 100%);
-  --sidebar-border: hsl(265 36% 23%);
+  --sidebar-border: hsl(244 30% 35%);
   --sidebar-ring: hsl(37 91% 55%);
 }
 
 .dark {
-  --background: hsl(265 35% 8%);
-  --foreground: hsl(265 25% 92%);
-  --card: hsl(265 32% 12%);
-  --card-foreground: hsl(265 25% 92%);
-  --popover: hsl(265 34% 11%);
-  --popover-foreground: hsl(265 25% 92%);
-  /* Dark mode uses a pale lavender primary instead of a deep violet that would
-     lose contrast on the dark plum surface. */
-  --primary: hsl(262 65% 76%);
-  --primary-foreground: hsl(265 55% 12%);
-  --secondary: hsl(265 28% 18%);
-  --secondary-foreground: hsl(265 25% 92%);
-  --muted: hsl(265 26% 16%);
-  --muted-foreground: hsl(265 18% 65%);
-  --accent: hsl(265 28% 19%);
-  --accent-foreground: hsl(265 25% 92%);
+  /* Navy-slate dark surface (~13-17% L, LeetCode-neutral) — "dark but not too
+     dark", now on the matte indigo/navy hue (user 2026-07-24). */
+  --background: hsl(245 17% 13%);
+  --foreground: hsl(246 20% 92%);
+  --card: hsl(245 15% 17%);
+  --card-foreground: hsl(246 20% 92%);
+  --popover: hsl(245 16% 16%);
+  --popover-foreground: hsl(246 20% 92%);
+  /* Dark mode uses a pale periwinkle-indigo primary instead of a deep indigo that
+     would lose contrast on the dark surface. */
+  --primary: hsl(248 56% 80%);
+  --primary-foreground: hsl(246 40% 12%);
+  --secondary: hsl(245 14% 23%);
+  --secondary-foreground: hsl(246 20% 92%);
+  --muted: hsl(245 13% 21%);
+  --muted-foreground: hsl(246 14% 68%);
+  --accent: hsl(245 14% 25%);
+  --accent-foreground: hsl(246 20% 92%);
   --brand: hsl(37 92% 58%);
-  --brand-foreground: hsl(265 60% 10%);
+  --brand-foreground: hsl(246 40% 10%);
   /* Per-hue dark values (the blanket "+12% L" rule broke red — §13.2). */
-  --destructive: hsl(0 75% 64%);
+  --destructive: hsl(0 75% 66%);
   --destructive-foreground: hsl(0 40% 10%);
-  --success: hsl(152 48% 55%);
+  --success: hsl(152 48% 56%);
   --success-foreground: hsl(152 45% 8%);
-  --warning: hsl(36 92% 60%);
+  --warning: hsl(36 92% 62%);
   --warning-foreground: hsl(32 60% 8%);
-  --info: hsl(205 78% 66%);
+  --info: hsl(205 78% 68%);
   --info-foreground: hsl(205 55% 8%);
-  --border: hsl(265 26% 22%);
-  --input: hsl(265 26% 24%);
-  --input-border: hsl(260 14% 48%);
-  --ring: hsl(262 65% 68%);
-  --chart-1: hsl(262 70% 74%);
-  --chart-2: hsl(37 92% 58%);
-  --chart-3: hsl(172 55% 50%);
-  --chart-4: hsl(292 55% 70%);
-  --chart-5: hsl(145 55% 52%);
-  --sidebar: hsl(265 42% 10%);
-  --sidebar-foreground: hsl(265 30% 86%);
-  --sidebar-primary: hsl(37 91% 55%);
-  --sidebar-primary-foreground: hsl(265 55% 12%);
-  --sidebar-accent: hsl(265 34% 17%);
+  --border: hsl(245 12% 27%);
+  --input: hsl(245 12% 29%);
+  --input-border: hsl(245 12% 50%);
+  --ring: hsl(248 56% 72%);
+  --chart-1: hsl(248 58% 78%);
+  --chart-2: hsl(37 92% 60%);
+  --chart-3: hsl(172 55% 52%);
+  --chart-4: hsl(280 48% 72%);
+  --chart-5: hsl(145 55% 54%);
+  /* Enriched deep indigo-navy sidebar (component adds a gradient on top). */
+  --sidebar: hsl(244 30% 15%);
+  --sidebar-foreground: hsl(246 26% 90%);
+  --sidebar-primary: hsl(37 91% 58%);
+  --sidebar-primary-foreground: hsl(244 55% 12%);
+  --sidebar-accent: hsl(244 26% 30%);
   --sidebar-accent-foreground: hsl(0 0% 100%);
-  --sidebar-border: hsl(265 30% 19%);
-  --sidebar-ring: hsl(37 91% 55%);
+  --sidebar-border: hsl(244 22% 32%);
+  --sidebar-ring: hsl(37 91% 58%);
 }
 
 @layer base {
@@ -195,20 +203,27 @@
   html {
     @apply font-sans;
   }
-  /* Motion accessibility (§14.2): honor the OS reduced-motion setting — collapse
-     every animation/transition to ~instant and reveal any scroll-in content. */
+  /* Motion accessibility (§14.2): under OS reduced-motion, neutralize the large
+     keyframe animations (entrances, float, confetti, scroll-reveal) but KEEP
+     short hover/focus transitions — those are low-vestibular-risk and are what
+     makes the UI feel responsive. Reveal content immediately. */
   @media (prefers-reduced-motion: reduce) {
-    *,
-    ::before,
-    ::after {
-      animation-duration: 0.001ms !important;
-      animation-iteration-count: 1 !important;
-      transition-duration: 0.001ms !important;
-      scroll-behavior: auto !important;
+    .animate-fade-in,
+    .animate-fade-in-up,
+    .animate-scale-in,
+    .animate-float,
+    .confetti-piece,
+    .orb-float,
+    .twinkle {
+      animation: none !important;
     }
     .reveal {
       opacity: 1 !important;
       transform: none !important;
+      transition: none !important;
+    }
+    html {
+      scroll-behavior: auto !important;
     }
   }
 }
@@ -237,13 +252,13 @@
     background-size: 28px 28px;
   }
 
-  /* Brand gradient for hero / promo-CTA cards (reference board §14.4): a vivid
-     violet → magenta → amber sweep. Text on it should use a light foreground. */
+  /* Brand gradient for hero / promo-CTA cards (reference board §14.4): a matte
+     indigo → muted-purple → amber sweep. Text on it should use a light foreground. */
   .bg-gradient-brand {
     background-image: linear-gradient(
       135deg,
-      hsl(262 60% 38%) 0%,
-      hsl(292 55% 45%) 55%,
+      hsl(246 50% 34%) 0%,
+      hsl(278 44% 42%) 55%,
       hsl(37 91% 48%) 130%
     );
   }
@@ -302,6 +317,31 @@
     transform: translate(var(--cx), var(--cy)) rotate(var(--cr)) scale(0.4);
   }
 }
+/* Ambient movement for the auth brand panel (§ user 2026-07-24): drifting light
+   orbs + twinkling stars. */
+@keyframes orb-float {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(24px, -28px) scale(1.1);
+  }
+  66% {
+    transform: translate(-18px, 18px) scale(0.94);
+  }
+}
+@keyframes twinkle {
+  0%,
+  100% {
+    opacity: 0.15;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+}
 
 @layer utilities {
   .animate-fade-in {
@@ -319,6 +359,12 @@
   .confetti-piece {
     animation: confetti-out 900ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
+  .orb-float {
+    animation: orb-float 16s ease-in-out infinite;
+  }
+  .twinkle {
+    animation: twinkle 3.5s ease-in-out infinite;
+  }
 
   /* Reveal-on-scroll: hidden until the useReveal hook adds `.in-view`.
      Stagger children with inline `style="--reveal-delay: 80ms"`. */
@@ -333,5 +379,73 @@
   .reveal.in-view {
     opacity: 1;
     transform: none;
+  }
+
+  /* Lift on hover — for list/child cards. */
+  .hover-lift {
+    transition:
+      transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+      box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .hover-lift:hover {
+    transform: translateY(-5px);
+    box-shadow: var(--shadow-hover);
+  }
+
+  /* True 3D tilt on hover — for hero / feature cards. */
+  .hover-3d {
+    transition:
+      transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+      box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    transform-style: preserve-3d;
+    will-change: transform;
+  }
+  .hover-3d:hover {
+    transform: perspective(1000px) rotateX(4deg) rotateY(-5deg) translateY(-6px);
+    box-shadow: var(--shadow-hover);
+  }
+
+  /* Enriched sidebar surface: a soft top→bottom violet gradient for depth (3D).
+     A solid base color is set too so combining with .glow-violet (which also
+     sets background-image) still renders a dark panel, not the page behind it. */
+  .sidebar-surface {
+    background-color: var(--sidebar);
+    background-image: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--sidebar), white 12%) 0%,
+      var(--sidebar) 55%,
+      color-mix(in oklab, var(--sidebar), black 7%) 100%
+    );
+  }
+
+  /* Landing hero backdrop. Light: a faint violet glow over the off-white page.
+     Dark: an ENRICHED deep-violet gradient + glows (user 2026-07-24). */
+  .hero-surface {
+    background-image: radial-gradient(
+      46rem 30rem at 80% 2%,
+      color-mix(in oklab, var(--primary) 13%, transparent),
+      transparent 62%
+    );
+  }
+  .dark .hero-surface {
+    background-image:
+      radial-gradient(50rem 34rem at 78% 0%, hsl(248 55% 34% / 0.55), transparent 60%),
+      radial-gradient(40rem 30rem at 2% 94%, hsl(278 45% 34% / 0.4), transparent 62%),
+      linear-gradient(180deg, hsl(244 40% 16%) 0%, var(--background) 52%);
+  }
+
+  /* Soft violet radial glow for dark hero/auth panels (replaces the hard grid). */
+  .glow-violet {
+    background-image:
+      radial-gradient(
+        42rem 30rem at 82% 6%,
+        color-mix(in oklab, var(--primary) 45%, transparent),
+        transparent 68%
+      ),
+      radial-gradient(
+        34rem 26rem at 6% 96%,
+        color-mix(in oklab, var(--chart-4) 34%, transparent),
+        transparent 70%
+      );
   }
 }

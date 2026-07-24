@@ -278,7 +278,6 @@ export function CodeEditorScreen({
             Run
           </Button>
           <Button
-            className="bg-brand text-brand-foreground hover:bg-brand/90"
             onClick={handleSubmit}
             disabled={submitMutation.isPending || !!isJudging || reviewMode}
             title={reviewMode ? 'Closed for submissions' : 'Submit (⌘/Ctrl + Enter)'}

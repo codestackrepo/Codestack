@@ -12,11 +12,8 @@ import { AppModuleKey, Role } from '@/types/common';
 const LandingPage = lazy(() =>
   import('@/features/marketing/pages/landing-page').then((m) => ({ default: m.LandingPage })),
 );
-const LoginPage = lazy(() =>
-  import('@/features/auth/pages/login-page').then((m) => ({ default: m.LoginPage })),
-);
-const RegisterPage = lazy(() =>
-  import('@/features/auth/pages/register-page').then((m) => ({ default: m.RegisterPage })),
+const AuthPage = lazy(() =>
+  import('@/features/auth/pages/auth-page').then((m) => ({ default: m.AuthPage })),
 );
 const DashboardPage = lazy(() =>
   import('@/features/dashboard/pages/dashboard-page').then((m) => ({ default: m.DashboardPage })),
@@ -130,8 +127,8 @@ function App() {
     <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route path="/" element={<LandingPage />} />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
+        <Route path="/login" element={<AuthPage initialMode="login" />} />
+        <Route path="/register" element={<AuthPage initialMode="register" />} />
 
         <Route element={<ProtectedRoute />}>
           <Route path="/home" element={<AppShell />}>

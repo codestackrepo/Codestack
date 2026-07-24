@@ -56,18 +56,21 @@ export function ProfessorDashboard({ user }: { user: User }) {
           label="Active classrooms"
           value={classrooms?.meta.total ?? '—'}
           icon={<GraduationCap className="size-5" />}
+          accent="#6366f1"
           hint="You teach"
         />
         <StatCard
           label="Upcoming deadlines"
           value={deadlines?.length ?? '—'}
           icon={<CalendarClock className="size-5" />}
+          accent="#f59e0b"
           hint={next ? `Next ${daysUntilLabel(next.endDate)}` : 'Nothing due soon'}
         />
         <StatCard
           label="Problems available"
           value={problems?.meta.total ?? '—'}
           icon={<FileCode2 className="size-5" />}
+          accent="#0ea5e9"
           hint="In the library"
         />
       </div>

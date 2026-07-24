@@ -94,13 +94,29 @@ export function LandingPage() {
     : { to: '/register', label: 'Get started' };
 
   return (
-    <div className="custom-scrollbar h-svh overflow-y-auto bg-background text-foreground">
-      {/* Public top bar */}
-      <header className="sticky top-0 z-20 border-b border-border/70 bg-background/80 backdrop-blur-md">
-        <div className="mx-auto flex h-16 w-full max-w-[75rem] items-center justify-between px-4 md:px-6">
+    <div className="custom-scrollbar h-svh scroll-smooth overflow-y-auto bg-background text-foreground">
+      {/* Public top bar — enriched dark violet in dark mode */}
+      <header className="sticky top-0 z-20 border-b border-border/70 bg-background/80 backdrop-blur-md dark:border-white/10 dark:bg-[hsl(244_38%_13%/0.72)]">
+        <div className="mx-auto flex h-16 w-full max-w-[75rem] items-center justify-between gap-4 px-4 md:px-6">
           <Link to="/" aria-label="CodeStack home">
             <Logo />
           </Link>
+          <nav className="hidden items-center gap-1 md:flex">
+            {[
+              { label: 'Learn', href: '#features' },
+              { label: 'How it works', href: '#how' },
+              { label: 'About', href: '#about' },
+              { label: 'Support', href: 'mailto:support@codestack.dev' },
+            ].map((l) => (
+              <a
+                key={l.label}
+                href={l.href}
+                className="rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground dark:hover:bg-white/10"
+              >
+                {l.label}
+              </a>
+            ))}
+          </nav>
           <div className="flex items-center gap-1.5 sm:gap-2">
             <ThemeToggle />
             {user ? (
@@ -122,16 +138,11 @@ export function LandingPage() {
       </header>
 
       {/* Hero */}
-      <section className="relative overflow-hidden">
-        <div className="bg-grid pointer-events-none absolute inset-0 opacity-40 [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,black,transparent)]" />
-        <div
-          className="pointer-events-none absolute -top-24 left-1/2 size-[36rem] -translate-x-1/2 rounded-full opacity-25 blur-3xl"
-          style={{ background: 'radial-gradient(circle, var(--chart-4), transparent 70%)' }}
-        />
+      <section className="hero-surface relative overflow-hidden">
         <div className="relative mx-auto grid w-full max-w-[75rem] items-center gap-12 px-4 py-16 md:px-6 md:py-24 lg:grid-cols-2">
           <div>
-            <span className="animate-fade-in-up inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-muted-foreground shadow-soft">
-              <Sparkles className="size-3.5 text-brand" />
+            <span className="animate-fade-in-up inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-muted-foreground shadow-soft dark:border-white/10 dark:bg-white/5">
+              <Sparkles className="size-3.5 text-primary" />
               A calmer place to learn to code
             </span>
             <h1
@@ -163,6 +174,20 @@ export function LandingPage() {
                   <Link to="/login">I already have an account</Link>
                 </Button>
               )}
+            </div>
+            <div
+              className="animate-fade-in-up mt-8 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground"
+              style={{ animationDelay: '320ms' }}
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <CheckCircle2 className="size-4 text-primary" /> Instant sandboxed judging
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <Code2 className="size-4 text-primary" /> Python · JS · C++ · Java
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <Trophy className="size-4 text-primary" /> Streaks &amp; points
+              </span>
             </div>
           </div>
 
@@ -232,7 +257,7 @@ export function LandingPage() {
           {FEATURES.map((f, i) => (
             <div
               key={f.title}
-              className="reveal group rounded-2xl border border-border bg-card p-6 shadow-soft transition-all duration-300 hover:-translate-y-1 hover:shadow-soft-lg"
+              className="reveal hover-3d group rounded-2xl border border-border bg-card p-6 shadow-soft"
               style={{ '--reveal-delay': `${i * 70}ms` } as React.CSSProperties}
             >
               <span
@@ -257,7 +282,7 @@ export function LandingPage() {
           {STEPS.map((s, i) => (
             <div
               key={s.n}
-              className="reveal relative rounded-2xl border border-border bg-card p-6 shadow-soft"
+              className="reveal hover-lift relative rounded-2xl border border-border bg-card p-6 shadow-soft"
               style={{ '--reveal-delay': `${i * 90}ms` } as React.CSSProperties}
             >
               <span className="flex size-9 items-center justify-center rounded-full bg-primary font-mono text-sm font-bold text-primary-foreground">
@@ -276,7 +301,10 @@ export function LandingPage() {
           ref={revealCta}
           className="reveal bg-gradient-brand relative overflow-hidden rounded-3xl px-6 py-14 text-center shadow-soft-lg md:px-12"
         >
-          <div className="bg-grid pointer-events-none absolute inset-0 opacity-10" />
+          <div
+            className="pointer-events-none absolute -top-16 -right-10 size-72 rounded-full opacity-40 blur-3xl"
+            style={{ background: 'radial-gradient(circle, rgba(255,255,255,0.5), transparent 70%)' }}
+          />
           <div className="relative mx-auto max-w-2xl">
             <h2 className="text-2xl font-bold tracking-tight text-white md:text-4xl">
               Ready to start building your streak?

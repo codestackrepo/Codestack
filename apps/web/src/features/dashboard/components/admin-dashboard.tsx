@@ -56,18 +56,21 @@ export function AdminDashboard({ user }: { user: User }) {
           label="Classrooms"
           value={classrooms?.meta.total ?? '—'}
           icon={<GraduationCap className="size-5" />}
+          accent="#6366f1"
           hint="Across the platform"
         />
         <StatCard
           label="Problems"
           value={problems?.meta.total ?? '—'}
           icon={<FileCode2 className="size-5" />}
+          accent="#0ea5e9"
           hint="In the library"
         />
         <StatCard
           label="Assignments due"
           value={deadlines?.length ?? '—'}
           icon={<CalendarClock className="size-5" />}
+          accent="#f59e0b"
           hint="With an open deadline"
         />
       </div>

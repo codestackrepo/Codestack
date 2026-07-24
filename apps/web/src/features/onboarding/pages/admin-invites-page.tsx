@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Copy, Plus, Ban } from 'lucide-react';
 import { toast } from 'sonner';
 import { onboardingApi, type Invite, type InviteStatus } from '../api/onboarding.api';
@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/table';
 import { EmptyState } from '@/components/shared/empty-state';
 import { PageHeader } from '@/components/shared/page-header';
+import { Pagination } from '@/components/shared/pagination';
 
 const STATUS_VARIANT: Record<InviteStatus, 'default' | 'secondary' | 'destructive' | 'outline'> = {
   pending: 'default',
@@ -33,10 +34,12 @@ function inviteLink(token: string): string {
 export function AdminInvitesPage() {
   const queryClient = useQueryClient();
   const [email, setEmail] = useState('');
+  const [page, setPage] = useState(1);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['onboarding', 'invites'],
-    queryFn: () => onboardingApi.listInvites(),
+    queryKey: ['onboarding', 'invites', page],
+    queryFn: () => onboardingApi.listInvites(page),
+    placeholderData: keepPreviousData,
   });
 
   const invalidate = () =>
@@ -68,6 +71,7 @@ export function AdminInvitesPage() {
   }
 
   const rows: Invite[] = data?.data ?? [];
+  const meta = data?.meta;
 
   return (
     <div className="space-y-6">
@@ -160,6 +164,8 @@ export function AdminInvitesPage() {
           </Table>
         )}
       </Card>
+
+      <Pagination meta={meta} onPageChange={setPage} noun="invites" />
     </div>
   );
 }
