@@ -27,6 +27,11 @@ export class JwtRefreshStrategy extends PassportStrategy(Strategy, 'jwt-refresh'
     if (payload.type !== 'refresh') {
       throw new UnauthorizedException('Invalid token type');
     }
-    return { id: payload.sub, email: payload.email, role: payload.role };
+    return {
+      id: payload.sub,
+      email: payload.email,
+      role: payload.role,
+      organizationId: payload.organizationId ?? null,
+    };
   }
 }

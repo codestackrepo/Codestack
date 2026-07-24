@@ -9,7 +9,7 @@ describe('ClassroomsService.removeStudent — batch purge', () => {
   let dataSource: { query: jest.Mock };
   let service: ClassroomsService;
 
-  const admin: AuthenticatedUser = { id: 'admin-1', role: Role.ADMIN, email: 'a@x.io' };
+  const admin: AuthenticatedUser = { id: 'admin-1', role: Role.ADMIN, email: 'a@x.io', organizationId: 'org-test' };
   const CLASSROOM_ID = 'c-1';
   const STUDENT_ID = 's-1';
 

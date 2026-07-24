@@ -1,0 +1,45 @@
+import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+import { Role } from '../enums/role.enum';
+import { AuthenticatedUser } from '../types/authenticated-user';
+import { OrganizationCache } from '../../modules/organizations/organization-cache.service';
+import { OrganizationStatus } from '../../modules/organizations/enums/organization.enums';
+
+/**
+ * Coarse per-request tenant gate.
+ *
+ * NOT YET REGISTERED as a global guard — the Clerk integration (#51) inserts it
+ * at APP_GUARD slot 2 (after the auth guard that reliably populates
+ * request.user.organizationId, before RolesGuard). Wiring it before Clerk would
+ * 403 every request the current JWT auth can't yet attribute to an org. It ships
+ * here as a ready, tested unit so #51 is a pure wiring change.
+ *
+ * Fine-grained row isolation is NOT this guard's job — that stays in scopeToOrg
+ * at the service layer (#50). This only rejects the two whole-tenant conditions:
+ * a non-superadmin with no org, and a member of a suspended org.
+ */
+@Injectable()
+export class TenantContextGuard implements CanActivate {
+  constructor(
+    private readonly reflector: Reflector,
+    private readonly orgs: OrganizationCache,
+  ) {}
+
+  canActivate(ctx: ExecutionContext): boolean {
+    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+      ctx.getHandler(),
+      ctx.getClass(),
+    ]);
+    if (isPublic) return true;
+
+    const user = ctx.switchToHttp().getRequest<{ user?: AuthenticatedUser }>().user;
+    if (!user) throw new ForbiddenException('Authentication required');
+    if (user.role === Role.SUPERADMIN) return true; // cross-org, org-less
+    if (!user.organizationId) throw new ForbiddenException({ reason: 'no_organization' });
+    if (this.orgs.getStatus(user.organizationId) === OrganizationStatus.SUSPENDED) {
+      throw new ForbiddenException({ reason: 'org_suspended' });
+    }
+    return true;
+  }
+}

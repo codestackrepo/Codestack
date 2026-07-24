@@ -14,7 +14,7 @@ describe('AssignmentsService — kind/targeting validation', () => {
   let classroomsService: { getDetail: jest.Mock; assertStaffOrGrader: jest.Mock };
   let service: AssignmentsService;
 
-  const actor: AuthenticatedUser = { id: 'prof-1', role: Role.PROFESSOR, email: 'p@x.io' };
+  const actor: AuthenticatedUser = { id: 'prof-1', role: Role.PROFESSOR, email: 'p@x.io', organizationId: 'org-test' };
   const CLASSROOM_ID = 'c-1';
 
   const baseDto = (overrides: Partial<CreateAssignmentDto> = {}): CreateAssignmentDto => ({
