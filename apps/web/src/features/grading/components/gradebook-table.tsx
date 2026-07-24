@@ -78,7 +78,7 @@ export function GradebookTable({ students, studentsById, canEdit, onReview }: Gr
                     <TableCell key={col.itemId} className="text-center">
                       <div className="flex items-center justify-center gap-1.5">
                         {item.solved && (
-                          <Check className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                          <Check className="size-3.5 text-success" />
                         )}
                         {item.score === null ? (
                           <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">

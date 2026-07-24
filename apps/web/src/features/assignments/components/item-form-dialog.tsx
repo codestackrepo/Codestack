@@ -326,7 +326,7 @@ export function ItemFormDialog({
                         'flex size-6 shrink-0 items-center justify-center border border-input text-xs transition-colors',
                         allowMultiple ? 'rounded-[4px]' : 'rounded-full',
                         opt.isCorrect
-                          ? 'border-emerald-500 bg-emerald-500 text-white'
+                          ? 'border-success bg-success text-success-foreground'
                           : 'bg-transparent',
                       )}
                     >

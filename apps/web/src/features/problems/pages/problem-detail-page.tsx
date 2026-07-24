@@ -42,7 +42,7 @@ export function ProblemDetailPage() {
           <h1 className="font-heading text-2xl font-bold tracking-tight">{problem.title}</h1>
           <DifficultyBadge difficulty={problem.difficulty} />
           {problem.isJudgeReady && (
-            <Badge className="gap-1 bg-emerald-600 hover:bg-emerald-600">
+            <Badge className="gap-1 bg-success hover:bg-success">
               <CheckCircle2 className="size-3" /> Judge-ready
             </Badge>
           )}
