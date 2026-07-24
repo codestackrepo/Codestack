@@ -11,7 +11,7 @@ import {
 import { BaseEntity } from '../../../common/entities/base.entity';
 import { User } from '../../users/entities/user.entity';
 import type { IoSpec } from '../../code-execution/driver-synth/io-spec.types';
-import { Difficulty, ProblemSource, ProblemVisibility } from '../enums/problem.enums';
+import { Difficulty, ProblemScope, ProblemSource, ProblemVisibility } from '../enums/problem.enums';
 import { Company } from './company.entity';
 import { LibraryProblemTemplate } from './library-problem-template.entity';
 import { Tag } from './tag.entity';
@@ -37,6 +37,18 @@ export class Problem extends BaseEntity {
   @Index('idx_problem_visibility')
   @Column({ type: 'enum', enum: ProblemVisibility, default: ProblemVisibility.PRIVATE })
   visibility!: ProblemVisibility;
+
+  // ---- Tenancy / reach (#56) ----
+  // scope='global' => organization_id IS NULL (platform catalog);
+  // scope='org' => organization_id IS NOT NULL. Enforced by the DB CHECK
+  // chk_problem_scope_org (migration 1785450000000), not a decorator.
+  @Index('idx_problem_scope')
+  @Column({ type: 'varchar', length: 16, default: ProblemScope.ORG })
+  scope!: ProblemScope;
+
+  @Index('idx_problem_organization')
+  @Column({ type: 'uuid', nullable: true, name: 'organization_id' })
+  organizationId!: string | null;
 
   // Populated by the AI module (Phase 2); plain nullable column to avoid a
   // hard dependency on the ai module's entity.

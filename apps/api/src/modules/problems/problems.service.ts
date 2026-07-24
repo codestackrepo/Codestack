@@ -1,14 +1,21 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, Repository } from 'typeorm';
+import { DataSource, In, ObjectLiteral, Repository, SelectQueryBuilder } from 'typeorm';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
 import { Role } from '../../common/enums/role.enum';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
+import { isSuperAdmin } from '../../common/tenancy/tenant-scope.util';
 import { CreateProblemDto } from './dto/create-problem.dto';
 import { QueryProblemsDto } from './dto/query-problems.dto';
 import { TestCaseInputDto } from './dto/test-case.dto';
 import { UpdateProblemDto } from './dto/update-problem.dto';
-import { Difficulty, ProblemSource, ProblemVisibility, TestCaseType } from './enums/problem.enums';
+import {
+  Difficulty,
+  ProblemScope,
+  ProblemSource,
+  ProblemVisibility,
+  TestCaseType,
+} from './enums/problem.enums';
 import { Language } from '../../common/enums/language.enum';
 import { Company } from './entities/company.entity';
 import { LibraryProblemTemplate } from './entities/library-problem-template.entity';
@@ -41,6 +48,11 @@ export class ProblemsService {
   ) {}
 
   async create(dto: CreateProblemDto, actor: AuthenticatedUser): Promise<Problem> {
+    const superAdmin = isSuperAdmin(actor);
+    // scope is server-derived from the actor's role; a non-superadmin cannot forge global.
+    if (dto.scope === ProblemScope.GLOBAL && !superAdmin) {
+      throw new ForbiddenException('Only a platform superadmin can create global problems');
+    }
     const id = await this.dataSource.transaction(async (manager) => {
       const tags = await this.resolveTags(dto.tags ?? [], manager.getRepository(Tag));
       const companies = await this.resolveCompanies(
@@ -51,7 +63,11 @@ export class ProblemsService {
         title: dto.title,
         body: dto.body,
         difficulty: dto.difficulty ?? Difficulty.MEDIUM,
-        visibility: dto.visibility ?? ProblemVisibility.SHARED,
+        // Superadmin globals default to PRIVATE (draft); org staff keep SHARED.
+        visibility:
+          dto.visibility ?? (superAdmin ? ProblemVisibility.PRIVATE : ProblemVisibility.SHARED),
+        scope: superAdmin ? ProblemScope.GLOBAL : ProblemScope.ORG,
+        organizationId: superAdmin ? null : actor.organizationId,
         source: ProblemSource.HUMAN,
         createdById: actor.id,
         tags,
@@ -88,17 +104,9 @@ export class ProblemsService {
       .leftJoinAndSelect('p.companies', 'company')
       .orderBy('p.createdAt', 'DESC');
 
-    // Visibility: shared problems or the actor's own (private problems from
-    // other users stay hidden). Admins see everything. NOTE: `source`
-    // (human/ai provenance) must not be used as a visibility signal — every
-    // human-created problem defaults to source=human, so gating on it here
-    // would make PRIVATE meaningless for the dominant case.
-    if (actor.role !== Role.ADMIN) {
-      qb.andWhere('(p.visibility = :shared OR p.created_by_id = :uid)', {
-        shared: ProblemVisibility.SHARED,
-        uid: actor.id,
-      });
-    }
+    // The SINGLE catalog visibility predicate (#56): published globals + own-org
+    // shared + own; superadmin unrestricted; org-admin sees all of its own org.
+    this.applyVisibility(qb, 'p', actor);
 
     if (query.difficulty)
       qb.andWhere('p.difficulty = :difficulty', { difficulty: query.difficulty });
@@ -162,12 +170,10 @@ export class ProblemsService {
       .groupBy('f.name')
       .orderBy('count', 'DESC')
       .addOrderBy('f.name', 'ASC');
-    if (actor.role !== Role.ADMIN) {
-      qb.where('(p.visibility = :shared OR p.created_by_id = :uid)', {
-        shared: ProblemVisibility.SHARED,
-        uid: actor.id,
-      });
-    }
+    // Same single predicate — critical here: this is a metadata-less raw builder,
+    // so applyVisibility emits raw snake_case columns and must be applied or facet
+    // names/counts leak other orgs' + global-draft problem existence.
+    this.applyVisibility(qb, 'p', actor);
     const rows = await qb.getRawMany<{ name: string; count: string }>();
     return rows.map((r) => ({ name: r.name, count: Number(r.count) }));
   }
@@ -198,10 +204,66 @@ export class ProblemsService {
    * readable (statement, tags, etc.) by anyone who has/guesses its id.
    */
   private assertVisible(actor: AuthenticatedUser, problem: Problem): void {
-    if (actor.role === Role.ADMIN) return;
-    if (problem.visibility === ProblemVisibility.SHARED) return;
+    if (isSuperAdmin(actor)) return;
+    const publishedGlobal =
+      problem.scope === ProblemScope.GLOBAL && problem.visibility === ProblemVisibility.SHARED;
+    // Guard the org compare against a null actor org (SQL `col = NULL` is never
+    // true) so a mis-provisioned org-less non-superadmin can't match a global's null org.
+    const sameOrg =
+      actor.organizationId != null && problem.organizationId === actor.organizationId;
+    if (actor.role === Role.ADMIN) {
+      if (sameOrg) return; // all of the admin's own org
+      if (publishedGlobal) return;
+      throw new ForbiddenException('You cannot view this problem');
+    }
+    // PROFESSOR / STUDENT
+    if (publishedGlobal) return;
+    if (sameOrg && problem.visibility === ProblemVisibility.SHARED) return;
     if (problem.createdById === actor.id) return;
     throw new ForbiddenException('You cannot view this problem');
+  }
+
+  /**
+   * The SINGLE catalog visibility predicate (#56). Emits RAW snake_case column
+   * SQL so it works on BOTH the repository builder (findAll) and the
+   * metadata-less raw dataSource builder (facetCounts). Always uses andWhere —
+   * TypeORM promotes the first andWhere to the leading WHERE — and namespaced
+   * :__vis* params never clobber caller binds.
+   */
+  private applyVisibility<T extends ObjectLiteral>(
+    qb: SelectQueryBuilder<T>,
+    alias: string,
+    actor: AuthenticatedUser,
+  ): void {
+    if (isSuperAdmin(actor)) return;
+    const publishedGlobal = `(${alias}.scope = :__visGlobal AND ${alias}.visibility = :__visShared)`;
+    const params = {
+      __visGlobal: ProblemScope.GLOBAL,
+      __visShared: ProblemVisibility.SHARED,
+      __visOrg: actor.organizationId,
+      __visUid: actor.id,
+    };
+    if (actor.role === Role.ADMIN) {
+      qb.andWhere(`(${alias}.organization_id = :__visOrg OR ${publishedGlobal})`, params);
+      return;
+    }
+    qb.andWhere(
+      `(${publishedGlobal}` +
+        ` OR (${alias}.organization_id = :__visOrg AND ${alias}.visibility = :__visShared)` +
+        ` OR ${alias}.created_by_id = :__visUid)`,
+      params,
+    );
+  }
+
+  /**
+   * Direct-by-id read enforcing the SAME rule as findAll. getById stays
+   * UNGUARDED (write paths call it before assertOwnerOrAdmin); this is the gated
+   * read entry point, reused by findOne and by AssignmentsService import/clone (#57).
+   */
+  async getVisible(id: string, actor: AuthenticatedUser): Promise<Problem> {
+    const problem = await this.getById(id);
+    this.assertVisible(actor, problem);
+    return problem;
   }
 
   async getTestCases(problemId: string, actor: AuthenticatedUser): Promise<TestCase[]> {
@@ -284,7 +346,8 @@ export class ProblemsService {
 
   /** Deep-copies a problem and its active test cases into the actor's library. */
   async clone(id: string, actor: AuthenticatedUser): Promise<Problem> {
-    const source = await this.getById(id);
+    const source = await this.getVisible(id, actor); // cannot clone what you cannot see
+    const superAdmin = isSuperAdmin(actor);
     const activeCases = await this.testCases.find({
       where: { problemId: id, isActive: true },
     });
@@ -294,6 +357,8 @@ export class ProblemsService {
         body: source.body,
         difficulty: source.difficulty,
         visibility: ProblemVisibility.PRIVATE,
+        scope: superAdmin ? ProblemScope.GLOBAL : ProblemScope.ORG,
+        organizationId: superAdmin ? null : actor.organizationId,
         source: ProblemSource.HUMAN,
         createdById: actor.id,
         tags: source.tags,
@@ -347,8 +412,17 @@ export class ProblemsService {
   }
 
   private assertOwnerOrAdmin(actor: AuthenticatedUser, problem: Problem): void {
-    if (actor.role === Role.ADMIN) return;
+    if (isSuperAdmin(actor)) return;
     if (problem.createdById === actor.id) return;
+    // Org-admin may manage problems in its OWN org only — never globals, never
+    // another org (globals are superadmin-only, PLATFORM-PLAN §10).
+    if (
+      actor.role === Role.ADMIN &&
+      actor.organizationId != null &&
+      problem.organizationId === actor.organizationId
+    ) {
+      return;
+    }
     throw new ForbiddenException('You can only modify problems you created');
   }
 }

@@ -20,3 +20,14 @@ export enum ProblemVisibility {
   PRIVATE = 'private',
   SHARED = 'shared',
 }
+
+/**
+ * Platform reach (#56) — a platform-wide catalog problem vs an org-owned one.
+ * Orthogonal to `visibility` (the intra-org private|shared axis): a GLOBAL
+ * problem is a superadmin draft while private, published to every org when
+ * shared. DB CHECK: scope='global' <=> organization_id IS NULL.
+ */
+export enum ProblemScope {
+  GLOBAL = 'global',
+  ORG = 'org',
+}

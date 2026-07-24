@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { QUEUE_ASSIGNMENT_SWEEP } from '../../queue/queue.constants';
 import { Batch } from '../classrooms/entities/batch.entity';
 import { ClassroomsModule } from '../classrooms/classrooms.module';
+import { ProblemsModule } from '../problems/problems.module';
 import { LibraryProblemTemplate } from '../problems/entities/library-problem-template.entity';
 import { Problem } from '../problems/entities/problem.entity';
 import { TestCase } from '../problems/entities/test-case.entity';
@@ -39,6 +40,7 @@ import { QuizResponse } from './entities/quiz-response.entity';
       AssignmentAttempt,
     ]),
     ClassroomsModule,
+    ProblemsModule, // #57: getVisible-gated import/clone source reads
     // Repeatable ~60s sweep (auto start/stop + timed-test auto-submit). attempts:1
     // so a failed tick is retried by the next tick, not by BullMQ backoff.
     BullModule.registerQueue({
