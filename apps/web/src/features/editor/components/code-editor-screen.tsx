@@ -1,11 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { Editor } from '@monaco-editor/react';
 import { defineEditorThemes, useEditorTheme } from '../lib/editor-theme';
 import { EditorThemeToggle } from './editor-theme-toggle';
 import { Group, Panel, Separator } from 'react-resizable-panels';
-import { ArrowLeft, CheckCircle2, Loader2, Lock, Play, Send } from 'lucide-react';
+import {
+  ArrowLeft,
+  CheckCircle2,
+  Cpu,
+  Loader2,
+  Lock,
+  Play,
+  Send,
+  Timer,
+  XCircle,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -22,10 +32,10 @@ import { Logo } from '@/components/shared/logo';
 import { MarkdownView } from '@/components/shared/markdown-view';
 import { VerdictBadge } from '@/components/shared/verdict-badge';
 import { AcceptedBurst } from './accepted-burst';
+import { CasePills, IoField } from './solve-io';
 import { useSubmissionSocket } from '../hooks/use-submission-socket';
 import { usePersistedCode } from '../hooks/use-persisted-code';
 import { parseApiError } from '@/lib/api-client';
-import { cn } from '@/lib/utils';
 import type { Language } from '@/types/common';
 import { Difficulty } from '@/types/problem';
 import {
@@ -33,6 +43,7 @@ import {
   TERMINAL_STATUSES,
   type RunResult,
   type SampleTestcase,
+  type Submission,
   type SubmitResult,
 } from '@/types/submission';
 
@@ -49,6 +60,15 @@ const MONACO_LANGUAGE: Record<Language, string> = {
   java: 'java',
   cpp: 'cpp',
 };
+
+/** Human-readable memory from the raw byte count the judge reports (string). */
+function formatMemory(bytes: string | null): string | null {
+  if (bytes == null) return null;
+  const n = Number(bytes);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  return `${Math.round(n / 1024)} KB`;
+}
 
 /** The subset both the assignment (`EditorBootstrap`) and practice (`PracticeBootstrap`) payloads share. */
 export interface EditorScreenBootstrap {
@@ -76,6 +96,13 @@ interface CodeEditorScreenProps {
    * toast; without one the default "Accepted!" toast fires.
    */
   onAccepted?: (submissionId: string) => void;
+  /**
+   * Practice only: fetches the finalized submission once judging is terminal, so
+   * the result panel can show the failing case's input/expected/output (like
+   * LeetCode). Omitted for the blind assignment path — the backend coarsens the
+   * payload there anyway, so no detail could leak.
+   */
+  onFetchSubmission?: (submissionId: string) => Promise<Submission>;
 }
 
 /**
@@ -91,6 +118,7 @@ export function CodeEditorScreen({
   onRun,
   onSubmit,
   onAccepted,
+  onFetchSubmission,
 }: CodeEditorScreenProps) {
   const navigate = useNavigate();
   const { pref: editorThemePref, setPref: setEditorThemePref, monacoTheme } = useEditorTheme();
@@ -98,6 +126,10 @@ export function CodeEditorScreen({
   const [submissionId, setSubmissionId] = useState<string | null>(null);
   const [runResult, setRunResult] = useState<RunResult | null>(null);
   const [resultTab, setResultTab] = useState<'testcases' | 'result'>('testcases');
+  // Which sample case is open in the "Test Cases" tab, and which case is open
+  // in a Run result — LeetCode-style Case 1 / Case 2 drill-in.
+  const [activeSample, setActiveSample] = useState(0);
+  const [activeRunCase, setActiveRunCase] = useState(0);
 
   // Derived, not stored: `language` only holds an explicit user override;
   // absent one, fall back to the bootstrap's first template.
@@ -115,10 +147,24 @@ export function CodeEditorScreen({
 
   const { status: liveStatus, testcaseVerdicts } = useSubmissionSocket(submissionId);
 
+  // Judging has reached a terminal verdict — used to gate the detail fetch below.
+  const judgingTerminal =
+    !!submissionId && !!liveStatus && TERMINAL_STATUSES.includes(liveStatus.status);
+
+  // Practice only: once judging is terminal, pull the finalized submission so the
+  // result panel can show the first failing case's input/expected/output + timing
+  // (the live socket streams verdicts only). Assignment omits `onFetchSubmission`.
+  const { data: submissionDetail } = useQuery({
+    queryKey: ['submission-detail', submissionId, liveStatus?.status],
+    queryFn: () => onFetchSubmission!(submissionId!),
+    enabled: !!onFetchSubmission && judgingTerminal,
+  });
+
   const runMutation = useMutation({
     mutationFn: () => onRun(effectiveLanguage!, code, bootstrap.sampleTestCases),
     onSuccess: (result) => {
       setRunResult(result);
+      setActiveRunCase(0);
       setResultTab('result');
     },
     onError: (error) => toast.error(parseApiError(error).message),
@@ -176,6 +222,21 @@ export function CodeEditorScreen({
 
   const isJudging =
     !!submissionId && (!liveStatus || !TERMINAL_STATUSES.includes(liveStatus.status));
+
+  // ---- Derived view state for the result panels (LeetCode-style detail) ----
+  const samples = bootstrap.sampleTestCases;
+  const sampleIdx = samples.length ? Math.min(activeSample, samples.length - 1) : 0;
+
+  const runCases = runResult?.results ?? [];
+  const runIdx = runCases.length ? Math.min(activeRunCase, runCases.length - 1) : 0;
+  const runPassed = runCases.filter((r) => r.status === SubmissionStatus.ACCEPTED).length;
+
+  const failedDetail = submissionDetail?.failedTestcaseDetail ?? null;
+  const submitAccepted = liveStatus?.status === SubmissionStatus.ACCEPTED;
+  const submitMemory = formatMemory(
+    submissionDetail?.memoryBytes ?? liveStatus?.memoryBytes ?? null,
+  );
+  const submitRuntime = submissionDetail?.runtimeMs ?? liveStatus?.runtimeMs ?? null;
 
   return (
     <div className="flex h-svh flex-col bg-background text-foreground">
@@ -285,51 +346,95 @@ export function CodeEditorScreen({
                     <TabsTrigger value="result">Test Result</TabsTrigger>
                   </TabsList>
 
+                  {/* ---- Test Cases: sample inputs, LeetCode-style case drill-in ---- */}
                   <TabsContent
                     value="testcases"
-                    className="custom-scrollbar h-full overflow-y-auto p-4"
+                    className="custom-scrollbar h-full space-y-3 overflow-y-auto p-4"
                   >
-                    <div className="space-y-3">
-                      {bootstrap.sampleTestCases.map((tc, i) => (
-                        <div key={i} className="rounded-lg border border-border p-3 text-sm">
-                          <p className="font-medium">Case {i + 1}</p>
-                          <p className="mt-1 font-mono text-xs text-muted-foreground">
-                            Input: {tc.inputData}
+                    {samples.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        No sample cases for this problem.
+                      </p>
+                    ) : (
+                      <>
+                        <CasePills
+                          count={samples.length}
+                          active={sampleIdx}
+                          onSelect={setActiveSample}
+                        />
+                        <IoField label="Input" value={samples[sampleIdx].inputData} />
+                        <IoField
+                          label="Expected"
+                          value={samples[sampleIdx].expectedOutput}
+                          tone="good"
+                        />
+                        {samples[sampleIdx].explanation && (
+                          <p className="text-xs text-muted-foreground">
+                            {samples[sampleIdx].explanation}
                           </p>
-                          <p className="font-mono text-xs text-muted-foreground">
-                            Expected: {tc.expectedOutput}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
+                        )}
+                      </>
+                    )}
                   </TabsContent>
 
+                  {/* ---- Test Result: Run detail, then submit verdict + failing case ---- */}
                   <TabsContent
                     value="result"
-                    className="custom-scrollbar h-full overflow-y-auto p-4"
+                    className="custom-scrollbar h-full space-y-4 overflow-y-auto p-4"
                   >
+                    {/* Run: full per-case Input / Your Output / Expected */}
                     {runResult && (
-                      <div className="space-y-2">
-                        <VerdictBadge status={runResult.status} />
-                        {runResult.results.map((r, i) => (
-                          <div key={i} className="rounded-lg border border-border p-3 text-sm">
-                            <div className="flex items-center justify-between">
-                              <p className="font-medium">Case {i + 1}</p>
-                              <VerdictBadge status={r.status} />
-                            </div>
-                            <p className="mt-1 font-mono text-xs text-muted-foreground">
-                              Output: {r.output || '(empty)'}
-                            </p>
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-3">
+                          <VerdictBadge status={runResult.status} />
+                          <span className="text-xs text-muted-foreground">
+                            {runPassed} / {runCases.length} sample cases passed
+                          </span>
+                        </div>
+                        <CasePills
+                          count={runCases.length}
+                          active={runIdx}
+                          onSelect={setActiveRunCase}
+                          verdicts={runCases.map((r) => r.status)}
+                        />
+                        {runCases[runIdx] && (
+                          <div className="space-y-3">
+                            <VerdictBadge status={runCases[runIdx].status} />
+                            <IoField label="Input" value={runCases[runIdx].input} />
+                            <IoField
+                              label="Your Output"
+                              value={runCases[runIdx].output}
+                              tone={
+                                runCases[runIdx].status === SubmissionStatus.ACCEPTED
+                                  ? 'good'
+                                  : 'bad'
+                              }
+                            />
+                            <IoField
+                              label="Expected"
+                              value={runCases[runIdx].expected}
+                              tone="good"
+                            />
+                            {runCases[runIdx].error && (
+                              <IoField label="Stderr" value={runCases[runIdx].error} tone="bad" />
+                            )}
                           </div>
-                        ))}
+                        )}
                       </div>
                     )}
 
+                    {/* Submission: live progress, then verdict + failing-case detail */}
                     {submissionId && !runResult && (
-                      <div className="space-y-2">
-                        {liveStatus ? (
+                      <div className="space-y-4">
+                        {!liveStatus && (
+                          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Loader2 className="size-4 animate-spin" /> Judging…
+                          </p>
+                        )}
+
+                        {liveStatus && (
                           <>
-                            {liveStatus.status === SubmissionStatus.ACCEPTED ? (
+                            {submitAccepted ? (
                               <div className="animate-scale-in relative flex items-center gap-2.5 overflow-visible rounded-xl bg-success/10 p-3">
                                 <AcceptedBurst key={submissionId} />
                                 <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-success text-success-foreground">
@@ -338,38 +443,81 @@ export function CodeEditorScreen({
                                 <div className="leading-tight">
                                   <p className="font-semibold text-success">Accepted!</p>
                                   <p className="text-xs text-muted-foreground">
-                                    {liveStatus.passedTestcaseCount}/
-                                    {liveStatus.totalTestcaseCount} tests passed
+                                    {liveStatus.passedTestcaseCount}/{liveStatus.totalTestcaseCount}{' '}
+                                    tests passed
                                   </p>
                                 </div>
                               </div>
                             ) : (
-                              <div className="flex items-center gap-2">
-                                <VerdictBadge status={liveStatus.status} />
-                                <span className="text-sm text-muted-foreground">
-                                  {liveStatus.passedTestcaseCount}/{liveStatus.totalTestcaseCount}{' '}
-                                  passed
+                              <div className="flex flex-wrap items-center gap-3">
+                                {isJudging ? (
+                                  <span className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
+                                    <Loader2 className="size-4 animate-spin" /> Judging…
+                                  </span>
+                                ) : (
+                                  <span className="flex items-center gap-2">
+                                    <XCircle className="size-5 text-red-600 dark:text-red-400" />
+                                    <VerdictBadge status={liveStatus.status} />
+                                  </span>
+                                )}
+                                <span className="text-xs text-muted-foreground">
+                                  {liveStatus.passedTestcaseCount} / {liveStatus.totalTestcaseCount}{' '}
+                                  testcases passed
                                 </span>
                               </div>
                             )}
-                            {Object.values(testcaseVerdicts)
-                              .sort((a, b) => a.ordinal - b.ordinal)
-                              .map((tc) => (
-                                <div
-                                  key={tc.ordinal}
-                                  className={cn(
-                                    'flex items-center justify-between rounded-lg border border-border p-2 text-sm',
-                                  )}
-                                >
-                                  <span>Test case {tc.ordinal + 1}</span>
-                                  <VerdictBadge status={tc.verdict} />
-                                </div>
-                              ))}
+
+                            {(submitRuntime != null || submitMemory) && (
+                              <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+                                {submitRuntime != null && (
+                                  <span className="flex items-center gap-1">
+                                    <Timer className="size-3.5" /> {submitRuntime} ms
+                                  </span>
+                                )}
+                                {submitMemory && (
+                                  <span className="flex items-center gap-1">
+                                    <Cpu className="size-3.5" /> {submitMemory}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+
+                            {Object.keys(testcaseVerdicts).length > 0 && (
+                              <CasePills
+                                count={
+                                  liveStatus.totalTestcaseCount ||
+                                  Object.keys(testcaseVerdicts).length
+                                }
+                                active={-1}
+                                onSelect={() => {}}
+                                verdicts={Object.values(testcaseVerdicts)
+                                  .sort((a, b) => a.ordinal - b.ordinal)
+                                  .map((tc) => tc.verdict)}
+                              />
+                            )}
+
+                            {failedDetail && !submitAccepted && (
+                              <div className="space-y-3 border-t border-border pt-3">
+                                <p className="text-xs font-semibold text-muted-foreground">
+                                  First failing case
+                                </p>
+                                <IoField label="Input" value={failedDetail.input} />
+                                <IoField
+                                  label="Your Output"
+                                  value={failedDetail.output}
+                                  tone="bad"
+                                />
+                                <IoField
+                                  label="Expected"
+                                  value={failedDetail.expected}
+                                  tone="good"
+                                />
+                                {failedDetail.error && (
+                                  <IoField label="Stderr" value={failedDetail.error} tone="bad" />
+                                )}
+                              </div>
+                            )}
                           </>
-                        ) : (
-                          <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <Loader2 className="size-4 animate-spin" /> Judging…
-                          </p>
                         )}
                       </div>
                     )}
