@@ -28,6 +28,12 @@ export class Submission extends BaseEntity {
   @Column({ type: 'uuid', name: 'user_id' })
   userId!: string;
 
+  // Denormalized tenant FK (stamped at submit time from the actor's org) so the
+  // actor-less judge worker + @OnEvent listeners never re-derive org (#58).
+  @Index('idx_submission_organization')
+  @Column({ type: 'uuid', name: 'organization_id' })
+  organizationId!: string;
+
   // Discriminates the submission target (practice vs assignment). Default
   // 'assignment' preserves legacy behavior (migration 5, issue #25).
   @Column({ type: 'enum', enum: SubmissionContext, default: SubmissionContext.ASSIGNMENT })

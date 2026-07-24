@@ -7,6 +7,7 @@ import { Role } from '../../../common/enums/role.enum';
 import { AuthenticatedUser } from '../../../common/types/authenticated-user';
 import { JOB_JUDGE_SUBMISSION, QUEUE_JUDGE } from '../../../queue/queue.constants';
 import { AssignmentsService } from '../../assignments/assignments.service';
+import { LEGACY_ORG_ID } from '../../organizations/organizations.constants';
 import { AssignmentStatus } from '../../assignments/enums/assignment-status.enum';
 import { LibraryProblemTemplate } from '../../problems/entities/library-problem-template.entity';
 import { ProblemsService } from '../../problems/problems.service';
@@ -49,6 +50,9 @@ export class CodeExecutionService {
     const submissionId = await this.dataSource.transaction(async (m) => {
       const submission = m.getRepository(Submission).create({
         userId: actor.id,
+        // Stamp org at submit time (request actor) so the actor-less judge worker
+        // never re-derives it. SUPERADMIN has no org -> legacy fallback (#58).
+        organizationId: actor.organizationId ?? LEGACY_ORG_ID,
         context: seed.context,
         assignmentProblemId: seed.assignmentProblemId,
         problemId: seed.problemId ?? null,

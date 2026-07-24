@@ -111,6 +111,20 @@ describe('GamificationService.handleFinalizedSubmission — gates', () => {
   });
 });
 
+describe('GamificationService.handleFinalizedSubmission — org stamping (#58)', () => {
+  it('stamps organization_id on the user_gamification upsert (derived from the user, no actor)', async () => {
+    const h = build({
+      submission: practiceSub(),
+      user: { ...student, organizationId: 'org-A' },
+      problem: { id: 'p1', difficulty: Difficulty.EASY },
+    });
+    await h.service.handleFinalizedSubmission('s1');
+    const upsert = h.queryCalls.find((s) => s.includes('INSERT INTO user_gamification'));
+    expect(upsert).toBeDefined();
+    expect(upsert).toContain('organization_id');
+  });
+});
+
 describe('GamificationService.handleFinalizedSubmission — points', () => {
   it('awards difficulty points + bumps the counter on a first Accept', async () => {
     const h = build({

@@ -17,6 +17,12 @@ export class UserGamification extends BaseEntity {
   @Column({ type: 'uuid', name: 'user_id' })
   userId!: string;
 
+  // Denormalized tenant FK (derived from the user; this row is created in the
+  // actor-less SUBMISSION_FINALIZED worker path, #58).
+  @Index('idx_user_gamification_organization')
+  @Column({ type: 'uuid', name: 'organization_id' })
+  organizationId!: string;
+
   @Column({ type: 'int', default: 0, name: 'total_points' })
   totalPoints!: number;
 
