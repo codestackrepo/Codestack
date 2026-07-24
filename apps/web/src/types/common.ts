@@ -4,6 +4,7 @@
 // the modern equivalent: same `Role.ADMIN` call-site ergonomics, zero
 // non-erasable syntax.
 export const Role = {
+  SUPERADMIN: 'superadmin',
   ADMIN: 'admin',
   PROFESSOR: 'professor',
   STUDENT: 'student',
@@ -11,6 +12,17 @@ export const Role = {
 export type Role = (typeof Role)[keyof typeof Role];
 
 export const STAFF_ROLES: Role[] = [Role.ADMIN, Role.PROFESSOR];
+
+/** Role hierarchy — mirrors the backend ROLE_RANK. SUPERADMIN is the sole universal bypass. */
+export const ROLE_RANK: Record<Role, number> = {
+  [Role.SUPERADMIN]: 3,
+  [Role.ADMIN]: 2,
+  [Role.PROFESSOR]: 1,
+  [Role.STUDENT]: 0,
+};
+
+/** True when `role` outranks or equals `min`. */
+export const atLeast = (role: Role, min: Role): boolean => ROLE_RANK[role] >= ROLE_RANK[min];
 
 export const Language = {
   PYTHON: 'python',
