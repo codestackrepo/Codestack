@@ -123,9 +123,12 @@ export function LandingPage() {
 
       {/* Hero */}
       <section className="relative overflow-hidden">
-        <div className="bg-grid pointer-events-none absolute inset-0 opacity-40 [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,black,transparent)]" />
         <div
-          className="pointer-events-none absolute -top-24 left-1/2 size-[36rem] -translate-x-1/2 rounded-full opacity-25 blur-3xl"
+          className="pointer-events-none absolute -top-24 left-1/2 size-[36rem] -translate-x-1/2 rounded-full opacity-30 blur-3xl"
+          style={{ background: 'radial-gradient(circle, var(--primary), transparent 70%)' }}
+        />
+        <div
+          className="pointer-events-none absolute top-40 right-0 size-[28rem] rounded-full opacity-20 blur-3xl"
           style={{ background: 'radial-gradient(circle, var(--chart-4), transparent 70%)' }}
         />
         <div className="relative mx-auto grid w-full max-w-[75rem] items-center gap-12 px-4 py-16 md:px-6 md:py-24 lg:grid-cols-2">
@@ -232,7 +235,7 @@ export function LandingPage() {
           {FEATURES.map((f, i) => (
             <div
               key={f.title}
-              className="reveal group rounded-2xl border border-border bg-card p-6 shadow-soft transition-all duration-300 hover:-translate-y-1 hover:shadow-soft-lg"
+              className="reveal hover-3d group rounded-2xl border border-border bg-card p-6 shadow-soft"
               style={{ '--reveal-delay': `${i * 70}ms` } as React.CSSProperties}
             >
               <span
@@ -257,7 +260,7 @@ export function LandingPage() {
           {STEPS.map((s, i) => (
             <div
               key={s.n}
-              className="reveal relative rounded-2xl border border-border bg-card p-6 shadow-soft"
+              className="reveal hover-lift relative rounded-2xl border border-border bg-card p-6 shadow-soft"
               style={{ '--reveal-delay': `${i * 90}ms` } as React.CSSProperties}
             >
               <span className="flex size-9 items-center justify-center rounded-full bg-primary font-mono text-sm font-bold text-primary-foreground">
@@ -276,7 +279,10 @@ export function LandingPage() {
           ref={revealCta}
           className="reveal bg-gradient-brand relative overflow-hidden rounded-3xl px-6 py-14 text-center shadow-soft-lg md:px-12"
         >
-          <div className="bg-grid pointer-events-none absolute inset-0 opacity-10" />
+          <div
+            className="pointer-events-none absolute -top-16 -right-10 size-72 rounded-full opacity-40 blur-3xl"
+            style={{ background: 'radial-gradient(circle, rgba(255,255,255,0.5), transparent 70%)' }}
+          />
           <div className="relative mx-auto max-w-2xl">
             <h2 className="text-2xl font-bold tracking-tight text-white md:text-4xl">
               Ready to start building your streak?

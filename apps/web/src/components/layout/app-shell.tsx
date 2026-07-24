@@ -16,7 +16,11 @@ export function AppShell() {
       <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
         <SheetContent side="left" className="w-64 p-0">
           <SheetTitle className="sr-only">Navigation</SheetTitle>
-          <Sidebar className="w-full" onNavigate={() => setMobileNavOpen(false)} />
+          <Sidebar
+            className="w-full rounded-none"
+            allowCollapse={false}
+            onNavigate={() => setMobileNavOpen(false)}
+          />
         </SheetContent>
       </Sheet>
 

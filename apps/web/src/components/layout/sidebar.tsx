@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { AppModuleKey, Role } from '@/types/common';
 import { useAuth } from '@/features/auth/context/auth-context';
 import { useModuleAccess } from '@/features/auth/hooks/use-module-access';
 import { Logo } from '@/components/shared/logo';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   LayoutDashboard,
   GraduationCap,
@@ -16,7 +18,17 @@ import {
   Users,
   Inbox,
   Mail,
+  PanelLeftClose,
+  PanelLeftOpen,
+  LogOut,
 } from 'lucide-react';
+
+const COLLAPSE_KEY = 'codestack-sidebar-collapsed';
+const ROLE_LABEL: Record<string, string> = {
+  admin: 'Administrator',
+  professor: 'Professor',
+  student: 'Student',
+};
 
 interface NavItem {
   to: string;
@@ -106,11 +118,29 @@ interface SidebarProps {
   className?: string;
   /** Called when a nav link is chosen — used to close the mobile drawer. */
   onNavigate?: () => void;
+  /** Desktop rail can collapse to icons; the mobile drawer passes false. */
+  allowCollapse?: boolean;
 }
 
-export function Sidebar({ className, onNavigate }: SidebarProps) {
-  const { user } = useAuth();
+export function Sidebar({ className, onNavigate, allowCollapse = true }: SidebarProps) {
+  const { user, logout } = useAuth();
   const { canAccess } = useModuleAccess();
+  const [collapsed, setCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem(COLLAPSE_KEY) === '1';
+  });
+
+  const toggleCollapsed = () => {
+    setCollapsed((c) => {
+      const next = !c;
+      try {
+        window.localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0');
+      } catch {
+        // ignore storage failures
+      }
+      return next;
+    });
+  };
 
   const canSee = (item: NavItem) =>
     (!item.roles || !user || user.role === Role.ADMIN || item.roles.includes(user.role)) &&
@@ -121,63 +151,137 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
     items: section.items.filter(canSee),
   })).filter((section) => section.items.length > 0);
 
+  // Collapse only applies to the desktop rail; the mobile drawer is always full.
+  const isCollapsed = allowCollapse && collapsed;
+  const initials =
+    `${user?.firstName?.[0] ?? ''}${user?.lastName?.[0] ?? ''}`.toUpperCase() || 'U';
+
   return (
     <aside
       className={cn(
-        'flex h-svh w-64 shrink-0 flex-col bg-sidebar text-sidebar-foreground',
+        'sidebar-surface relative flex h-svh shrink-0 flex-col rounded-r-2xl text-sidebar-foreground shadow-[6px_0_28px_-16px_rgba(0,0,0,0.5)] transition-[width] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]',
+        isCollapsed ? 'w-[4.75rem]' : 'w-64',
         className,
       )}
     >
-      <div className="flex h-16 shrink-0 items-center px-5">
-        <Logo />
+      {/* Header: logo + collapse toggle */}
+      <div className="flex h-16 shrink-0 items-center justify-between gap-2 px-3.5">
+        {isCollapsed ? (
+          <Logo variant="mark" className="mx-auto size-9" />
+        ) : (
+          <Logo wordmarkClassName="text-sidebar-foreground" />
+        )}
+        {allowCollapse && (
+          <button
+            type="button"
+            onClick={toggleCollapsed}
+            aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            title={isCollapsed ? 'Expand' : 'Collapse'}
+            className={cn(
+              'grid size-8 shrink-0 place-items-center rounded-lg text-sidebar-foreground/60 transition-colors hover:bg-white/10 hover:text-white',
+              isCollapsed && 'absolute -right-3 top-5 size-6 bg-sidebar text-sidebar-foreground shadow-soft ring-1 ring-sidebar-border',
+            )}
+          >
+            {isCollapsed ? (
+              <PanelLeftOpen className="size-4" />
+            ) : (
+              <PanelLeftClose className="size-4" />
+            )}
+          </button>
+        )}
       </div>
-      <nav className="custom-scrollbar flex-1 space-y-4 overflow-y-auto px-3 py-3">
+
+      {/* Nav */}
+      <nav className="custom-scrollbar flex-1 space-y-4 overflow-x-hidden overflow-y-auto px-3 py-3">
         {sections.map((section, i) => (
-          <div key={section.heading ?? `section-${i}`} className="space-y-0.5">
-            {section.heading && (
-              <p className="px-3 pb-1 text-[0.6875rem] font-semibold tracking-wider text-sidebar-foreground/60 uppercase">
+          <div key={section.heading ?? `section-${i}`} className="space-y-1">
+            {section.heading && !isCollapsed && (
+              <p className="px-3 pb-1 text-[0.6875rem] font-semibold tracking-wider text-sidebar-foreground/55 uppercase">
                 {section.heading}
               </p>
             )}
+            {section.heading && isCollapsed && <div className="mx-3 border-t border-white/10" />}
             {section.items.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
                 end={item.end}
                 onClick={onNavigate}
+                title={isCollapsed ? item.label : undefined}
                 className={({ isActive }) =>
                   cn(
-                    'group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                    'group flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-all duration-200',
+                    isCollapsed && 'justify-center px-0',
                     isActive
-                      ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                      : 'text-sidebar-foreground/75 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground',
+                      ? 'bg-white text-sidebar shadow-soft'
+                      : 'text-sidebar-foreground/75 hover:bg-white/10 hover:text-white',
                   )
                 }
               >
-                {({ isActive }) => (
-                  <>
-                    <span
-                      className={cn(
-                        'absolute top-1/2 left-0 h-5 -translate-y-1/2 rounded-r-full bg-sidebar-primary transition-all',
-                        isActive ? 'w-1' : 'w-0',
-                      )}
-                    />
-                    <item.icon className="size-4 shrink-0" />
-                    <span className="flex-1">{item.label}</span>
-                    {item.comingSoon && (
-                      <span className="rounded-full bg-sidebar-foreground/10 px-1.5 py-0.5 text-[0.625rem] font-medium tracking-wide text-sidebar-foreground/50 uppercase">
-                        Soon
-                      </span>
-                    )}
-                  </>
+                <item.icon
+                  className={cn(
+                    'size-[1.15rem] shrink-0 transition-transform duration-200 group-hover:scale-110',
+                  )}
+                />
+                {!isCollapsed && <span className="flex-1 truncate">{item.label}</span>}
+                {!isCollapsed && item.comingSoon && (
+                  <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[0.625rem] font-medium tracking-wide text-sidebar-foreground/60 uppercase">
+                    Soon
+                  </span>
                 )}
               </NavLink>
             ))}
           </div>
         ))}
       </nav>
-      <div className="shrink-0 border-t border-sidebar-border/60 px-5 py-3 text-xs text-sidebar-foreground/45">
-        CodeStack · v0.1
+
+      {/* Footer: user card + sign out */}
+      <div className="shrink-0 border-t border-white/10 p-3">
+        {isCollapsed ? (
+          <div className="flex flex-col items-center gap-2">
+            <Avatar className="size-9 ring-2 ring-white/15">
+              <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground text-xs font-semibold">
+                {initials}
+              </AvatarFallback>
+            </Avatar>
+            <button
+              type="button"
+              onClick={() => void logout()}
+              aria-label="Sign out"
+              title="Sign out"
+              className="grid size-8 place-items-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-white/10 hover:text-white"
+            >
+              <LogOut className="size-4" />
+            </button>
+          </div>
+        ) : (
+          <div className="rounded-xl bg-white/5 p-2.5">
+            <div className="flex items-center gap-2.5">
+              <Avatar className="size-9 ring-2 ring-white/15">
+                <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground text-xs font-semibold">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0 flex-1 leading-tight">
+                <p className="truncate text-sm font-semibold text-white">
+                  {user ? `${user.firstName} ${user.lastName}` : 'Guest'}
+                </p>
+                <p className="truncate text-xs text-sidebar-foreground/60">
+                  {user ? (ROLE_LABEL[user.role] ?? user.role) : ''}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void logout()}
+                aria-label="Sign out"
+                title="Sign out"
+                className="grid size-8 shrink-0 place-items-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-white/10 hover:text-white"
+              >
+                <LogOut className="size-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </aside>
   );

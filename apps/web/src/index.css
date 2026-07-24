@@ -125,61 +125,65 @@
   --chart-4: hsl(292 50% 55%);
   --chart-5: hsl(145 55% 42%);
   --radius: 0.625rem;
-  --sidebar: hsl(265 45% 14%);
-  --sidebar-foreground: hsl(265 30% 86%);
+  /* Enriched violet sidebar (component layers a gradient on top). */
+  --sidebar: hsl(263 46% 18%);
+  --sidebar-foreground: hsl(264 32% 88%);
   --sidebar-primary: hsl(37 91% 55%);
-  --sidebar-primary-foreground: hsl(265 55% 12%);
-  --sidebar-accent: hsl(265 40% 22%);
+  --sidebar-primary-foreground: hsl(263 55% 12%);
+  --sidebar-accent: hsl(263 36% 28%);
   --sidebar-accent-foreground: hsl(0 0% 100%);
-  --sidebar-border: hsl(265 36% 23%);
+  --sidebar-border: hsl(263 34% 30%);
   --sidebar-ring: hsl(37 91% 55%);
 }
 
 .dark {
-  --background: hsl(265 35% 8%);
-  --foreground: hsl(265 25% 92%);
-  --card: hsl(265 32% 12%);
-  --card-foreground: hsl(265 25% 92%);
-  --popover: hsl(265 34% 11%);
-  --popover-foreground: hsl(265 25% 92%);
+  /* Lifted from a near-black plum (8% L) to a softer, less-saturated slate-violet
+     (~13-17% L, LeetCode-neutral) — "dark but not too dark" (user 2026-07-24). */
+  --background: hsl(258 16% 13%);
+  --foreground: hsl(260 22% 92%);
+  --card: hsl(258 15% 17%);
+  --card-foreground: hsl(260 22% 92%);
+  --popover: hsl(258 16% 16%);
+  --popover-foreground: hsl(260 22% 92%);
   /* Dark mode uses a pale lavender primary instead of a deep violet that would
-     lose contrast on the dark plum surface. */
-  --primary: hsl(262 65% 76%);
-  --primary-foreground: hsl(265 55% 12%);
-  --secondary: hsl(265 28% 18%);
-  --secondary-foreground: hsl(265 25% 92%);
-  --muted: hsl(265 26% 16%);
-  --muted-foreground: hsl(265 18% 65%);
-  --accent: hsl(265 28% 19%);
-  --accent-foreground: hsl(265 25% 92%);
+     lose contrast on the dark surface. */
+  --primary: hsl(262 68% 78%);
+  --primary-foreground: hsl(260 40% 12%);
+  --secondary: hsl(258 14% 23%);
+  --secondary-foreground: hsl(260 22% 92%);
+  --muted: hsl(258 13% 21%);
+  --muted-foreground: hsl(258 15% 68%);
+  --accent: hsl(258 14% 25%);
+  --accent-foreground: hsl(260 22% 92%);
   --brand: hsl(37 92% 58%);
-  --brand-foreground: hsl(265 60% 10%);
+  --brand-foreground: hsl(260 40% 10%);
   /* Per-hue dark values (the blanket "+12% L" rule broke red — §13.2). */
-  --destructive: hsl(0 75% 64%);
+  --destructive: hsl(0 75% 66%);
   --destructive-foreground: hsl(0 40% 10%);
-  --success: hsl(152 48% 55%);
+  --success: hsl(152 48% 56%);
   --success-foreground: hsl(152 45% 8%);
-  --warning: hsl(36 92% 60%);
+  --warning: hsl(36 92% 62%);
   --warning-foreground: hsl(32 60% 8%);
-  --info: hsl(205 78% 66%);
+  --info: hsl(205 78% 68%);
   --info-foreground: hsl(205 55% 8%);
-  --border: hsl(265 26% 22%);
-  --input: hsl(265 26% 24%);
-  --input-border: hsl(260 14% 48%);
-  --ring: hsl(262 65% 68%);
-  --chart-1: hsl(262 70% 74%);
-  --chart-2: hsl(37 92% 58%);
-  --chart-3: hsl(172 55% 50%);
-  --chart-4: hsl(292 55% 70%);
-  --chart-5: hsl(145 55% 52%);
-  --sidebar: hsl(265 42% 10%);
-  --sidebar-foreground: hsl(265 30% 86%);
-  --sidebar-primary: hsl(37 91% 55%);
-  --sidebar-primary-foreground: hsl(265 55% 12%);
-  --sidebar-accent: hsl(265 34% 17%);
+  --border: hsl(258 12% 27%);
+  --input: hsl(258 12% 29%);
+  --input-border: hsl(258 12% 50%);
+  --ring: hsl(262 68% 70%);
+  --chart-1: hsl(262 70% 76%);
+  --chart-2: hsl(37 92% 60%);
+  --chart-3: hsl(172 55% 52%);
+  --chart-4: hsl(292 55% 72%);
+  --chart-5: hsl(145 55% 54%);
+  /* Enriched violet sidebar (component adds a gradient on top). */
+  --sidebar: hsl(261 34% 16%);
+  --sidebar-foreground: hsl(260 28% 88%);
+  --sidebar-primary: hsl(37 91% 58%);
+  --sidebar-primary-foreground: hsl(261 55% 12%);
+  --sidebar-accent: hsl(261 28% 26%);
   --sidebar-accent-foreground: hsl(0 0% 100%);
-  --sidebar-border: hsl(265 30% 19%);
-  --sidebar-ring: hsl(37 91% 55%);
+  --sidebar-border: hsl(261 24% 28%);
+  --sidebar-ring: hsl(37 91% 58%);
 }
 
 @layer base {
@@ -195,20 +199,25 @@
   html {
     @apply font-sans;
   }
-  /* Motion accessibility (§14.2): honor the OS reduced-motion setting — collapse
-     every animation/transition to ~instant and reveal any scroll-in content. */
+  /* Motion accessibility (§14.2): under OS reduced-motion, neutralize the large
+     keyframe animations (entrances, float, confetti, scroll-reveal) but KEEP
+     short hover/focus transitions — those are low-vestibular-risk and are what
+     makes the UI feel responsive. Reveal content immediately. */
   @media (prefers-reduced-motion: reduce) {
-    *,
-    ::before,
-    ::after {
-      animation-duration: 0.001ms !important;
-      animation-iteration-count: 1 !important;
-      transition-duration: 0.001ms !important;
-      scroll-behavior: auto !important;
+    .animate-fade-in,
+    .animate-fade-in-up,
+    .animate-scale-in,
+    .animate-float,
+    .confetti-piece {
+      animation: none !important;
     }
     .reveal {
       opacity: 1 !important;
       transform: none !important;
+      transition: none !important;
+    }
+    html {
+      scroll-behavior: auto !important;
     }
   }
 }
@@ -333,5 +342,54 @@
   .reveal.in-view {
     opacity: 1;
     transform: none;
+  }
+
+  /* Lift on hover — for list/child cards. */
+  .hover-lift {
+    transition:
+      transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+      box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .hover-lift:hover {
+    transform: translateY(-5px);
+    box-shadow: var(--shadow-soft-lg);
+  }
+
+  /* True 3D tilt on hover — for hero / feature cards. */
+  .hover-3d {
+    transition:
+      transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+      box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    transform-style: preserve-3d;
+    will-change: transform;
+  }
+  .hover-3d:hover {
+    transform: perspective(1000px) rotateX(4deg) rotateY(-5deg) translateY(-6px);
+    box-shadow: var(--shadow-soft-lg);
+  }
+
+  /* Enriched sidebar surface: a soft top→bottom violet gradient for depth (3D). */
+  .sidebar-surface {
+    background-image: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--sidebar), white 7%) 0%,
+      var(--sidebar) 45%,
+      color-mix(in oklab, var(--sidebar), black 16%) 100%
+    );
+  }
+
+  /* Soft violet radial glow for dark hero/auth panels (replaces the hard grid). */
+  .glow-violet {
+    background-image:
+      radial-gradient(
+        42rem 30rem at 82% 8%,
+        color-mix(in oklab, var(--primary) 30%, transparent),
+        transparent 70%
+      ),
+      radial-gradient(
+        34rem 26rem at 8% 96%,
+        color-mix(in oklab, var(--chart-4) 24%, transparent),
+        transparent 70%
+      );
   }
 }

@@ -30,12 +30,7 @@ export function StatCard({
   };
 
   return (
-    <Card
-      className={cn(
-        'p-5 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-soft-lg',
-        className,
-      )}
-    >
+    <Card className={cn('hover-3d p-5', className)}>
       <div className="flex items-start justify-between gap-3">
         <div className="space-y-1">
           <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
