@@ -90,6 +90,8 @@ export class AssignmentsService {
       startDate: start,
       endDate: end,
       classroomId: dto.classroomId,
+      // Denormalized org = the classroom's org (canonical parent), not the actor.
+      organizationId: classroom.organizationId,
       createdById: actor.id,
       status: dto.asDraft ? AssignmentStatus.DRAFT : AssignmentStatus.SCHEDULED,
       kind: targeting.kind,

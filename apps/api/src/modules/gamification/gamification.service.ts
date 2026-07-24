@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Between, DataSource, Repository } from 'typeorm';
 import { Role } from '../../common/enums/role.enum';
 import { PaginatedResult, PaginationQueryDto } from '../../common/dto/pagination.dto';
+import { LEGACY_ORG_ID } from '../organizations/organizations.constants';
 import { Problem } from '../problems/entities/problem.entity';
 import { Difficulty } from '../problems/enums/problem.enums';
 import { Submission } from '../submissions/entities/submission.entity';
@@ -64,11 +65,14 @@ export class GamificationService {
 
     await this.dataSource.transaction(async (m) => {
       // Ensure the aggregate row exists, then lock it for the counter/streak math.
+      // Org derived from the persisted user (no request actor in this
+      // SUBMISSION_FINALIZED worker path). Non-null in practice (row exists only
+      // for STUDENTs, who always have an org); legacy fallback is defensive (#58).
       await m.query(
-        `INSERT INTO user_gamification (id, user_id, timezone, created_at, updated_at)
-         VALUES (uuid_generate_v4(), $1, $2, now(), now())
+        `INSERT INTO user_gamification (id, user_id, organization_id, timezone, created_at, updated_at)
+         VALUES (uuid_generate_v4(), $1, $2, $3, now(), now())
          ON CONFLICT (user_id) DO NOTHING`,
-        [user.id, tz],
+        [user.id, user.organizationId ?? LEGACY_ORG_ID, tz],
       );
       const agg = await m.findOne(UserGamification, {
         where: { userId: user.id },

@@ -40,6 +40,11 @@ export class Assignment extends BaseEntity {
   @Column({ type: 'uuid', name: 'classroom_id' })
   classroomId!: string;
 
+  // Denormalized tenant FK — always equals the assignment's classroom org (#58).
+  @Index('idx_assignment_organization')
+  @Column({ type: 'uuid', name: 'organization_id' })
+  organizationId!: string;
+
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'created_by_id' })
   createdBy!: User;

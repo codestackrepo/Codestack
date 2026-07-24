@@ -6,6 +6,7 @@ import { Role } from '../../common/enums/role.enum';
 import { Language } from '../../common/enums/language.enum';
 import { User } from '../../modules/users/entities/user.entity';
 import { Classroom } from '../../modules/classrooms/entities/classroom.entity';
+import { LEGACY_ORG_ID } from '../../modules/organizations/organizations.constants';
 import { Problem } from '../../modules/problems/entities/problem.entity';
 import { LibraryProblemTemplate } from '../../modules/problems/entities/library-problem-template.entity';
 import { Assignment } from '../../modules/assignments/entities/assignment.entity';
@@ -107,7 +108,9 @@ async function upsertUser(
   const repo = dataSource.getRepository(User);
   const existing = await repo.findOne({ where: { email } });
   if (existing) return existing;
-  return repo.save(repo.create({ email, role, firstName, lastName, passwordHash, isActive: true }));
+  return repo.save(
+    repo.create({ email, role, firstName, lastName, passwordHash, isActive: true, organizationId: LEGACY_ORG_ID }),
+  );
 }
 
 async function upsertClassroom(
@@ -121,6 +124,7 @@ async function upsertClassroom(
   if (existing) return existing;
   return repo.save(
     repo.create({
+      organizationId: LEGACY_ORG_ID,
       courseId,
       title,
       description: 'Seeded classroom for local development.',
@@ -159,6 +163,7 @@ async function upsertActiveAssignment(
       startDate,
       endDate,
       classroomId: classroom.id,
+      organizationId: classroom.organizationId,
       createdById: createdBy.id,
       status: AssignmentStatus.ACTIVE,
       publishedAt: new Date(),
