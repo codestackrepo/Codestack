@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import {
   CalendarRange,
   ChevronDown,
@@ -17,6 +17,7 @@ import { useAuth } from '@/features/auth/context/auth-context';
 import { StudentGradesCard } from '@/features/grading/components/student-grades-card';
 import { EmptyState } from '@/components/shared/empty-state';
 import { PageHeader } from '@/components/shared/page-header';
+import { Pagination } from '@/components/shared/pagination';
 import { DifficultyBadge } from '@/components/shared/difficulty-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -53,9 +54,11 @@ export function AssignmentStatusBadge({ status }: { status: AssignmentStatus }) 
 export function AssignmentsListPage() {
   const { user } = useAuth();
   const isStaff = !!user && STAFF_ROLES.includes(user.role);
+  const [page, setPage] = useState(1);
   const { data, isLoading } = useQuery({
-    queryKey: ['assignments', 'list'],
-    queryFn: () => assignmentsApi.list(),
+    queryKey: ['assignments', 'list', page],
+    queryFn: () => assignmentsApi.list({ page }),
+    placeholderData: keepPreviousData,
   });
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -132,6 +135,8 @@ export function AssignmentsListPage() {
           })}
         </div>
       )}
+
+      {!isLoading && <Pagination meta={data?.meta} onPageChange={setPage} noun="assignments" />}
     </div>
   );
 }

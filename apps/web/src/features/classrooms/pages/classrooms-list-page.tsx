@@ -1,23 +1,28 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { GraduationCap, Plus, Users } from 'lucide-react';
 import { classroomsApi } from '../api/classrooms.api';
 import { useAuth } from '@/features/auth/context/auth-context';
 import { EmptyState } from '@/components/shared/empty-state';
 import { PageHeader } from '@/components/shared/page-header';
+import { Pagination } from '@/components/shared/pagination';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { accentAt, accentChip } from '@/lib/accents';
 import { STAFF_ROLES } from '@/types/common';
 
 export function ClassroomsListPage() {
   const { user } = useAuth();
   const isStaff = !!user && STAFF_ROLES.includes(user.role);
+  const [page, setPage] = useState(1);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['classrooms', 'list'],
-    queryFn: () => classroomsApi.list(),
+    queryKey: ['classrooms', 'list', page],
+    queryFn: () => classroomsApi.list(page),
+    placeholderData: keepPreviousData,
   });
 
   return (
@@ -53,12 +58,15 @@ export function ClassroomsListPage() {
 
       {!isLoading && data && data.data.length > 0 && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {data.data.map((classroom) => (
+          {data.data.map((classroom, i) => (
             <Link key={classroom.id} to={`/home/classrooms/${classroom.id}`} className="group">
               <Card className="h-full transition-all group-hover:ring-primary/30 group-hover:shadow-md">
                 <CardContent className="flex h-full flex-col gap-4">
                   <div className="flex items-start justify-between gap-3">
-                    <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <span
+                      className="flex size-11 shrink-0 items-center justify-center rounded-xl transition-transform duration-300 group-hover:scale-110"
+                      style={accentChip(accentAt(i))}
+                    >
                       <GraduationCap className="size-5" />
                     </span>
                     <Badge variant="secondary">{classroom.term}</Badge>
@@ -79,6 +87,8 @@ export function ClassroomsListPage() {
           ))}
         </div>
       )}
+
+      {!isLoading && <Pagination meta={data?.meta} onPageChange={setPage} noun="classrooms" />}
     </div>
   );
 }

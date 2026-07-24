@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { usersApi, type AdminUser, type UpdateUserInput } from '../api/users.api';
 import { PageHeader } from '@/components/shared/page-header';
 import { EmptyState } from '@/components/shared/empty-state';
+import { Pagination } from '@/components/shared/pagination';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -203,31 +204,7 @@ export function AdminUsersPage() {
         </div>
       )}
 
-      {meta && meta.totalPages > 1 && (
-        <div className="flex items-center justify-between text-sm">
-          <p className="text-muted-foreground">
-            Page {meta.page} of {meta.totalPages} · {meta.total} users
-          </p>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!meta.hasPrev || busy}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-            >
-              <ChevronLeft className="size-4" /> Prev
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!meta.hasNext || busy}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              Next <ChevronRight className="size-4" />
-            </Button>
-          </div>
-        </div>
-      )}
+      <Pagination meta={meta} onPageChange={setPage} busy={busy} noun="users" />
     </div>
   );
 }

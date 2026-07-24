@@ -46,7 +46,7 @@ export function StudentDashboard({ user }: { user: User }) {
           label="Upcoming deadlines"
           value={deadlines?.length ?? '—'}
           icon={<CalendarClock className="size-5" />}
-          accent="var(--brand)"
+          accent="#f59e0b"
           hint={next ? `Next ${daysUntilLabel(next.endDate)}` : 'Nothing due soon'}
         />
         <StatCard
@@ -54,7 +54,7 @@ export function StudentDashboard({ user }: { user: User }) {
           label="Problems available"
           value={problems?.meta.total ?? '—'}
           icon={<FileCode2 className="size-5" />}
-          accent="var(--chart-1)"
+          accent="#0ea5e9"
           hint="Ready to solve"
         />
         <StatCard
@@ -62,7 +62,7 @@ export function StudentDashboard({ user }: { user: User }) {
           label="Assignments"
           value={deadlines?.length ?? '—'}
           icon={<ClipboardList className="size-5" />}
-          accent="var(--chart-3)"
+          accent="#8b5cf6"
           hint="With an open deadline"
         />
       </div>

@@ -186,7 +186,7 @@ export function Sidebar({ className, onNavigate, allowCollapse = true }: Sidebar
       ) : (
         <div className="flex h-16 shrink-0 items-center justify-between gap-2 px-3.5">
           <Link to="/home" title="CodeStack home" onClick={onNavigate}>
-            <Logo wordmarkClassName="text-white" accentClassName="text-[hsl(262_78%_82%)]" />
+            <Logo wordmarkClassName="text-white" accentClassName="text-[hsl(248_62%_82%)]" />
           </Link>
           {allowCollapse && (
             <button

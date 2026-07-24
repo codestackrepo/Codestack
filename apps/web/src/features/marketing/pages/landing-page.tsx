@@ -96,7 +96,7 @@ export function LandingPage() {
   return (
     <div className="custom-scrollbar h-svh scroll-smooth overflow-y-auto bg-background text-foreground">
       {/* Public top bar — enriched dark violet in dark mode */}
-      <header className="sticky top-0 z-20 border-b border-border/70 bg-background/80 backdrop-blur-md dark:border-white/10 dark:bg-[hsl(263_44%_13%/0.72)]">
+      <header className="sticky top-0 z-20 border-b border-border/70 bg-background/80 backdrop-blur-md dark:border-white/10 dark:bg-[hsl(244_38%_13%/0.72)]">
         <div className="mx-auto flex h-16 w-full max-w-[75rem] items-center justify-between gap-4 px-4 md:px-6">
           <Link to="/" aria-label="CodeStack home">
             <Logo />

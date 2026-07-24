@@ -13,9 +13,9 @@ interface LogoProps {
 }
 
 /**
- * CodeStack brand lockup. The mark is a self-contained SVG: a violet→magenta
- * gradient rounded badge with a `</>` code glyph — reads on any surface and
- * matches the purple-forward brand. The wordmark is themed HTML text.
+ * CodeStack brand lockup. The mark is a self-contained SVG: a matte
+ * indigo→muted-purple gradient rounded badge with a `</>` code glyph — reads on
+ * any surface and matches the indigo/navy brand. The wordmark is themed HTML text.
  */
 export function Logo({
   variant = 'full',
@@ -29,14 +29,14 @@ export function Logo({
         viewBox="0 0 32 32"
         role="img"
         aria-label="CodeStack"
-        className="size-full drop-shadow-[0_2px_6px_hsl(262_70%_45%/0.4)]"
+        className="size-full drop-shadow-[0_2px_6px_hsl(246_60%_42%/0.4)]"
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
       >
         <defs>
           <linearGradient id="cs-mark" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stopColor="#7C5CFF" />
-            <stop offset="1" stopColor="#C15CEC" />
+            <stop offset="0" stopColor="#3B3E96" />
+            <stop offset="1" stopColor="#7355C4" />
           </linearGradient>
         </defs>
         <rect width="32" height="32" rx="9" fill="url(#cs-mark)" />

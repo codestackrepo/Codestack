@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { onboardingApi, type ProfessorRequest, type RequestStatus } from '../api/onboarding.api';
@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/table';
 import { EmptyState } from '@/components/shared/empty-state';
 import { PageHeader } from '@/components/shared/page-header';
+import { Pagination } from '@/components/shared/pagination';
 
 const STATUS_FILTERS: { label: string; value: RequestStatus | 'all' }[] = [
   { label: 'Pending', value: 'pending' },
@@ -44,14 +45,15 @@ const STATUS_VARIANT: Record<RequestStatus, 'default' | 'secondary' | 'destructi
 export function AdminRequestsPage() {
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<RequestStatus | 'all'>('pending');
+  const [page, setPage] = useState(1);
   const [rejecting, setRejecting] = useState<ProfessorRequest | null>(null);
   const [reason, setReason] = useState('');
 
-  const queryKey = ['onboarding', 'requests', filter];
   const { data, isLoading } = useQuery({
-    queryKey,
+    queryKey: ['onboarding', 'requests', filter, page],
     queryFn: () =>
-      onboardingApi.listRequests(filter === 'all' ? {} : { status: filter }),
+      onboardingApi.listRequests(filter === 'all' ? { page } : { status: filter, page }),
+    placeholderData: keepPreviousData,
   });
 
   const invalidate = () =>
@@ -79,6 +81,7 @@ export function AdminRequestsPage() {
   });
 
   const rows = data?.data ?? [];
+  const meta = data?.meta;
 
   return (
     <div className="space-y-6">
@@ -93,7 +96,10 @@ export function AdminRequestsPage() {
             key={f.value}
             size="sm"
             variant={filter === f.value ? 'default' : 'outline'}
-            onClick={() => setFilter(f.value)}
+            onClick={() => {
+              setFilter(f.value);
+              setPage(1);
+            }}
           >
             {f.label}
           </Button>
@@ -170,6 +176,8 @@ export function AdminRequestsPage() {
           </Table>
         )}
       </Card>
+
+      <Pagination meta={meta} onPageChange={setPage} noun="requests" />
 
       <Dialog open={!!rejecting} onOpenChange={(open) => !open && setRejecting(null)}>
         <DialogContent>

@@ -36,7 +36,7 @@ const FEATURES = [
   },
 ];
 
-/** Enriched violet brand panel used on the auth slide-swap (dark, no grid). */
+/** Enriched indigo-navy brand panel used on the auth slide-swap (dark, no grid). */
 export function AuthBrandPanel() {
   return (
     <div className="sidebar-surface glow-violet relative flex h-full flex-col justify-between overflow-hidden p-10 text-sidebar-foreground xl:p-12">
@@ -57,7 +57,7 @@ export function AuthBrandPanel() {
 
       <div className="relative">
         <Link to="/" title="CodeStack home">
-          <Logo wordmarkClassName="text-white" accentClassName="text-[hsl(262_78%_82%)]" />
+          <Logo wordmarkClassName="text-white" accentClassName="text-[hsl(248_62%_82%)]" />
         </Link>
       </div>
 
@@ -75,7 +75,7 @@ export function AuthBrandPanel() {
         <ul className="space-y-4">
           {FEATURES.map((f) => (
             <li key={f.title} className="flex items-start gap-3.5">
-              <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-white/15 text-[hsl(263_90%_85%)] ring-1 ring-white/25">
+              <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-white/15 text-[hsl(248_70%_85%)] ring-1 ring-white/25">
                 <f.icon className="size-5" />
               </span>
               <div className="leading-snug">

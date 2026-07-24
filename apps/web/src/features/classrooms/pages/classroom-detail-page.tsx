@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Pagination, useClientPagination } from '@/components/shared/pagination';
 import { STAFF_ROLES } from '@/types/common';
 
 function initials(firstName: string, lastName: string): string {
@@ -48,6 +49,13 @@ export function ClassroomDetailPage() {
     queryFn: () => classroomsApi.getById(id!),
     enabled: !!id,
   });
+
+  // Roster can be large; paginate it. Hook runs before the early returns below.
+  const {
+    pageItems: studentPage,
+    meta: studentsMeta,
+    setPage: setStudentsPage,
+  } = useClientPagination((classroom?.students ?? []) as Member[], 10);
 
   if (isLoading) {
     return (
@@ -111,12 +119,13 @@ export function ClassroomDetailPage() {
           <CardHeader>
             <CardTitle>Students</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
             <ul className="divide-y divide-border">
-              {students.map((s) => (
+              {studentPage.map((s) => (
                 <MemberRow key={s.id} member={s} />
               ))}
             </ul>
+            <Pagination meta={studentsMeta} onPageChange={setStudentsPage} noun="students" />
           </CardContent>
         </Card>
       )}

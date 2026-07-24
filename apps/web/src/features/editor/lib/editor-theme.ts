@@ -8,7 +8,7 @@ import type { Monaco } from '@monaco-editor/react';
  * Replit style). The preference persists separately from next-themes.
  *   'dark'  (default) · 'light' · 'system' (follow the app theme)
  * Monaco can't read CSS custom properties, so the themes below hardcode hexes
- * approximating our violet-forward token palette.
+ * approximating our matte indigo/navy token palette.
  */
 export type EditorThemePref = 'dark' | 'light' | 'system';
 
@@ -26,25 +26,25 @@ export function defineEditorThemes(monaco: Monaco) {
     base: 'vs-dark',
     inherit: true,
     rules: [
-      { token: 'comment', foreground: '8b86a6', fontStyle: 'italic' },
-      { token: 'keyword', foreground: 'c8a6ff' },
+      { token: 'comment', foreground: '86849c', fontStyle: 'italic' },
+      { token: 'keyword', foreground: 'b3aaff' },
       { token: 'string', foreground: '7ee0c0' },
       { token: 'number', foreground: 'f5b74e' },
       { token: 'type', foreground: 'a9bcff' },
       { token: 'function', foreground: 'a9bcff' },
-      { token: 'variable', foreground: 'e6e2f0' },
+      { token: 'variable', foreground: 'e6e4f2' },
       { token: 'constant', foreground: 'f5b74e' },
     ],
     colors: {
-      'editor.background': '#171129',
-      'editor.foreground': '#e6e2f0',
-      'editorLineNumber.foreground': '#5b5573',
-      'editorLineNumber.activeForeground': '#c8a6ff',
-      'editor.selectionBackground': '#3a2f6b',
-      'editor.lineHighlightBackground': '#1f1838',
-      'editorCursor.foreground': '#c8a6ff',
-      'editorIndentGuide.background1': '#2a2342',
-      'editorWidget.background': '#1f1838',
+      'editor.background': '#14131e',
+      'editor.foreground': '#e6e4f2',
+      'editorLineNumber.foreground': '#565571',
+      'editorLineNumber.activeForeground': '#b3aaff',
+      'editor.selectionBackground': '#343069',
+      'editor.lineHighlightBackground': '#1e1d30',
+      'editorCursor.foreground': '#b3aaff',
+      'editorIndentGuide.background1': '#282740',
+      'editorWidget.background': '#1e1d30',
     },
   });
   monaco.editor.defineTheme(EDITOR_LIGHT, {
@@ -52,7 +52,7 @@ export function defineEditorThemes(monaco: Monaco) {
     inherit: true,
     rules: [
       { token: 'comment', foreground: '6b7280', fontStyle: 'italic' },
-      { token: 'keyword', foreground: '6d28d9' },
+      { token: 'keyword', foreground: '443aa8' },
       { token: 'string', foreground: '0f766e' },
       { token: 'number', foreground: 'b45309' },
       { token: 'type', foreground: '2563eb' },
@@ -60,11 +60,11 @@ export function defineEditorThemes(monaco: Monaco) {
     ],
     colors: {
       'editor.background': '#ffffff',
-      'editor.foreground': '#1e1b2e',
+      'editor.foreground': '#1c1a29',
       'editorLineNumber.foreground': '#9ca3af',
-      'editorLineNumber.activeForeground': '#6d28d9',
-      'editor.lineHighlightBackground': '#f4f1fb',
-      'editorCursor.foreground': '#6d28d9',
+      'editorLineNumber.activeForeground': '#443aa8',
+      'editor.lineHighlightBackground': '#f1f0fb',
+      'editorCursor.foreground': '#443aa8',
     },
   });
   defined = true;

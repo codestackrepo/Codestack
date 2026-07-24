@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Pagination, useClientPagination } from '@/components/shared/pagination';
 import { cn } from '@/lib/utils';
 import type { User } from '@/types/user';
 import {
@@ -31,10 +32,13 @@ export function GradebookTable({ students, studentsById, canEdit, onReview }: Gr
   // Every StudentScore lists the same items in order — use the first student's
   // list for the column headers.
   const columns = students[0]?.items ?? [];
+  // Large classes: paginate the student rows (columns stay; they scroll x).
+  const { pageItems, meta, setPage } = useClientPagination(students, 15);
 
   return (
-    <div className="custom-scrollbar overflow-x-auto rounded-xl ring-1 ring-foreground/10">
-      <Table density="compact">
+    <div className="space-y-3">
+      <div className="custom-scrollbar overflow-x-auto rounded-xl ring-1 ring-foreground/10">
+        <Table density="compact">
         <TableHeader>
           <TableRow className="bg-muted/50 hover:bg-muted/50">
             <TableHead className="sticky left-0 z-10 bg-muted/50 backdrop-blur">Student</TableHead>
@@ -55,7 +59,7 @@ export function GradebookTable({ students, studentsById, canEdit, onReview }: Gr
           </TableRow>
         </TableHeader>
         <TableBody>
-          {students.map((student) => {
+          {pageItems.map((student) => {
             const user = studentsById.get(student.userId);
             const name = user
               ? `${user.firstName} ${user.lastName}`.trim() || user.email
@@ -132,6 +136,8 @@ export function GradebookTable({ students, studentsById, canEdit, onReview }: Gr
           })}
         </TableBody>
       </Table>
+      </div>
+      <Pagination meta={meta} onPageChange={setPage} noun="students" />
     </div>
   );
 }

@@ -8,7 +8,7 @@ import { RegisterForm } from '../components/register-form';
 type Mode = 'login' | 'register';
 
 const CARD =
-  'rounded-2xl border border-border bg-card p-8 shadow-[0_28px_70px_-28px_hsl(262_65%_50%/0.45)] ring-1 ring-primary/5';
+  'rounded-2xl border border-border bg-card p-8 shadow-[0_28px_70px_-28px_hsl(246_55%_45%/0.45)] ring-1 ring-primary/5';
 
 /**
  * Single auth surface for login + register (§ user 2026-07-24). Both forms sit
