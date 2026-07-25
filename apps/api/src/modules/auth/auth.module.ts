@@ -6,11 +6,13 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { ModuleAccessModule } from '../module-access/module-access.module';
 import { ModuleAccessGuard } from '../module-access/guards/module-access.guard';
 import { OnboardingModule } from '../onboarding/onboarding.module';
+import { OrganizationsModule } from '../organizations/organizations.module';
 import { UsersModule } from '../users/users.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { ClerkService } from './clerk/clerk.service';
 import { ClerkOrJwtAuthGuard } from './guards/clerk-or-jwt-auth.guard';
+import { SessionContextService } from './session-context.service';
 import { JwtRefreshStrategy } from './strategies/jwt-refresh.strategy';
 import { JwtStrategy } from './strategies/jwt.strategy';
 
@@ -21,12 +23,14 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     UsersModule,
     OnboardingModule,
     ModuleAccessModule,
+    OrganizationsModule,
     PassportModule,
     JwtModule.register({}),
   ],
   controllers: [AuthController],
   providers: [
     AuthService,
+    SessionContextService, // assembles the GET /auth/verify contract (#54)
     JwtStrategy,
     JwtRefreshStrategy,
     ClerkService, // injected by ClerkOrJwtAuthGuard
