@@ -121,6 +121,12 @@ export const clerkConfig = registerAs('clerk', () => ({
   jwtKey: process.env.CLERK_JWT_KEY || undefined,
 }));
 
+export const platformConfig = registerAs('platform', () => ({
+  // Emails bootstrapped to SUPERADMIN by seed-superadmin.ts; the user.created
+  // webhook also promotes a post-boot signup whose Clerk metadata carries the role (#62).
+  superadminEmails: list(process.env.CODESTACK_SUPERADMIN_EMAILS).map((e) => e.toLowerCase()),
+}));
+
 export const allConfigs = [
   appConfig,
   databaseConfig,
@@ -134,6 +140,7 @@ export const allConfigs = [
   aiConfig,
   billingConfig,
   clerkConfig,
+  platformConfig,
 ];
 
 export type AppConfig = ReturnType<typeof appConfig>;
@@ -148,3 +155,4 @@ export type EmailConfig = ReturnType<typeof emailConfig>;
 export type AiConfig = ReturnType<typeof aiConfig>;
 export type BillingConfig = ReturnType<typeof billingConfig>;
 export type ClerkConfig = ReturnType<typeof clerkConfig>;
+export type PlatformConfig = ReturnType<typeof platformConfig>;
