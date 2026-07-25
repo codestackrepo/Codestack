@@ -6,11 +6,12 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as argon2 from 'argon2';
-import { Brackets, Repository } from 'typeorm';
+import { Brackets, QueryFailedError, Repository } from 'typeorm';
 import { PaginatedResult, PaginationQueryDto } from '../../common/dto/pagination.dto';
 import { Role } from '../../common/enums/role.enum';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
 import { assertSameOrg, isSuperAdmin, scopeToOrg } from '../../common/tenancy/tenant-scope.util';
+import { LEGACY_ORG_ID } from '../organizations/organizations.constants';
 import { CreateUserDto } from './dto/create-user.dto';
 import { SearchUsersDto } from './dto/search-users.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -49,6 +50,59 @@ export class UsersService {
 
   findById(id: string): Promise<User | null> {
     return this.users.findOne({ where: { id } });
+  }
+
+  findByClerkId(clerkUserId: string): Promise<User | null> {
+    return this.users.findOne({ where: { clerkUserId } });
+  }
+
+  /**
+   * JIT provisioning for a Clerk-authenticated user (#51). Order:
+   *  1) already linked by clerk id -> return as-is.
+   *  2) a legacy JWT row owns the email -> LINK it (set clerkUserId) rather than
+   *     inserting a duplicate (email is UNIQUE -> would throw ConflictException).
+   *  3) else create a fresh Clerk-only row (passwordHash null) in the Legacy org
+   *     (a valid local org satisfying chk_users_org_required; the #52 webhook
+   *     reconciles the real role + org from Clerk membership).
+   * Bypasses create() (which mandates a password) and is race-safe on clerkUserId.
+   */
+  async upsertFromClerk(input: {
+    clerkUserId: string;
+    email: string;
+    firstName?: string;
+    lastName?: string;
+  }): Promise<User> {
+    const linked = await this.findByClerkId(input.clerkUserId);
+    if (linked) return linked;
+
+    const email = input.email.toLowerCase();
+    const byEmail = await this.users.findOne({ where: { email } });
+    if (byEmail) {
+      byEmail.clerkUserId = input.clerkUserId;
+      return this.users.save(byEmail);
+    }
+
+    try {
+      const user = this.users.create({
+        email,
+        firstName: input.firstName ?? '',
+        lastName: input.lastName ?? '',
+        role: Role.STUDENT,
+        organizationId: LEGACY_ORG_ID,
+        clerkUserId: input.clerkUserId,
+        passwordHash: null,
+      });
+      return await this.users.save(user);
+    } catch (err) {
+      // Race: a concurrent first-login already inserted this clerk id (23505 on
+      // the partial-unique index) — re-read the winner rather than 500ing.
+      const code = (err as { driverError?: { code?: string } })?.driverError?.code;
+      if (err instanceof QueryFailedError && code === '23505') {
+        const raced = await this.findByClerkId(input.clerkUserId);
+        if (raced) return raced;
+      }
+      throw err;
+    }
   }
 
   async getById(id: string): Promise<User> {
@@ -166,6 +220,7 @@ export class UsersService {
   }
 
   verifyPassword(user: User, plain: string): Promise<boolean> {
+    if (!user.passwordHash) return Promise.resolve(false); // Clerk-managed: no local login
     return argon2.verify(user.passwordHash, plain);
   }
 

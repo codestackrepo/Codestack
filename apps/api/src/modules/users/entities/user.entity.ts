@@ -15,8 +15,15 @@ export class User extends BaseEntity {
   lastName!: string;
 
   // Never selected by default — must be explicitly requested for auth.
-  @Column({ type: 'varchar', length: 255, name: 'password_hash', select: false })
-  passwordHash!: string;
+  // Nullable: Clerk-managed accounts (dual-auth #51) have no local password.
+  @Column({ type: 'varchar', length: 255, name: 'password_hash', select: false, nullable: true })
+  passwordHash!: string | null;
+
+  // Clerk identity (#51). Partial-unique so the many JWT-only NULL rows never
+  // collide (index owned by migration 1785460000000).
+  @Index('idx_user_clerk_user_id', { unique: true, where: '"clerk_user_id" IS NOT NULL' })
+  @Column({ type: 'varchar', length: 255, name: 'clerk_user_id', nullable: true })
+  clerkUserId!: string | null;
 
   @Index('idx_user_role')
   @Column({ type: 'varchar', length: 20, default: Role.STUDENT })
