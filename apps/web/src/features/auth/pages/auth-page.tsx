@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
+import { isClerkEnabled } from '@/lib/clerk';
 import { Logo } from '@/components/shared/logo';
 import { AuthBrandPanel } from '../components/auth-brand-panel';
+import { ClerkAuthPage } from '../clerk/clerk-auth-page';
 import { LoginForm } from '../components/login-form';
 import { RegisterForm } from '../components/register-form';
 
@@ -11,6 +13,19 @@ const CARD =
   'rounded-2xl border border-border bg-card p-8 shadow-[0_28px_70px_-28px_hsl(246_55%_45%/0.45)] ring-1 ring-primary/5';
 
 /**
+ * Auth route entry. Clerk mode swaps in Clerk's prebuilt sign-in/up (#59); cookie
+ * mode renders the custom sliding-door surface below. Branching between two
+ * components (not an early return before hooks) keeps hook order unconditional.
+ */
+export function AuthPage({ initialMode }: { initialMode: Mode }) {
+  return isClerkEnabled ? (
+    <ClerkAuthPage mode={initialMode} />
+  ) : (
+    <CookieAuthPage initialMode={initialMode} />
+  );
+}
+
+/**
  * Single auth surface for login + register (§ user 2026-07-24). Both forms sit
  * fixed in their halves (login right, register left); the opaque design panel
  * slides across like a closing door and reveals the form behind it — no reload,
@@ -18,7 +33,7 @@ const CARD =
  * app light/dark theme (the design panel stays a rich violet in both). Mobile is
  * single-column.
  */
-export function AuthPage({ initialMode }: { initialMode: Mode }) {
+function CookieAuthPage({ initialMode }: { initialMode: Mode }) {
   const [mode, setMode] = useState<Mode>(initialMode);
   const isLogin = mode === 'login';
 

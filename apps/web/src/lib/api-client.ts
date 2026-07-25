@@ -14,6 +14,27 @@ interface RetryableConfig extends InternalAxiosRequestConfig {
   _retried?: boolean;
 }
 
+/**
+ * Clerk-mode token bridge (#59). api-client is a module singleton (no React
+ * context), so a component under ClerkProvider registers Clerk's `getToken`
+ * here. `null` means legacy JWT-cookie mode — no bearer, cookie refresh instead.
+ */
+type TokenGetter = (opts?: { skipCache?: boolean }) => Promise<string | null>;
+let clerkTokenGetter: TokenGetter | null = null;
+
+export function setClerkTokenGetter(getter: TokenGetter | null): void {
+  clerkTokenGetter = getter;
+}
+
+// Attach the Clerk session token as a bearer on every request (Clerk mode only).
+apiClient.interceptors.request.use(async (config) => {
+  if (clerkTokenGetter) {
+    const token = await clerkTokenGetter();
+    if (token) config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 /** Never intercept 401s from these paths — retrying them would loop forever. */
 const AUTH_BOOTSTRAP_PATHS = ['/auth/login', '/auth/register', '/auth/refresh', '/auth/logout'];
 
@@ -60,7 +81,16 @@ apiClient.interceptors.response.use(
 
     config._retried = true;
     try {
-      await refreshSession();
+      if (clerkTokenGetter) {
+        // Clerk mode: the bearer expired — mint a fresh token (bypassing Clerk's
+        // short cache) and retry with it. No /auth/refresh round-trip.
+        const fresh = await clerkTokenGetter({ skipCache: true });
+        if (!fresh) return Promise.reject(error);
+        config.headers.Authorization = `Bearer ${fresh}`;
+      } else {
+        // Legacy cookie mode: refresh the httpOnly access-token cookie once.
+        await refreshSession();
+      }
       return apiClient(config);
     } catch {
       return Promise.reject(error);
