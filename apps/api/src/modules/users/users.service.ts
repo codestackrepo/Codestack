@@ -82,8 +82,8 @@ export class UsersService {
       return this.users.save(byEmail);
     }
 
-    try {
-      const user = this.users.create({
+    return this.insertClerkUser(
+      this.users.create({
         email,
         firstName: input.firstName ?? '',
         lastName: input.lastName ?? '',
@@ -91,18 +91,126 @@ export class UsersService {
         organizationId: LEGACY_ORG_ID,
         clerkUserId: input.clerkUserId,
         passwordHash: null,
-      });
+      }),
+      input.clerkUserId,
+    );
+  }
+
+  /**
+   * Race-safe insert of a brand-new Clerk-linked user: on a 23505 (a concurrent
+   * first-sight insert already won the partial-unique clerk-id index) re-read the
+   * winner rather than 500ing. Shared by the JIT (#51) and webhook (#52) paths.
+   */
+  private async insertClerkUser(user: User, clerkUserId: string): Promise<User> {
+    try {
       return await this.users.save(user);
     } catch (err) {
-      // Race: a concurrent first-login already inserted this clerk id (23505 on
-      // the partial-unique index) — re-read the winner rather than 500ing.
       const code = (err as { driverError?: { code?: string } })?.driverError?.code;
       if (err instanceof QueryFailedError && code === '23505') {
-        const raced = await this.findByClerkId(input.clerkUserId);
+        const raced = await this.findByClerkId(clerkUserId);
         if (raced) return raced;
       }
       throw err;
     }
+  }
+
+  /**
+   * Webhook sync (#52) for `user.created` / `user.updated`. Clerk is authoritative
+   * for identity (email/name), the isActive kill-switch and the platform
+   * SuperAdmin flag — but NOT for org/role, which are membership-authoritative
+   * (see syncClerkMembership). A brand-new non-superadmin lands in the Legacy org
+   * as STUDENT until a membership event moves them, so chk_users_org_required can
+   * never be violated. Existing rows keep their membership-assigned org/role.
+   */
+  async syncFromClerkUser(input: {
+    clerkUserId: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+    isActive: boolean;
+    isSuperAdmin: boolean;
+  }): Promise<User> {
+    const email = input.email.toLowerCase();
+    const existing =
+      (await this.findByClerkId(input.clerkUserId)) ??
+      (await this.users.findOne({ where: { email } }));
+
+    if (!existing) {
+      return this.insertClerkUser(
+        this.users.create({
+          email,
+          firstName: input.firstName,
+          lastName: input.lastName,
+          clerkUserId: input.clerkUserId,
+          role: input.isSuperAdmin ? Role.SUPERADMIN : Role.STUDENT,
+          organizationId: input.isSuperAdmin ? null : LEGACY_ORG_ID,
+          passwordHash: null,
+          isActive: input.isActive,
+        }),
+        input.clerkUserId,
+      );
+    }
+
+    existing.clerkUserId = input.clerkUserId;
+    existing.email = email;
+    existing.firstName = input.firstName;
+    existing.lastName = input.lastName;
+    existing.isActive = input.isActive;
+    // Promote to SuperAdmin from metadata; membership events own every other role,
+    // so a non-superadmin's role/org are deliberately left untouched here.
+    if (input.isSuperAdmin && existing.role !== Role.SUPERADMIN) {
+      existing.role = Role.SUPERADMIN;
+      existing.organizationId = null;
+    }
+    return this.users.save(existing);
+  }
+
+  /**
+   * Webhook sync (#52) for `organizationMembership.created` / `.updated`. This
+   * event embeds the org AND the user, so it provisions them together with the
+   * org+role stamped in one write — making provisioning arrival-order-tolerant:
+   * a membership arriving before `user.created` never deadlocks on
+   * chk_users_org_required. Membership is authoritative for org+role; a
+   * SuperAdmin is never demoted by a membership event.
+   */
+  async syncClerkMembership(input: {
+    clerkUserId: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+    organizationId: string;
+    role: Role;
+  }): Promise<User> {
+    const email = input.email.toLowerCase();
+    const existing =
+      (await this.findByClerkId(input.clerkUserId)) ??
+      (await this.users.findOne({ where: { email } }));
+
+    if (!existing) {
+      return this.insertClerkUser(
+        this.users.create({
+          email,
+          firstName: input.firstName,
+          lastName: input.lastName,
+          clerkUserId: input.clerkUserId,
+          role: input.role,
+          organizationId: input.organizationId,
+          passwordHash: null,
+        }),
+        input.clerkUserId,
+      );
+    }
+
+    if (existing.role === Role.SUPERADMIN) return existing; // never demote a superadmin
+    existing.clerkUserId = input.clerkUserId;
+    existing.organizationId = input.organizationId;
+    existing.role = input.role;
+    return this.users.save(existing);
+  }
+
+  /** Webhook sync (#52): flip the isActive kill-switch on `user.deleted` (soft, not a hard delete). */
+  async deactivateByClerkId(clerkUserId: string): Promise<void> {
+    await this.users.update({ clerkUserId }, { isActive: false });
   }
 
   async getById(id: string): Promise<User> {
