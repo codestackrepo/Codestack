@@ -174,3 +174,143 @@ describe('UsersService — Clerk identity (#51)', () => {
     });
   });
 });
+
+describe('UsersService — Clerk webhook sync (#52)', () => {
+  let repo: MockRepo & { update: jest.Mock };
+  let service: UsersService;
+
+  beforeEach(() => {
+    repo = {
+      findOne: jest.fn().mockResolvedValue(null),
+      create: jest.fn((data) => data),
+      save: jest.fn((entity) => Promise.resolve({ ...entity, id: 'new-id' } as User)),
+      update: jest.fn().mockResolvedValue({ affected: 1 }),
+    };
+    service = new UsersService(repo as unknown as Repository<User>);
+  });
+
+  describe('syncFromClerkUser', () => {
+    const base = {
+      clerkUserId: 'user_1',
+      email: 'New@X.dev',
+      firstName: 'N',
+      lastName: 'U',
+      isActive: true,
+    };
+
+    it('creates a new non-superadmin as STUDENT in the Legacy org', async () => {
+      await service.syncFromClerkUser({ ...base, isSuperAdmin: false });
+      expect(repo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          email: 'new@x.dev',
+          role: Role.STUDENT,
+          organizationId: LEGACY_ORG_ID,
+          clerkUserId: 'user_1',
+          passwordHash: null,
+          isActive: true,
+        }),
+      );
+    });
+
+    it('creates a new superadmin with a NULL org', async () => {
+      await service.syncFromClerkUser({ ...base, isSuperAdmin: true });
+      expect(repo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ role: Role.SUPERADMIN, organizationId: null }),
+      );
+    });
+
+    it('updates identity/active on an existing user but PRESERVES membership role+org', async () => {
+      const existing = {
+        id: 'u1',
+        email: 'old@x.dev',
+        firstName: 'Old',
+        lastName: 'Name',
+        role: Role.ADMIN,
+        organizationId: 'org-A',
+        clerkUserId: 'user_1',
+        isActive: true,
+      } as User;
+      repo.findOne.mockResolvedValueOnce(existing); // findByClerkId hit
+      const saved = await service.syncFromClerkUser({
+        ...base,
+        isActive: false,
+        isSuperAdmin: false,
+      });
+      expect(saved.role).toBe(Role.ADMIN); // membership-authoritative, untouched
+      expect(saved.organizationId).toBe('org-A');
+      expect(saved.email).toBe('new@x.dev');
+      expect(saved.isActive).toBe(false);
+    });
+
+    it('promotes an existing user to SuperAdmin when the metadata flag is set', async () => {
+      const existing = {
+        id: 'u1',
+        role: Role.ADMIN,
+        organizationId: 'org-A',
+        clerkUserId: 'user_1',
+      } as User;
+      repo.findOne.mockResolvedValueOnce(existing);
+      const saved = await service.syncFromClerkUser({ ...base, isSuperAdmin: true });
+      expect(saved.role).toBe(Role.SUPERADMIN);
+      expect(saved.organizationId).toBeNull();
+    });
+  });
+
+  describe('syncClerkMembership', () => {
+    const base = {
+      clerkUserId: 'user_1',
+      email: 'M@X.dev',
+      firstName: 'M',
+      lastName: 'B',
+      organizationId: 'org-local-1',
+      role: Role.PROFESSOR,
+    };
+
+    it('creates a new user with the membership org+role stamped together', async () => {
+      await service.syncClerkMembership(base);
+      expect(repo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          email: 'm@x.dev',
+          role: Role.PROFESSOR,
+          organizationId: 'org-local-1',
+          clerkUserId: 'user_1',
+          passwordHash: null,
+        }),
+      );
+    });
+
+    it('overwrites org+role on an existing user (membership authoritative)', async () => {
+      const existing = {
+        id: 'u1',
+        role: Role.STUDENT,
+        organizationId: 'org-old',
+        clerkUserId: 'user_1',
+      } as User;
+      repo.findOne.mockResolvedValueOnce(existing);
+      const saved = await service.syncClerkMembership(base);
+      expect(saved.role).toBe(Role.PROFESSOR);
+      expect(saved.organizationId).toBe('org-local-1');
+    });
+
+    it('never demotes a SuperAdmin via a membership event', async () => {
+      const superadmin = {
+        id: 'sa',
+        role: Role.SUPERADMIN,
+        organizationId: null,
+        clerkUserId: 'user_1',
+      } as User;
+      repo.findOne.mockResolvedValueOnce(superadmin);
+      const saved = await service.syncClerkMembership(base);
+      expect(saved.role).toBe(Role.SUPERADMIN);
+      expect(saved.organizationId).toBeNull();
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('deactivateByClerkId', () => {
+    it('flips isActive to false for the clerk-linked row', async () => {
+      await service.deactivateByClerkId('user_1');
+      expect(repo.update).toHaveBeenCalledWith({ clerkUserId: 'user_1' }, { isActive: false });
+    });
+  });
+});
