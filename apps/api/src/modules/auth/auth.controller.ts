@@ -7,15 +7,14 @@ import { AuthConfig } from '../../config/configuration';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
-import { AppModuleKey } from '../module-access/enums/app-module-key.enum';
-import { ModuleAccessService } from '../module-access/module-access.service';
 import { UserResponseDto } from '../users/dto/user-response.dto';
-import { UsersService } from '../users/users.service';
 import { AuthService } from './auth.service';
 import { clearAuthCookies, setAuthCookies } from './cookie.util';
+import { SessionContextDto } from './dto/session-context.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { JwtRefreshGuard } from './guards/jwt-refresh.guard';
+import { SessionContextService } from './session-context.service';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -24,8 +23,7 @@ export class AuthController {
 
   constructor(
     private readonly auth: AuthService,
-    private readonly users: UsersService,
-    private readonly moduleAccess: ModuleAccessService,
+    private readonly session: SessionContextService,
     config: ConfigService,
   ) {
     this.authCfg = config.getOrThrow<AuthConfig>('auth');
@@ -79,19 +77,13 @@ export class AuthController {
     return { message: 'Successfully logged out' };
   }
 
+  // Session bootstrap. Identity resolves from whichever auth path the request
+  // used (Clerk bearer or JWT cookie — both set request.user to the LOCAL user,
+  // #51). The full aggregated contract is assembled by SessionContextService so
+  // that module-access/org/feature/quota subsystems contribute a field without
+  // editing this controller (#54, §6 shared-file ownership).
   @Get('verify')
-  async verify(@CurrentUser() user: AuthenticatedUser): Promise<{
-    user: UserResponseDto;
-    isValid: boolean;
-    modules: Record<AppModuleKey, boolean>;
-  }> {
-    // Use full.role (not the possibly-stale JWT role) so a just-elevated user
-    // gets the correct effective module map on refresh.
-    const full = await this.users.getById(user.id);
-    return {
-      user: UserResponseDto.from(full),
-      isValid: true,
-      modules: this.moduleAccess.effectiveMapForRole(full.role),
-    };
+  verify(@CurrentUser() user: AuthenticatedUser): Promise<SessionContextDto> {
+    return this.session.build(user);
   }
 }

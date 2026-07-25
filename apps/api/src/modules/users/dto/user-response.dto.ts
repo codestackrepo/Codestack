@@ -9,6 +9,9 @@ export class UserResponseDto {
   @ApiProperty() firstName!: string;
   @ApiProperty() lastName!: string;
   @ApiProperty({ enum: Role }) role!: Role;
+  // Tenant the user belongs to (null only for SUPERADMIN). Part of the #54
+  // session contract so the client knows its org without a second call.
+  @ApiProperty({ nullable: true }) organizationId!: string | null;
   // Admin-relevant, non-sensitive fields for the user-management table (#40).
   @ApiProperty() isActive!: boolean;
   @ApiProperty({ nullable: true }) lastLoginAt!: Date | null;
@@ -21,6 +24,7 @@ export class UserResponseDto {
       firstName: user.firstName,
       lastName: user.lastName,
       role: user.role,
+      organizationId: user.organizationId,
       isActive: user.isActive,
       lastLoginAt: user.lastLoginAt,
       createdAt: user.createdAt,
