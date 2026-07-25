@@ -29,7 +29,10 @@ export class AuthService {
 
   async validateCredentials(email: string, password: string): Promise<User> {
     const user = await this.users.findByEmailWithPassword(email);
-    if (!user || !user.isActive) throw new UnauthorizedException('Invalid credentials');
+    // A Clerk-managed account (passwordHash null) cannot password-login.
+    if (!user || !user.isActive || !user.passwordHash) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
     const ok = await this.users.verifyPassword(user, password);
     if (!ok) throw new UnauthorizedException('Invalid credentials');
     return user;
