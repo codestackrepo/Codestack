@@ -43,6 +43,9 @@ export const envValidationSchema = Joi.object({
   CLERK_WEBHOOK_SIGNING_SECRET: Joi.string().allow('').default(''),
   CLERK_JWT_KEY: Joi.string().allow('').optional(),
 
+  // Platform (#62) — comma-separated SuperAdmin bootstrap emails (optional).
+  CODESTACK_SUPERADMIN_EMAILS: Joi.string().allow('').default(''),
+
   // Piston
   PISTON_URLS: Joi.string().default('http://localhost:2000/api/v2/execute'),
   PISTON_MAX_INFLIGHT: Joi.number().default(16),

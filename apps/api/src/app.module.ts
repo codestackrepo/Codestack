@@ -17,6 +17,7 @@ import { OnboardingModule } from './modules/onboarding/onboarding.module';
 import { ModuleAccessModule } from './modules/module-access/module-access.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { ClerkSyncModule } from './modules/clerk-sync/clerk-sync.module';
+import { PlatformModule } from './modules/platform/platform.module';
 import { ProblemsModule } from './modules/problems/problems.module';
 import { ClassroomsModule } from './modules/classrooms/classrooms.module';
 import { AssignmentsModule } from './modules/assignments/assignments.module';
@@ -65,6 +66,7 @@ import { DemoModule } from './modules/demo/demo.module';
     UsersModule,
     AuthModule,
     ClerkSyncModule,
+    PlatformModule,
     OnboardingModule,
     ModuleAccessModule,
     ProblemsModule,

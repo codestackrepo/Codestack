@@ -78,6 +78,24 @@ export class ClerkService {
     return { email, firstName: u.firstName ?? null, lastName: u.lastName ?? null };
   }
 
+  /**
+   * Create a Clerk Organization mirroring a local org (#62). `createdBy` is the
+   * SuperAdmin's Clerk user id (Clerk requires an owner). Returns the Clerk org id
+   * (`org_...`). Callers must gate on isConfigured() — this throws when Clerk is unset.
+   */
+  async createOrganization(input: {
+    name: string;
+    slug?: string;
+    createdBy: string;
+  }): Promise<{ id: string }> {
+    const org = await this.getClient().organizations.createOrganization({
+      name: input.name,
+      slug: input.slug,
+      createdBy: input.createdBy,
+    });
+    return { id: org.id };
+  }
+
   private getClient(): ClerkClient {
     if (!this.client) this.client = createClerkClient({ secretKey: this.cfg.secretKey });
     return this.client;

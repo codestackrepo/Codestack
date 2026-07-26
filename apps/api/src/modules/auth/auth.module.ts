@@ -41,6 +41,8 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: ModuleAccessGuard },
   ],
-  exports: [AuthService],
+  // ClerkService is exported so the SuperAdmin platform (#62) can create Clerk
+  // Organizations without re-instantiating the config wrapper.
+  exports: [AuthService, ClerkService],
 })
 export class AuthModule {}
