@@ -29,7 +29,11 @@ COPY apps/api/package.json ./apps/api/package.json
 RUN pnpm install --prod --frozen-lockfile --filter @codestack/api... || pnpm install --prod --filter @codestack/api...
 
 COPY --from=build /repo/apps/api/dist ./apps/api/dist
+COPY apps/api/docker-entrypoint.sh ./apps/api/docker-entrypoint.sh
+RUN chmod +x ./apps/api/docker-entrypoint.sh
 
 WORKDIR /repo/apps/api
 EXPOSE 3000
-CMD ["node", "dist/main.js"]
+# API service: migrate-then-serve (see docker-entrypoint.sh). The worker service
+# overrides this CMD with `node dist/worker.js`, so only the API runs migrations.
+CMD ["./docker-entrypoint.sh"]

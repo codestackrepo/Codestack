@@ -15,6 +15,7 @@
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
+    "migration:run:prod": "typeorm migration:run -d dist/database/data-source.js",
     "start:worker": "node dist/worker",
     "start:worker:dev": "nest start --watch --entryFile worker",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",

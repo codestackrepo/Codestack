@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable, OnModuleInit } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Role } from '../../common/enums/role.enum';
@@ -13,19 +19,51 @@ export interface MatrixCell {
   locked: boolean;
 }
 
+/** How long to wait between boot-time reload retries while the DB isn't ready. */
+const RELOAD_RETRY_MS = 15_000;
+
 /**
  * Resolves effective per-role module access from DB overrides layered on the
  * code-level DEFAULTS, backed by a single-instance in-memory cache rebuilt on
  * every write (§10: Redis pub/sub invalidation is deferred to M3).
+ *
+ * Boot-safe: the initial load runs off the bootstrap path and fails soft. If the
+ * DB isn't reachable or the `module_access` table doesn't exist yet (fresh
+ * deploy before migrations), we start with no overrides and retry in the
+ * background rather than throwing out of onModuleInit — which would abort Nest
+ * bootstrap in BOTH the API and the worker (they boot the same AppModule).
+ * Empty overrides just fall through to MODULE_ACCESS_DEFAULTS, which is safe.
  */
 @Injectable()
-export class ModuleAccessService implements OnModuleInit {
+export class ModuleAccessService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(ModuleAccessService.name);
   private overrides = new Map<string, boolean>(); // key = `${moduleKey}:${role}`
+  private retryTimer?: NodeJS.Timeout;
 
   constructor(@InjectRepository(ModuleAccess) private readonly repo: Repository<ModuleAccess>) {}
 
-  async onModuleInit(): Promise<void> {
-    await this.reload();
+  onModuleInit(): void {
+    // Fire-and-forget: never block bootstrap on this read.
+    void this.warm();
+  }
+
+  onModuleDestroy(): void {
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+  }
+
+  /** Attempt an initial load; on failure, log and schedule a background retry. */
+  private async warm(): Promise<void> {
+    try {
+      await this.reload();
+      this.logger.log(`Module-access overrides loaded (${this.overrides.size} cells)`);
+    } catch (err) {
+      this.logger.warn(
+        `Module-access override load failed; serving defaults and retrying in ` +
+          `${RELOAD_RETRY_MS}ms: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      this.retryTimer = setTimeout(() => void this.warm(), RELOAD_RETRY_MS);
+      if (this.retryTimer.unref) this.retryTimer.unref();
+    }
   }
 
   /** Rebuild the in-memory override map from the DB. */
