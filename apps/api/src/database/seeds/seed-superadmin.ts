@@ -39,35 +39,45 @@ async function main(): Promise<void> {
   const newHash = newPassword ? await argon2.hash(newPassword) : null;
 
   for (const email of emails) {
-    let user = await users.findOne({ where: { email } });
+    // Per-email isolation: one failure logs + continues to the rest.
+    try {
+      let user = await users.findOne({ where: { email } });
 
-    if (!user) {
-      user = await users.save(
-        users.create({
-          email,
-          firstName: 'Super',
-          lastName: 'Admin',
-          role: Role.SUPERADMIN,
-          organizationId: null,
-          passwordHash: newHash,
-          isActive: true,
-        }),
-      );
-      console.log(
-        `created SUPERADMIN ${email}${newHash ? ' (with password)' : ' (Clerk-managed)'}`,
-      );
-    } else if (user.role !== Role.SUPERADMIN || user.organizationId !== null || !user.isActive) {
-      user.role = Role.SUPERADMIN;
-      user.organizationId = null;
-      user.isActive = true;
-      user = await users.save(user);
-      console.log(`promoted ${email} to SUPERADMIN (password preserved)`);
-    } else {
-      console.log(`${email} already an active SUPERADMIN`);
-    }
+      if (!user) {
+        user = await users.save(
+          users.create({
+            email,
+            firstName: 'Super',
+            lastName: 'Admin',
+            role: Role.SUPERADMIN,
+            organizationId: null,
+            passwordHash: newHash,
+            isActive: true,
+          }),
+        );
+        console.log(
+          `created SUPERADMIN ${email}${newHash ? ' (with password)' : ' (Clerk-managed)'}`,
+        );
+      } else if (user.role !== Role.SUPERADMIN || user.organizationId !== null || !user.isActive) {
+        user.role = Role.SUPERADMIN;
+        user.organizationId = null;
+        user.isActive = true;
+        // Backfill a password onto a previously password-less row when one is
+        // provided, so a re-run can grant cookie-mode login (existing hashes kept).
+        if (newHash && !user.passwordHash) user.passwordHash = newHash;
+        user = await users.save(user);
+        console.log(`promoted ${email} to SUPERADMIN (existing password preserved)`);
+      } else {
+        if (newHash && !user.passwordHash) {
+          user.passwordHash = newHash;
+          user = await users.save(user);
+          console.log(`${email} already SUPERADMIN — backfilled a password`);
+        } else {
+          console.log(`${email} already an active SUPERADMIN`);
+        }
+      }
 
-    if (clerk) {
-      try {
+      if (clerk) {
         const list = await clerk.users.getUserList({ emailAddress: [email] });
         const clerkUser = list.data[0];
         if (clerkUser) {
@@ -80,13 +90,14 @@ async function main(): Promise<void> {
           }
           console.log(`  set Clerk publicMetadata.role=superadmin for ${email}`);
         } else {
-          console.log(
-            `  (no Clerk user for ${email} yet — user.created webhook will promote on signup)`,
-          );
+          // No Clerk account yet: the webhook only promotes if the SIGNUP itself
+          // carries superadmin metadata, which it won't — re-run this seed after
+          // the user signs up (or import them) to stamp the metadata.
+          console.log(`  (no Clerk user for ${email} yet — re-run this seed after they sign up)`);
         }
-      } catch (err) {
-        console.log(`  Clerk metadata update failed for ${email}: ${(err as Error).message}`);
       }
+    } catch (err) {
+      console.log(`  FAILED for ${email}: ${(err as Error).message}`);
     }
   }
 

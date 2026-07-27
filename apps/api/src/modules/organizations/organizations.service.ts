@@ -88,11 +88,25 @@ export class OrganizationsService {
     return this.repo.save(org);
   }
 
-  /** Link a local org to its Clerk Organization once created (#62). */
+  /**
+   * Link a local org to its Clerk Organization once created (#62). Race-safe: if
+   * the organization.created webhook already linked this clerk id to a row (it
+   * beat us), return that winner instead of stranding on a 23505 unique violation.
+   */
   async attachClerkOrgId(id: string, clerkOrgId: string): Promise<Organization> {
     const org = await this.getById(id);
+    if (org.clerkOrgId === clerkOrgId) return org; // already linked
     org.clerkOrgId = clerkOrgId;
-    return this.repo.save(org);
+    try {
+      return await this.repo.save(org);
+    } catch (err) {
+      const code = (err as { driverError?: { code?: string } })?.driverError?.code;
+      if (err instanceof QueryFailedError && code === '23505') {
+        const linked = await this.repo.findOne({ where: { clerkOrgId } });
+        if (linked) return linked;
+      }
+      throw err;
+    }
   }
 
   /**
@@ -155,7 +169,7 @@ export class OrganizationsService {
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '')
-        .slice(0, 72) || 'org'
+        .slice(0, 80) || 'org' // 80 = the organizations.slug column limit
     );
   }
 
@@ -169,6 +183,7 @@ export class OrganizationsService {
         .replace(/[^a-z0-9]/gi, '')
         .slice(-6)
         .toLowerCase() || 'x';
-    return `${slug}-${suffix}`.slice(0, 80);
+    // Trim the base so slug + '-' + suffix still fits the 80-char column.
+    return `${slug.slice(0, 80 - suffix.length - 1)}-${suffix}`;
   }
 }
