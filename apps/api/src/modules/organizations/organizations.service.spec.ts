@@ -178,6 +178,33 @@ describe('OrganizationsService', () => {
       expect(service.slugify('')).toBe('org');
     });
 
+    it('attachClerkOrgId is a no-op when the org is already linked to that clerk id', async () => {
+      const existing = { id: 'o1', clerkOrgId: 'org_clerk_1' } as Organization;
+      const save = jest.fn();
+      const repo = makeRepo({ findOne: jest.fn().mockResolvedValue(existing), save });
+      const service = new OrganizationsService(repo);
+      const out = await service.attachClerkOrgId('o1', 'org_clerk_1');
+      expect(out).toBe(existing);
+      expect(save).not.toHaveBeenCalled();
+    });
+
+    it('attachClerkOrgId returns the webhook-linked winner on a 23505 race', async () => {
+      const local = { id: 'o1', clerkOrgId: null } as Organization;
+      const winner = { id: 'o2', clerkOrgId: 'org_clerk_1' } as Organization;
+      const driver = Object.assign(new Error('dup'), { code: '23505' });
+      const repo = makeRepo({
+        findOne: jest
+          .fn()
+          .mockResolvedValueOnce(local) // getById(o1)
+          .mockResolvedValueOnce(winner), // re-find by clerkOrgId after the 23505
+        save: jest
+          .fn()
+          .mockRejectedValueOnce(new QueryFailedError('q', [], driver as unknown as Error)),
+      });
+      const service = new OrganizationsService(repo);
+      await expect(service.attachClerkOrgId('o1', 'org_clerk_1')).resolves.toBe(winner);
+    });
+
     it('upsertFromClerk links a platform-created org by slug instead of duplicating', async () => {
       const bySlug = { id: 'o1', slug: 'acme', clerkOrgId: null } as Organization;
       const create = jest.fn((d) => d);

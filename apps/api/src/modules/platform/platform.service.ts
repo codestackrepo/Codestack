@@ -7,13 +7,21 @@ import { OrganizationCache } from '../organizations/organization-cache.service';
 import { OrganizationsService } from '../organizations/organizations.service';
 import { UsersService } from '../users/users.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
+import {
+  OrgQuotaUsageDto,
+  PlatformOrganizationDetailDto,
+  QuotaUsageDto,
+} from './dto/platform-organization-detail.dto';
+import { OrgCountsDto, PlatformOrgTileDto, PlatformOverviewDto } from './dto/platform-overview.dto';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
+import { PlatformMetricsService } from './platform-metrics.service';
 
 /**
- * SuperAdmin platform operations (#62). Orchestrates org CRUD across the local
+ * SuperAdmin platform operations (#62, #63). Orchestrates org CRUD across the local
  * tenant root (OrganizationsService), the Clerk Organization mirror (ClerkService),
  * and the status cache (OrganizationCache). The local row is authoritative for FK
  * integrity; Clerk mirroring is best-effort so the platform works with Clerk unset.
+ * Cross-org read-side aggregation lives in PlatformMetricsService.
  */
 @Injectable()
 export class PlatformService {
@@ -24,14 +32,92 @@ export class PlatformService {
     private readonly orgCache: OrganizationCache,
     private readonly clerk: ClerkService,
     private readonly users: UsersService,
+    private readonly metrics: PlatformMetricsService,
   ) {}
 
   list(): Promise<Organization[]> {
     return this.orgs.list();
   }
 
-  getById(id: string): Promise<Organization> {
-    return this.orgs.getById(id);
+  /**
+   * `GET /platform/overview` (#63) — one cross-org KPI block plus a tile per org.
+   * The org list and the whole census are fetched concurrently, then joined in
+   * memory, so adding an org never adds a query.
+   */
+  async overview(): Promise<PlatformOverviewDto> {
+    const [orgs, census] = await Promise.all([this.orgs.list(), this.metrics.census()]);
+
+    const tiles = orgs.map((org) =>
+      PlatformOrgTileDto.from(org, census.byOrg[org.id] ?? OrgCountsDto.zero()),
+    );
+    // Totals are summed from the tiles rather than re-queried — the KPI header and
+    // the grid below it are then arithmetically consistent by construction.
+    const sum = (pick: (c: OrgCountsDto) => number): number =>
+      tiles.reduce((acc, tile) => acc + pick(tile.counts), 0);
+    const orgProblems = sum((c) => c.problems);
+
+    return {
+      generatedAt: new Date().toISOString(),
+      organizations: {
+        total: orgs.length,
+        active: orgs.filter((o) => o.status === OrganizationStatus.ACTIVE).length,
+        suspended: orgs.filter((o) => o.status === OrganizationStatus.SUSPENDED).length,
+        clerkLinked: orgs.filter((o) => Boolean(o.clerkOrgId)).length,
+      },
+      users: {
+        total: sum((c) => c.users) + census.platform.superAdmins,
+        superAdmins: census.platform.superAdmins,
+        admins: sum((c) => c.admins),
+        professors: sum((c) => c.professors),
+        students: sum((c) => c.students),
+        // SuperAdmins are always active to reach this endpoint at all, but they are
+        // counted from their own bucket so `active + inactive === total` holds.
+        active: sum((c) => c.activeUsers) + census.platform.superAdmins,
+        inactive: sum((c) => c.inactiveUsers),
+        pendingInvites: sum((c) => c.pendingInvites),
+      },
+      content: {
+        classrooms: sum((c) => c.classrooms),
+        problems: {
+          total: orgProblems + census.platform.globalProblems,
+          global: census.platform.globalProblems,
+          org: orgProblems,
+        },
+        assignments: sum((c) => c.assignments),
+        submissions: sum((c) => c.submissions),
+      },
+      tiles,
+    };
+  }
+
+  /**
+   * `GET /platform/organizations/:id` (#63) — the org row plus its live census read
+   * against quotas. 404s before counting when the id is unknown.
+   */
+  async detail(id: string): Promise<PlatformOrganizationDetailDto> {
+    const org = await this.orgs.getById(id);
+    const counts = await this.metrics.countsForOrg(id);
+    return PlatformOrganizationDetailDto.fromOrg(org, counts, this.usageFor(counts));
+  }
+
+  /**
+   * Counts vs quotas. The *limits* belong to the quota subsystem (#66): until
+   * AddOrgQuotas + `QuotaService.getUsageSummary` land, no org has an `org_quotas`
+   * row — and per §5.4 "no row" already means UNLIMITED, so `limit: null` is the
+   * correct answer today, not a placeholder. #66 fills the limit in per resource
+   * without changing this wire shape.
+   *
+   * `used` implements §5.4's seat formula now so the number will not move when the
+   * limits arrive: MAX_USERS charges active members + pending invites, which makes
+   * accepting an invitation net-zero (invite pending->accepted -1, user +1).
+   */
+  private usageFor(counts: OrgCountsDto): OrgQuotaUsageDto {
+    return {
+      users: QuotaUsageDto.of(counts.activeUsers + counts.pendingInvites, null),
+      // Global catalog problems are charged to no org (§5.4: global is exempt).
+      problems: QuotaUsageDto.of(counts.problems, null),
+      assignments: QuotaUsageDto.of(counts.assignments, null),
+    };
   }
 
   async create(dto: CreateOrganizationDto, actor: AuthenticatedUser): Promise<Organization> {
@@ -63,10 +149,16 @@ export class PlatformService {
   }
 
   /**
-   * Best-effort Clerk Organization creation + linkage. Skipped (with a warning,
-   * never a failed request) when Clerk is unconfigured or the acting SuperAdmin
-   * isn't Clerk-linked yet — the local org stands and a later reconcile / the
-   * organization.created webhook links clerk_org_id (the webhook dedupes by slug).
+   * Best-effort Clerk Organization creation + linkage. An unlinked org
+   * (clerk_org_id = NULL) is a fully supported state — the app runs with Clerk
+   * off — so this never fails the request. Skipped (with a warning) when Clerk is
+   * unconfigured or the acting SuperAdmin isn't Clerk-linked yet.
+   *
+   * On SUCCESS the organization.created webhook also fires and dedupes by slug, so
+   * linkage is race-safe. On FAILURE of createOrganization no Clerk org exists, so
+   * no webhook fires and clerk_org_id stays NULL until a manual re-provision. It is
+   * NOT auto-healed; `clerkLinked: false` on the org detail/tile is how a SuperAdmin
+   * spots it, and a re-provision endpoint is still a follow-up.
    */
   private async provisionClerkOrg(org: Organization, actor: AuthenticatedUser): Promise<void> {
     if (!this.clerk.isConfigured() || org.clerkOrgId) return;
@@ -88,9 +180,10 @@ export class PlatformService {
       await this.orgs.attachClerkOrgId(org.id, clerkOrg.id);
     } catch (err) {
       this.log.error(
-        `Clerk Organization creation failed for org ${org.id}: ${(err as Error).message}`,
+        `Clerk Organization creation failed for org ${org.id} — it stays unlinked ` +
+          `(clerk_org_id NULL) until a manual re-provision: ${(err as Error).message}`,
       );
-      // Local org remains authoritative; clerk_org_id backfills later.
+      // Local org remains authoritative + fully usable; no auto-backfill on failure.
     }
   }
 }

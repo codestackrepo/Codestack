@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Role } from '../../common/enums/role.enum';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
-import { isSuperAdmin, scopeToOrg } from '../../common/tenancy/tenant-scope.util';
+import { scopeToOrg } from '../../common/tenancy/tenant-scope.util';
 import { Assignment } from '../assignments/entities/assignment.entity';
 import { AssignmentKind } from '../assignments/enums/assignment-kind.enum';
 import { AssignmentStatus } from '../assignments/enums/assignment-status.enum';
@@ -79,17 +79,13 @@ export class AdminService {
       scopedUsers().andWhere('u.role = :r', { r: Role.STUDENT }).getCount(),
       scopedUsers().andWhere('u.is_active = :a', { a: true }).getCount(),
       scopeToOrg(this.classrooms.createQueryBuilder('c'), 'c', actor).getCount(),
-      // Problem has NO organization_id (owned by #56 applyVisibility). SuperAdmin
-      // gets the true platform count; org-admin gets an author-org stopgap that
-      // under-counts global/library/SET-NULL-author problems until #56 lands.
-      // MUST NOT be the platform-wide count for an org-admin (that is the leak).
-      isSuperAdmin(actor)
-        ? this.problems.count()
-        : this.problems
-            .createQueryBuilder('p')
-            .innerJoin('p.createdBy', 'pu')
-            .where('pu.organization_id = :actorOrg', { actorOrg: actor.organizationId })
-            .getCount(),
+      // #56 landed organization_id + scope on problems, so this is now the same
+      // scopeToOrg fork as every other count (it replaces an author-org stopgap
+      // that under-counted library / SET-NULL-author problems). SuperAdmin gets the
+      // platform count incl. the global catalog; an org-admin gets its own org's
+      // problems only — no includeGlobal, so this stays the number quota
+      // enforcement charges against MAX_PROBLEMS (global is exempt, §5.4).
+      scopeToOrg(this.problems.createQueryBuilder('p'), 'p', actor).getCount(),
       scopeToOrg(this.assignments.createQueryBuilder('a'), 'a', actor).getCount(),
       scopeToOrg(
         this.assignments.createQueryBuilder('a').where('a.kind = :k', { k: AssignmentKind.TEST }),

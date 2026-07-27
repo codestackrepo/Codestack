@@ -3,6 +3,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { TenantContextGuard } from '../../common/tenancy/tenant-context.guard';
 import { ModuleAccessModule } from '../module-access/module-access.module';
 import { ModuleAccessGuard } from '../module-access/guards/module-access.guard';
 import { OnboardingModule } from '../onboarding/onboarding.module';
@@ -34,10 +35,15 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     JwtStrategy,
     JwtRefreshStrategy,
     ClerkService, // injected by ClerkOrJwtAuthGuard
-    // Global authn + RBAC + module access. Order matters: authenticate, then
-    // check roles, then check per-role module toggles. Slot 1 is the unified
-    // Clerk-or-JWT guard (#51, dual-auth); slots 2/3 unchanged.
+    // Global guard chain (order = execution order): authenticate -> tenant gate
+    // -> RBAC -> per-role module toggles. Slot 1 is the unified Clerk-or-JWT guard
+    // (#51). Slot 2 is the TenantContextGuard (#62): now that auth reliably
+    // populates request.user.organizationId, it can enforce the whole-tenant rules
+    // it was built for — reject a member of a SUSPENDED org (making the SuperAdmin
+    // suspend/activate control real) and a non-superadmin with no org. SUPERADMIN
+    // and @Public routes bypass it.
     { provide: APP_GUARD, useClass: ClerkOrJwtAuthGuard },
+    { provide: APP_GUARD, useClass: TenantContextGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: ModuleAccessGuard },
   ],
