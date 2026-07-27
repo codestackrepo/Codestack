@@ -14,7 +14,8 @@ import { AssignmentProblem } from '../../modules/assignments/entities/assignment
 import { ProblemTemplate } from '../../modules/assignments/entities/problem-template.entity';
 import { AssignmentStatus } from '../../modules/assignments/enums/assignment-status.enum';
 
-const PASSWORD = 'Password1!';
+// Kept in step with run-seed.ts — see the note there on Clerk's breach check.
+const PASSWORD = 'CodeStack#Dev2026!';
 const DAY = 86_400_000;
 
 /**
