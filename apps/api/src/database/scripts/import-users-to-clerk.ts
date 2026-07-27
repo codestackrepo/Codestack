@@ -7,11 +7,14 @@ import { User } from '../../modules/users/entities/user.entity';
 import {
   ImportArgs,
   ImportReport,
+  clerkErrorDetail,
   clerkOrgRoleForRole,
   detectHasher,
   emptyReport,
   formatReport,
   parseArgs,
+  requiresUsername,
+  usernameFromEmail,
 } from './import-users-to-clerk.util';
 
 /**
@@ -31,9 +34,14 @@ import {
  * already exists for an email (a prior partial run or a self-signup) it is linked
  * rather than duplicated.
  *
+ * Instance-shape aware: if the Clerk instance requires a `username`, the create is
+ * retried with one derived from the email local-part (never sent otherwise, since
+ * instances with usernames disabled reject the field).
+ *
  *   pnpm --filter @codestack/api import:clerk -- --dry-run
  *   pnpm --filter @codestack/api import:clerk -- --limit=50
  *   pnpm --filter @codestack/api import:clerk
+ *   pnpm --filter @codestack/api import:clerk -- --sync-password  # see ImportArgs
  */
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
@@ -57,14 +65,18 @@ async function main(): Promise<void> {
   const qb = users
     .createQueryBuilder('u')
     .addSelect('u.passwordHash') // select:false by default — needed for the digest
-    .where('u.clerk_user_id IS NULL')
     .andWhere('u.password_hash IS NOT NULL')
     .orderBy('u.created_at', 'ASC');
+  // Normally only UNLINKED users are candidates. --sync-password must also reach
+  // already-linked ones: pushing the local digest onto an existing Clerk account
+  // is the whole point of the flag, and those rows are linked by definition.
+  if (!args.syncPassword) qb.andWhere('u.clerk_user_id IS NULL');
   if (args.limit) qb.take(args.limit);
   const candidates = await qb.getMany();
 
   console.log(
-    `${candidates.length} candidate user(s) (unlinked, password-backed)${args.dryRun ? ' — DRY RUN' : ''}.`,
+    `${candidates.length} candidate user(s) (${args.syncPassword ? 'password-backed' : 'unlinked, password-backed'})` +
+      `${args.dryRun ? ' — DRY RUN' : ''}.`,
   );
 
   const orgClerkIdCache = new Map<string, string | null>();
@@ -87,7 +99,7 @@ async function main(): Promise<void> {
         clerkOrgId: await clerkOrgIdFor(u.organizationId),
       });
     } catch (err) {
-      report.errors.push({ email: u.email, error: (err as Error).message });
+      report.errors.push({ email: u.email, error: clerkErrorDetail(err) });
     }
   }
 
@@ -122,6 +134,19 @@ async function importOne(u: User, deps: ImportDeps): Promise<void> {
 
   if (clerkUserId) {
     report.linkedExisting++;
+    // Opt-in only: make the LOCAL hash the password of a Clerk account created
+    // out-of-band, so the user signs in with the password they already know.
+    if (args.syncPassword && hasher) {
+      try {
+        await clerk.users.updateUser(clerkUserId, {
+          passwordDigest: u.passwordHash ?? undefined,
+          passwordHasher: hasher as 'argon2id' | 'argon2i' | 'bcrypt',
+        });
+        report.passwordSynced.push(u.email);
+      } catch (err) {
+        report.errors.push({ email: u.email, error: `password sync: ${clerkErrorDetail(err)}` });
+      }
+    }
   } else {
     const base = {
       emailAddress: [u.email],
@@ -132,24 +157,44 @@ async function importOne(u: User, deps: ImportDeps): Promise<void> {
         ...(u.role === Role.SUPERADMIN ? { role: 'superadmin' } : {}),
       },
     };
-    if (hasher) {
-      try {
-        const created = await clerk.users.createUser({
-          ...base,
+    // Digest first: it preserves the user's existing password AND bypasses the
+    // instance's plaintext strength policy (a digest is imported, not validated),
+    // so a legitimately weak legacy password still migrates.
+    const digest = hasher
+      ? {
           passwordDigest: u.passwordHash ?? undefined,
           passwordHasher: hasher as 'argon2id' | 'argon2i' | 'bcrypt',
-        });
-        clerkUserId = created.id;
+        }
+      : {};
+
+    // An instance that REQUIRES a username rejects every create that omits one.
+    // Only add it on that specific rejection: sending a username unconditionally
+    // would break instances where usernames are disabled.
+    const create = async (payload: Record<string, unknown>): Promise<string> => {
+      try {
+        return (await clerk!.users.createUser(payload)).id;
+      } catch (err) {
+        if (!requiresUsername(err)) throw err;
+        const username = usernameFromEmail(u.email);
+        const retried = await clerk!.users.createUser({ ...payload, username });
+        console.log(`  ${u.email}: instance requires a username -> used "${username}"`);
+        return retried.id;
+      }
+    };
+
+    if (hasher) {
+      try {
+        clerkUserId = await create({ ...base, ...digest });
         report.imported++;
-      } catch {
-        // Clerk rejected the digest — create password-less (reset/magic-link).
-        const created = await clerk.users.createUser(base);
-        clerkUserId = created.id;
+      } catch (err) {
+        // Clerk rejected the digest — create password-less (reset/magic-link) and
+        // keep WHY in the report; a bare "Unprocessable Entity" is undiagnosable.
+        console.log(`  ${u.email}: digest import rejected — ${clerkErrorDetail(err)}`);
+        clerkUserId = await create(base);
         report.fallback.push(u.email);
       }
     } else {
-      const created = await clerk.users.createUser(base);
-      clerkUserId = created.id;
+      clerkUserId = await create(base);
       report.fallback.push(u.email);
     }
   }

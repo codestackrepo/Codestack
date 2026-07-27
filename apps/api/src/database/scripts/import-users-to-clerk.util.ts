@@ -10,18 +10,33 @@ export interface ImportArgs {
   dryRun: boolean;
   /** Cap the number of users processed (for a staged rollout). */
   limit?: number;
+  /**
+   * Push the LOCAL password digest onto an already-existing Clerk user. OFF by
+   * default: overwriting a live Clerk credential is not something a link-only
+   * import should ever do silently. Opt in when the Clerk account was created
+   * out-of-band (or its password is unknown) and the local hash is the truth.
+   */
+  syncPassword: boolean;
 }
 
 export interface ImportReport {
   imported: number; // created in Clerk WITH the imported password
   linkedExisting: number; // a Clerk user already existed for the email -> linked
+  passwordSynced: string[]; // --sync-password: local digest pushed onto an existing user
   fallback: string[]; // created WITHOUT a password (must use reset/magic-link)
   skippedNoOrg: string[]; // imported but org not provisioned in Clerk -> no membership
   errors: { email: string; error: string }[];
 }
 
 export function emptyReport(): ImportReport {
-  return { imported: 0, linkedExisting: 0, fallback: [], skippedNoOrg: [], errors: [] };
+  return {
+    imported: 0,
+    linkedExisting: 0,
+    passwordSynced: [],
+    fallback: [],
+    skippedNoOrg: [],
+    errors: [],
+  };
 }
 
 /**
@@ -58,10 +73,58 @@ export function clerkOrgRoleForRole(role: Role): string | null {
 
 export function parseArgs(argv: string[]): ImportArgs {
   const dryRun = argv.includes('--dry-run');
+  const syncPassword = argv.includes('--sync-password');
   const limitArg = argv.find((a) => a.startsWith('--limit='));
   const limitRaw = limitArg ? Number.parseInt(limitArg.split('=')[1], 10) : NaN;
   const limit = Number.isInteger(limitRaw) && limitRaw > 0 ? limitRaw : undefined;
-  return { dryRun, limit };
+  return { dryRun, limit, syncPassword };
+}
+
+/** Shape of a Clerk API error body (`@clerk/backend` throws these on 4xx). */
+interface ClerkApiError {
+  status?: number;
+  errors?: { code?: string; message?: string; longMessage?: string }[];
+  message?: string;
+}
+
+/**
+ * Flatten a Clerk error into something actionable. Clerk's `.message` is just
+ * "Unprocessable Entity" — the reason ("username data doesn't match user
+ * requirements set for this instance") lives in `errors[].longMessage`, so a
+ * report that logs only `.message` is undiagnosable.
+ */
+export function clerkErrorDetail(err: unknown): string {
+  const e = err as ClerkApiError;
+  const details = (e?.errors ?? [])
+    .map((d) => [d.code, d.longMessage ?? d.message].filter(Boolean).join(': '))
+    .filter(Boolean);
+  const status = e?.status ? `${e.status} ` : '';
+  return details.length
+    ? `${status}${details.join(' | ')}`
+    : `${status}${e?.message ?? String(err)}`;
+}
+
+/**
+ * True when Clerk rejected a create because the instance REQUIRES a username.
+ * Instances with "username" as a required field reject any createUser that omits
+ * it — including the digest import — with form_data_missing.
+ */
+export function requiresUsername(err: unknown): boolean {
+  const e = err as ClerkApiError;
+  return (e?.errors ?? []).some(
+    (d) => d.code === 'form_data_missing' && /username/i.test(d.longMessage ?? d.message ?? ''),
+  );
+}
+
+/**
+ * Derive a Clerk username from an email local-part: lowercased, reduced to
+ * Clerk's allowed charset, and padded to its 4-char minimum. Deterministic, so a
+ * re-run derives the same name instead of minting a second account.
+ */
+export function usernameFromEmail(email: string): string {
+  const local = email.split('@')[0]?.toLowerCase() ?? '';
+  const cleaned = local.replace(/[^a-z0-9_-]/g, '') || 'user';
+  return cleaned.length >= 4 ? cleaned.slice(0, 64) : `${cleaned}_usr`;
 }
 
 export function formatReport(report: ImportReport, dryRun: boolean): string {
@@ -70,6 +133,7 @@ export function formatReport(report: ImportReport, dryRun: boolean): string {
     `=== argon2 -> Clerk import ${dryRun ? '(DRY RUN — no writes)' : ''} ===`,
     `  imported (with password): ${report.imported}`,
     `  linked to existing Clerk user: ${report.linkedExisting}`,
+    `  password synced onto an existing Clerk user: ${report.passwordSynced.length}`,
     `  fell back to reset/magic-link: ${report.fallback.length}`,
     `  imported but org not in Clerk (no membership): ${report.skippedNoOrg.length}`,
     `  errors: ${report.errors.length}`,
