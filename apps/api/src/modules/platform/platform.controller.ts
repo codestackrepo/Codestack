@@ -4,6 +4,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
 import { Platform } from './decorators/platform.decorator';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
+import { PlatformOrganizationDetailDto } from './dto/platform-organization-detail.dto';
 import { PlatformOrganizationDto } from './dto/platform-organization.dto';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
 import { PlatformService } from './platform.service';
@@ -34,9 +35,10 @@ export class PlatformController {
     return PlatformOrganizationDto.from(await this.platform.create(dto, actor));
   }
 
+  /** Superset of a list row: the org plus its live census read against quotas (#63). */
   @Get(':id')
-  async detail(@Param('id', ParseUUIDPipe) id: string): Promise<PlatformOrganizationDto> {
-    return PlatformOrganizationDto.from(await this.platform.getById(id));
+  detail(@Param('id', ParseUUIDPipe) id: string): Promise<PlatformOrganizationDetailDto> {
+    return this.platform.detail(id);
   }
 
   @Patch(':id')

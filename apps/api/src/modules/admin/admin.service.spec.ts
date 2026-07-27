@@ -49,8 +49,11 @@ function build() {
   };
   const classrooms = { createQueryBuilder: jest.fn(() => makeQb(() => 4)) };
   const problems = {
-    count: jest.fn().mockResolvedValue(20), // superadmin platform-wide
-    createQueryBuilder: jest.fn(() => makeQb(() => 7)), // org-admin author-scoped stopgap
+    // Kept mocked purely so a regression to an unscoped `problems.count()` fails.
+    count: jest.fn().mockResolvedValue(20),
+    // scopeToOrg binds __scopeActorOrg only for a non-superadmin, so the stub can
+    // tell an org-scoped read (7) from the unfiltered platform read (20).
+    createQueryBuilder: jest.fn(() => makeQb((p) => (p.__scopeActorOrg ? 7 : 20))),
   };
   const assignments = {
     createQueryBuilder: jest.fn(() =>
@@ -109,19 +112,23 @@ describe('AdminService.overview', () => {
     expect(o.onboarding).toEqual({ pendingRequests: 3, activeInvites: 2 });
   });
 
-  it('org-admin problemsTotal uses the author-scoped count (NOT the platform-wide count)', async () => {
+  it('org-admin problemsTotal is org-scoped via problems.organization_id (NOT platform-wide)', async () => {
     const { service, problems } = build();
     const o = await service.overview(orgAdmin);
-    expect(o.problems.total).toBe(7); // author-org stopgap
-    expect(problems.count).not.toHaveBeenCalled(); // never the platform-wide leak
-    expect(problems.createQueryBuilder).toHaveBeenCalled();
+    expect(o.problems.total).toBe(7); // own org only
+    expect(problems.count).not.toHaveBeenCalled(); // never an unscoped read
+    const qb = problems.createQueryBuilder.mock.results[0].value;
+    expect(qb.andWhere).toHaveBeenCalledWith(
+      expect.stringContaining('p.organizationId'),
+      expect.objectContaining({ __scopeActorOrg: 'org-A' }),
+    );
   });
 
-  it('superadmin problemsTotal is the platform-wide count', async () => {
+  it('superadmin problemsTotal spans every org plus the global catalog', async () => {
     const { service, problems } = build();
     const o = await service.overview(superAdmin);
     expect(o.problems.total).toBe(20);
-    expect(problems.count).toHaveBeenCalled();
-    expect(problems.createQueryBuilder).not.toHaveBeenCalled(); // no author-scoped fork
+    const qb = problems.createQueryBuilder.mock.results[0].value;
+    expect(qb.andWhere).not.toHaveBeenCalled(); // unfiltered by design
   });
 });
