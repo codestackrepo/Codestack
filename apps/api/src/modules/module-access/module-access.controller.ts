@@ -6,42 +6,55 @@ import { Role } from '../../common/enums/role.enum';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
 import { UpdateModuleAccessDto } from './dto/update-module-access.dto';
 import { SYSTEM_MODULES, TOGGLEABLE_MODULES } from './enums/app-module-key.enum';
-import { ModuleAccessService } from './module-access.service';
+import { ALL_FEATURES } from './enums/feature-key.enum';
+import { MatrixCell, ModuleAccessService } from './module-access.service';
 
-// NOTE (§9.7): this controller is deliberately NOT @RequiresModule-gated — an
-// admin must never be able to lock themselves out of the toggles' backing API.
+// NOTE (§9.7): this controller is deliberately NOT @RequiresModule/@RequiresFeature
+// gated — an admin must never be able to lock themselves out of the toggles' own API.
+//
+// TENANCY (#64): the layer read/written is always `actor.organizationId`, never a
+// value from the request. An org admin therefore edits its OWN org layer (§5.5
+// layer 5), while a SuperAdmin — org null, and it outranks @Roles(ADMIN) by rank —
+// edits the PLATFORM layer (layer 6). That falls out of the actor's org with no
+// branch. Editing ANOTHER org's layer is a platform-console concern and belongs on
+// an explicit `:orgId` route, never on this one.
 @ApiTags('module-access')
 @ApiCookieAuth('access_token')
 @Controller('module-access')
 export class ModuleAccessController {
   constructor(private readonly access: ModuleAccessService) {}
 
-  /** Effective module map for the calling user's role. Any authenticated user. */
+  /** Effective module + feature maps for the calling user. Any authenticated user. */
   @Get('me')
-  me(@CurrentUser() actor: AuthenticatedUser) {
-    return { modules: this.access.effectiveMapForRole(actor.role) };
+  async me(@CurrentUser() actor: AuthenticatedUser) {
+    const [modules, features] = await Promise.all([
+      this.access.effectiveMapForRole(actor.role, actor.organizationId),
+      this.access.effectiveFeatureMap(actor.role, actor.organizationId),
+    ]);
+    return { modules, features };
   }
 
-  /** Full Module × Role matrix. Admin only. */
+  /** Module × Role and Feature × Role matrix for the actor's layer. Admin+. */
   @Get()
   @Roles(Role.ADMIN)
-  matrix() {
-    return {
-      toggleable: TOGGLEABLE_MODULES,
-      system: SYSTEM_MODULES,
-      matrix: this.access.getMatrix(),
-    };
+  async matrix(@CurrentUser() actor: AuthenticatedUser) {
+    return this.envelope(await this.access.getMatrix(actor.organizationId));
   }
 
-  /** Toggle one cell (admin cells + SYSTEM modules rejected). Admin only. Returns the refreshed matrix. */
+  /** Toggle one cell in the actor's layer. Admin+. Returns the refreshed matrix. */
   @Patch()
   @Roles(Role.ADMIN)
-  async update(@Body() dto: UpdateModuleAccessDto) {
-    await this.access.setCell(dto.moduleKey, dto.role, dto.enabled);
+  async update(@Body() dto: UpdateModuleAccessDto, @CurrentUser() actor: AuthenticatedUser) {
+    await this.access.setCell(dto.moduleKey, dto.role, dto.enabled, actor.organizationId);
+    return this.envelope(await this.access.getMatrix(actor.organizationId));
+  }
+
+  private envelope(matrix: MatrixCell[]) {
     return {
       toggleable: TOGGLEABLE_MODULES,
       system: SYSTEM_MODULES,
-      matrix: this.access.getMatrix(),
+      features: ALL_FEATURES,
+      matrix,
     };
   }
 }

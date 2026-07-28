@@ -32,14 +32,20 @@ export class SessionContextService {
 
     const org = user.organizationId ? await this.organizations.findById(user.organizationId) : null;
 
+    // Both maps resolve through the 8-layer precedence against the user's OWN org
+    // (#64), so a SuperAdmin org grant cap shows up here immediately — this is the
+    // payload the frontend gates its nav and controls on.
+    const [modules, features] = await Promise.all([
+      this.moduleAccess.effectiveMapForRole(user.role, user.organizationId),
+      this.moduleAccess.effectiveFeatureMap(user.role, user.organizationId),
+    ]);
+
     return {
       user: UserResponseDto.from(user),
       organization: org ? OrganizationSummaryDto.from(org) : null,
       isSuperAdmin: user.role === Role.SUPERADMIN,
-      modules: this.moduleAccess.effectiveMapForRole(user.role),
-      // Populated by their subsystems as they land — the field exists now so the
-      // client contract is stable across the M2 rollout.
-      features: {}, // #64 per-org feature flags
+      modules,
+      features,
       quotas: null, // #66 per-org quota limits + usage
       isValid: true,
     };
