@@ -10,7 +10,10 @@ import { SessionContextService } from './session-context.service';
 function makeService(user: Partial<User>, org: Organization | null = null) {
   const users = { getById: jest.fn().mockResolvedValue(user as User) };
   const moduleAccess = {
-    effectiveMapForRole: jest.fn().mockReturnValue({ problems: true, grading: false }),
+    effectiveMapForRole: jest.fn().mockResolvedValue({ problems: true, grading: false }),
+    effectiveFeatureMap: jest
+      .fn()
+      .mockResolvedValue({ 'problems.author': false, 'topics.comment': true }),
   };
   const organizations = { findById: jest.fn().mockResolvedValue(org) };
   const svc = new SessionContextService(
@@ -77,10 +80,26 @@ describe('SessionContextService.build', () => {
     expect(organizations.findById).not.toHaveBeenCalled();
   });
 
-  it('exposes stable-but-empty features/quotas placeholders (filled by #64/#66)', async () => {
-    const { svc } = makeService({ id: 'local-1', role: Role.STUDENT, organizationId: 'org-1' });
+  it('fills features from the resolver (#64) and still stubs quotas (#66)', async () => {
+    const { svc } = makeService({
+      id: 'local-1',
+      role: Role.STUDENT,
+      organizationId: 'org-1',
+    });
     const ctx = await svc.build(actor);
-    expect(ctx.features).toEqual({});
+    expect(ctx.features).toEqual({ 'problems.author': false, 'topics.comment': true });
     expect(ctx.quotas).toBeNull();
+  });
+
+  it('resolves both maps against the DB org, never the token org', async () => {
+    // The token actor claims org-1; the DB row is the authority and says org-2.
+    const { svc, moduleAccess } = makeService({
+      id: 'local-1',
+      role: Role.PROFESSOR,
+      organizationId: 'org-2',
+    });
+    await svc.build(actor);
+    expect(moduleAccess.effectiveMapForRole).toHaveBeenCalledWith(Role.PROFESSOR, 'org-2');
+    expect(moduleAccess.effectiveFeatureMap).toHaveBeenCalledWith(Role.PROFESSOR, 'org-2');
   });
 });

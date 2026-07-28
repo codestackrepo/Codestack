@@ -2,10 +2,11 @@ import { ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { IS_PUBLIC_KEY } from '../../../common/decorators/public.decorator';
 import { Role } from '../../../common/enums/role.enum';
+import { AuthenticatedUser } from '../../../common/types/authenticated-user';
 import { AppModuleKey } from '../enums/app-module-key.enum';
 import { ModuleAccessGuard } from './module-access.guard';
 
-function makeContext(user?: { id: string; role: Role }): ExecutionContext {
+function makeContext(user?: Partial<AuthenticatedUser>): ExecutionContext {
   return {
     getHandler: () => ({}),
     getClass: () => ({}),
@@ -23,78 +24,89 @@ function reflectorFor(opts: { isPublic?: boolean; required?: AppModuleKey }): Re
 }
 
 describe('ModuleAccessGuard', () => {
-  const STUDENT = { id: 'u1', role: Role.STUDENT };
+  const STUDENT = { id: 'u1', role: Role.STUDENT, organizationId: 'org-A' };
 
-  it('passes when the route has no @RequiresModule metadata', () => {
+  it('passes when the route has no @RequiresModule metadata', async () => {
     const access = { isEnabled: jest.fn() };
     const guard = new ModuleAccessGuard(reflectorFor({}), access as never);
-    expect(guard.canActivate(makeContext(STUDENT))).toBe(true);
+    await expect(guard.canActivate(makeContext(STUDENT))).resolves.toBe(true);
     expect(access.isEnabled).not.toHaveBeenCalled();
   });
 
-  it('passes a @Public route even with no user', () => {
+  it('passes a @Public route even with no user', async () => {
     const access = { isEnabled: jest.fn() };
     const guard = new ModuleAccessGuard(
       reflectorFor({ isPublic: true, required: AppModuleKey.PROBLEMS }),
       access as never,
     );
-    expect(guard.canActivate(makeContext(undefined))).toBe(true);
+    await expect(guard.canActivate(makeContext(undefined))).resolves.toBe(true);
     expect(access.isEnabled).not.toHaveBeenCalled();
   });
 
-  it('bypasses for superadmin without consulting the service', () => {
+  it('bypasses for superadmin without consulting the service', async () => {
     const access = { isEnabled: jest.fn() };
     const guard = new ModuleAccessGuard(
       reflectorFor({ required: AppModuleKey.GRADING }),
       access as never,
     );
-    expect(guard.canActivate(makeContext({ id: 's', role: Role.SUPERADMIN }))).toBe(true);
+    await expect(
+      guard.canActivate(makeContext({ id: 's', role: Role.SUPERADMIN, organizationId: null })),
+    ).resolves.toBe(true);
     expect(access.isEnabled).not.toHaveBeenCalled();
   });
 
-  it('consults the service for admin (no longer an unconditional guard bypass)', () => {
-    const access = { isEnabled: jest.fn().mockReturnValue(true) };
+  it('consults the service for ADMIN and passes the org (no guard-level bypass left)', async () => {
+    const access = { isEnabled: jest.fn().mockResolvedValue(true) };
     const guard = new ModuleAccessGuard(
       reflectorFor({ required: AppModuleKey.GRADING }),
       access as never,
     );
-    expect(guard.canActivate(makeContext({ id: 'a', role: Role.ADMIN }))).toBe(true);
-    expect(access.isEnabled).toHaveBeenCalledWith(AppModuleKey.GRADING, Role.ADMIN);
+    await expect(
+      guard.canActivate(makeContext({ id: 'a', role: Role.ADMIN, organizationId: 'org-A' })),
+    ).resolves.toBe(true);
+    expect(access.isEnabled).toHaveBeenCalledWith(AppModuleKey.GRADING, Role.ADMIN, 'org-A');
   });
 
-  it('throws module_disabled when the role has the module off', () => {
-    const access = { isEnabled: jest.fn().mockReturnValue(false) };
-    const guard = new ModuleAccessGuard(
-      reflectorFor({ required: AppModuleKey.GRADING }),
-      access as never,
-    );
-    expect(() => guard.canActivate(makeContext(STUDENT))).toThrow(ForbiddenException);
-    try {
-      guard.canActivate(makeContext(STUDENT));
-    } catch (e) {
-      expect((e as ForbiddenException).getResponse()).toMatchObject({
-        reason: 'module_disabled',
-        module: AppModuleKey.GRADING,
-      });
-    }
-  });
-
-  it('passes when the module is enabled for the role', () => {
-    const access = { isEnabled: jest.fn().mockReturnValue(true) };
+  it('denies an ADMIN whose org had the module revoked (the #64 point)', async () => {
+    const access = { isEnabled: jest.fn().mockResolvedValue(false) };
     const guard = new ModuleAccessGuard(
       reflectorFor({ required: AppModuleKey.PROBLEMS }),
       access as never,
     );
-    expect(guard.canActivate(makeContext(STUDENT))).toBe(true);
+    await expect(
+      guard.canActivate(makeContext({ id: 'a', role: Role.ADMIN, organizationId: 'org-A' })),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('throws when metadata present but no user (non-public)', () => {
+  it('throws module_disabled when the role has the module off', async () => {
+    const access = { isEnabled: jest.fn().mockResolvedValue(false) };
+    const guard = new ModuleAccessGuard(
+      reflectorFor({ required: AppModuleKey.GRADING }),
+      access as never,
+    );
+    await expect(guard.canActivate(makeContext(STUDENT))).rejects.toMatchObject({
+      response: { reason: 'module_disabled', module: AppModuleKey.GRADING },
+    });
+  });
+
+  it('passes when the module is enabled for the role', async () => {
+    const access = { isEnabled: jest.fn().mockResolvedValue(true) };
+    const guard = new ModuleAccessGuard(
+      reflectorFor({ required: AppModuleKey.PROBLEMS }),
+      access as never,
+    );
+    await expect(guard.canActivate(makeContext(STUDENT))).resolves.toBe(true);
+  });
+
+  it('throws when metadata present but no user (non-public)', async () => {
     const access = { isEnabled: jest.fn() };
     const guard = new ModuleAccessGuard(
       reflectorFor({ required: AppModuleKey.PROBLEMS }),
       access as never,
     );
-    expect(() => guard.canActivate(makeContext(undefined))).toThrow(ForbiddenException);
+    await expect(guard.canActivate(makeContext(undefined))).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
     expect(access.isEnabled).not.toHaveBeenCalled();
   });
 });
