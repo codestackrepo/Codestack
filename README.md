@@ -118,6 +118,7 @@ Denials are distinguishable so the UI can react correctly:
 | `403 module_disabled` | the whole area is off for this role/org | redirect away |
 | `403 entitlement_required` | the area exists, this capability doesn't | disable the control in place |
 | `403 cross_org` | a reference into another tenant | error |
+| `409 quota_exceeded` | permitted, but the tenant is full | inline dialog with the numbers |
 
 Resolution is cached in memory per org (lazily loaded, with concurrent-load dedupe) and invalidated
 across instances over a Redis pub/sub channel.
@@ -135,12 +136,37 @@ which is the intra-org sharing axis:
 | `org` + `shared` | the whole owning org |
 | `org` + `private` | the author (and its org admin) |
 
+### Per-org quotas
+
+Numeric limits live in a sparse `org_quotas` table — the numeric sibling of the boolean
+entitlements above. Absence is meaningful, and so is zero:
+
+| State | Means |
+|---|---|
+| no row, or `limit_value IS NULL` | **unlimited** (the common path) |
+| `limit_value = 0` | **blocked** |
+
+The two are never conflated: `?? 0` would silently turn every unlimited org into a blocked one.
+
+Enforcement happens **inside the create transaction**, holding a row lock on the org's quota row
+(`SELECT … FOR UPDATE`), so two concurrent creates against a limit of N can't both pass at N−1. A
+lock taken outside the transaction would be released immediately and the limit would be advisory.
+The unlimited path costs one indexed lookup and no count.
+
+Breaching a limit returns **409 `quota_exceeded`** with `limit`, `current`, `attempted` and
+`wouldBe` — not a 403. A 403 in this app means "not permitted" and the UI hides or redirects; a full
+tenant is permitted-but-full, so the client gets the numbers and shows them inline.
+
+Seats (`max_users`) count active members **plus pending invites**, so reserving at invite time makes
+acceptance net-zero and an org can't oversubscribe by minting invites.
+
 ### Not yet built
 
-Per-org **quotas**, Clerk-invitation onboarding and CSV bulk enrolment are designed in
-`docs/PLATFORM-PLAN.md` but not implemented — `GET /auth/verify` returns `quotas: null` today. The
-**AI** (notes/PDF → generated problems) and **Stripe billing** modules exist in the tree but are
-deliberately **not registered** in `app.module.ts`, so their endpoints are absent at runtime.
+Clerk-invitation onboarding and CSV bulk enrolment are designed in `docs/PLATFORM-PLAN.md` but not
+implemented, and no endpoint sets a quota limit yet (the service method exists; the SuperAdmin
+console will call it). The **AI** (notes/PDF → generated problems) and **Stripe billing** modules
+exist in the tree but are deliberately **not registered** in `app.module.ts`, so their endpoints are
+absent at runtime.
 
 ---
 
