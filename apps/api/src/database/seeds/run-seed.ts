@@ -22,7 +22,10 @@ import { ProblemTemplate } from '../../modules/assignments/entities/problem-temp
 import { AssignmentStatus } from '../../modules/assignments/enums/assignment-status.enum';
 // Billing plans are no longer seeded (M0 — "Disable & hide AI + Billing").
 
-const PASSWORD = 'Password1!';
+// Must survive Clerk's sign-in policy, not just our own argon2 check: Clerk
+// rejects a password found in a breach corpus (the old 'Password1!' is in one),
+// so a seeded account with a weak password cannot log in once Clerk is enabled.
+const PASSWORD = 'CodeStack#Dev2026!';
 
 /**
  * Idempotent local-dev seed: an admin, a professor, three students, one
