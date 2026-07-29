@@ -17,6 +17,8 @@ import {
   TestCaseType,
 } from './enums/problem.enums';
 import { Language } from '../../common/enums/language.enum';
+import { QuotaResource } from '../quotas/enums/quota-resource.enum';
+import { QuotaService } from '../quotas/quota.service';
 import { Company } from './entities/company.entity';
 import { LibraryProblemTemplate } from './entities/library-problem-template.entity';
 import { Problem } from './entities/problem.entity';
@@ -45,6 +47,7 @@ export class ProblemsService {
     @InjectRepository(LibraryProblemTemplate)
     private readonly libraryTemplates: Repository<LibraryProblemTemplate>,
     private readonly dataSource: DataSource,
+    private readonly quotas: QuotaService,
   ) {}
 
   async create(dto: CreateProblemDto, actor: AuthenticatedUser): Promise<Problem> {
@@ -54,6 +57,15 @@ export class ProblemsService {
       throw new ForbiddenException('Only a platform superadmin can create global problems');
     }
     const id = await this.dataSource.transaction(async (manager) => {
+      // MAX_PROBLEMS, inside the existing tx so the lock is held for the insert
+      // (#66). A superadmin's global problem passes orgId=null and is exempt —
+      // the platform catalog is charged to no tenant (§5.4).
+      await this.quotas.assertWithinQuota(
+        superAdmin ? null : actor.organizationId,
+        QuotaResource.MAX_PROBLEMS,
+        1,
+        manager,
+      );
       const tags = await this.resolveTags(dto.tags ?? [], manager.getRepository(Tag));
       const companies = await this.resolveCompanies(
         dto.companies ?? [],
@@ -209,8 +221,7 @@ export class ProblemsService {
       problem.scope === ProblemScope.GLOBAL && problem.visibility === ProblemVisibility.SHARED;
     // Guard the org compare against a null actor org (SQL `col = NULL` is never
     // true) so a mis-provisioned org-less non-superadmin can't match a global's null org.
-    const sameOrg =
-      actor.organizationId != null && problem.organizationId === actor.organizationId;
+    const sameOrg = actor.organizationId != null && problem.organizationId === actor.organizationId;
     if (actor.role === Role.ADMIN) {
       if (sameOrg) return; // all of the admin's own org
       if (publishedGlobal) return;

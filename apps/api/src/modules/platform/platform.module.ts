@@ -8,6 +8,7 @@ import { OrganizationsModule } from '../organizations/organizations.module';
 import { Problem } from '../problems/entities/problem.entity';
 import { Submission } from '../submissions/entities/submission.entity';
 import { User } from '../users/entities/user.entity';
+import { QuotasModule } from '../quotas/quotas.module';
 import { UsersModule } from '../users/users.module';
 import { PlatformMetricsService } from './platform-metrics.service';
 import { PlatformOverviewController } from './platform-overview.controller';
@@ -33,6 +34,7 @@ import { PlatformGuard } from './guards/platform.guard';
     OrganizationsModule,
     UsersModule,
     AuthModule,
+    QuotasModule,
   ],
   controllers: [PlatformController, PlatformOverviewController],
   providers: [PlatformService, PlatformMetricsService, PlatformGuard],

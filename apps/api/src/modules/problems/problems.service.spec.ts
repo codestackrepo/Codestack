@@ -38,6 +38,7 @@ function buildService(problem: Problem | null) {
     noop as never, // companies
     noop as never, // libraryTemplates
     {} as never, // dataSource
+    { assertWithinQuota: jest.fn() } as never, // quotas (#66)
   );
   return { service, problems };
 }
@@ -121,6 +122,7 @@ describe('ProblemsService.create — scope stamping (#56)', () => {
     const transaction = jest.fn(async (cb: (m: unknown) => Promise<unknown>) => cb(manager));
     const problems = { findOne: jest.fn().mockResolvedValue(makeProblem()) };
     const noop = { find: jest.fn().mockResolvedValue([]) };
+    const quotas = { assertWithinQuota: jest.fn().mockResolvedValue(undefined) };
     const service = new ProblemsService(
       problems as never,
       noop as never,
@@ -128,8 +130,9 @@ describe('ProblemsService.create — scope stamping (#56)', () => {
       noop as never,
       noop as never,
       { transaction } as never,
+      quotas as never, // #66
     );
-    return { service, transaction, getCreated: () => created };
+    return { service, transaction, quotas, getCreated: () => created };
   }
 
   it('professor create → scope=org, org=actor.org, visibility default shared', async () => {
@@ -140,6 +143,28 @@ describe('ProblemsService.create — scope stamping (#56)', () => {
       organizationId: 'org-A',
       visibility: ProblemVisibility.SHARED,
     });
+  });
+
+  it('charges MAX_PROBLEMS to the actor org, inside the existing tx (#66)', async () => {
+    const { service, quotas } = setup();
+    await service.create({ title: 't', body: 'b' } as never, actor(Role.PROFESSOR, 'org-A'));
+    expect(quotas.assertWithinQuota).toHaveBeenCalledWith(
+      'org-A',
+      'max_problems',
+      1,
+      expect.anything(),
+    );
+  });
+
+  it('exempts a superadmin GLOBAL problem — the catalog is charged to no org', async () => {
+    const { service, quotas } = setup();
+    await service.create({ title: 't', body: 'b' } as never, actor(Role.SUPERADMIN, null));
+    expect(quotas.assertWithinQuota).toHaveBeenCalledWith(
+      null,
+      'max_problems',
+      1,
+      expect.anything(),
+    );
   });
 
   it('professor sending scope=global → ForbiddenException, no transaction', async () => {
@@ -166,25 +191,29 @@ describe('ProblemsService.create — scope stamping (#56)', () => {
 
 describe('ProblemsService.update — assertOwnerOrAdmin bounding (#56)', () => {
   it('org-admin cannot modify another org’s problem', async () => {
-    const { service } = buildService(makeProblem({ organizationId: 'org-B', createdById: 'other' }));
-    await expect(service.update('p1', {} as never, actor(Role.ADMIN, 'org-A'))).rejects.toBeInstanceOf(
-      ForbiddenException,
+    const { service } = buildService(
+      makeProblem({ organizationId: 'org-B', createdById: 'other' }),
     );
+    await expect(
+      service.update('p1', {} as never, actor(Role.ADMIN, 'org-A')),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('org-admin cannot modify a GLOBAL problem', async () => {
     const { service } = buildService(
       makeProblem({ scope: ProblemScope.GLOBAL, organizationId: null, createdById: 'sa' }),
     );
-    await expect(service.update('p1', {} as never, actor(Role.ADMIN, 'org-A'))).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
+    await expect(
+      service.update('p1', {} as never, actor(Role.ADMIN, 'org-A')),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('superadmin can modify a GLOBAL problem', async () => {
     const { service } = buildService(
       makeProblem({ scope: ProblemScope.GLOBAL, organizationId: null }),
     );
-    await expect(service.update('p1', {} as never, actor(Role.SUPERADMIN, null))).resolves.toBeTruthy();
+    await expect(
+      service.update('p1', {} as never, actor(Role.SUPERADMIN, null)),
+    ).resolves.toBeTruthy();
   });
 });

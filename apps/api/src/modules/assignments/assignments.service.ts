@@ -28,6 +28,8 @@ import { LibraryProblemTemplate } from '../problems/entities/library-problem-tem
 import { Problem } from '../problems/entities/problem.entity';
 import { TestCase } from '../problems/entities/test-case.entity';
 import { ProblemScope, ProblemSource, ProblemVisibility } from '../problems/enums/problem.enums';
+import { QuotaResource } from '../quotas/enums/quota-resource.enum';
+import { QuotaService } from '../quotas/quota.service';
 import {
   CloneProblemDto,
   CreateAssignmentDto,
@@ -74,6 +76,7 @@ export class AssignmentsService {
     private readonly dataSource: DataSource,
     private readonly emitter: EventEmitter2,
     private readonly problemsService: ProblemsService,
+    private readonly quotas: QuotaService,
   ) {}
 
   async create(dto: CreateAssignmentDto, actor: AuthenticatedUser): Promise<Assignment> {
@@ -84,24 +87,45 @@ export class AssignmentsService {
     const classroom = await this.classroomsService.getDetail(dto.classroomId);
     this.assertCanManage(actor, classroom);
 
-    const targeting = await this.resolveTargeting(dto.classroomId, dto, actor, classroom.organizationId);
+    const targeting = await this.resolveTargeting(
+      dto.classroomId,
+      dto,
+      actor,
+      classroom.organizationId,
+    );
 
-    const assignment = this.assignments.create({
-      title: dto.title,
-      description: dto.description ?? '',
-      startDate: start,
-      endDate: end,
-      classroomId: dto.classroomId,
-      // Denormalized org = the classroom's org (canonical parent), not the actor.
-      organizationId: classroom.organizationId,
-      createdById: actor.id,
-      status: dto.asDraft ? AssignmentStatus.DRAFT : AssignmentStatus.SCHEDULED,
-      kind: targeting.kind,
-      targetType: targeting.targetType,
-      durationMinutes: targeting.durationMinutes,
-      targetBatches: targeting.targetBatches,
+    // WRAPPED IN A TRANSACTION for #66: this path was a bare save(), and a quota
+    // check outside a transaction releases its row lock immediately, making the
+    // limit advisory. Validation and targeting resolution stay OUTSIDE the tx so
+    // the seat lock is held only for the check plus the insert.
+    return this.assignments.manager.transaction(async (manager) => {
+      await this.quotas.assertWithinQuota(
+        // The classroom's org, matching the row we're about to stamp — never the
+        // actor's, or a SuperAdmin acting on a tenant would dodge that org's cap.
+        classroom.organizationId,
+        QuotaResource.MAX_ASSIGNMENTS,
+        1,
+        manager,
+      );
+      const repo = manager.getRepository(Assignment);
+      return repo.save(
+        repo.create({
+          title: dto.title,
+          description: dto.description ?? '',
+          startDate: start,
+          endDate: end,
+          classroomId: dto.classroomId,
+          // Denormalized org = the classroom's org (canonical parent), not the actor.
+          organizationId: classroom.organizationId,
+          createdById: actor.id,
+          status: dto.asDraft ? AssignmentStatus.DRAFT : AssignmentStatus.SCHEDULED,
+          kind: targeting.kind,
+          targetType: targeting.targetType,
+          durationMinutes: targeting.durationMinutes,
+          targetBatches: targeting.targetBatches,
+        }),
+      );
     });
-    return this.assignments.save(assignment);
   }
 
   /**
