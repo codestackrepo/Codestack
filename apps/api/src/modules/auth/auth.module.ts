@@ -9,6 +9,7 @@ import { FeatureGuard } from '../module-access/guards/feature.guard';
 import { ModuleAccessGuard } from '../module-access/guards/module-access.guard';
 import { OnboardingModule } from '../onboarding/onboarding.module';
 import { OrganizationsModule } from '../organizations/organizations.module';
+import { QuotasModule } from '../quotas/quotas.module';
 import { UsersModule } from '../users/users.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
@@ -26,6 +27,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     OnboardingModule,
     ModuleAccessModule,
     OrganizationsModule,
+    QuotasModule,
     PassportModule,
     JwtModule.register({}),
   ],

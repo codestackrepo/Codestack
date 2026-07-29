@@ -11,6 +11,7 @@ import { TestCase } from '../problems/entities/test-case.entity';
 import { AssignmentItemsController } from './assignment-items.controller';
 import { AssignmentItemsService } from './assignment-items.service';
 import { AssignmentTakingService } from './assignment-taking.service';
+import { QuotasModule } from '../quotas/quotas.module';
 import { AssignmentsController } from './assignments.controller';
 import { AssignmentsService } from './assignments.service';
 import { AssignmentSweepProcessor } from './queue/assignment-sweep.processor';
@@ -39,6 +40,7 @@ import { QuizResponse } from './entities/quiz-response.entity';
       QuizResponse,
       AssignmentAttempt,
     ]),
+    QuotasModule,
     ClassroomsModule,
     ProblemsModule, // #57: getVisible-gated import/clone source reads
     // Repeatable ~60s sweep (auto start/stop + timed-test auto-submit). attempts:1

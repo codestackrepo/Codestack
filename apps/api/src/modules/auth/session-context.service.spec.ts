@@ -16,12 +16,20 @@ function makeService(user: Partial<User>, org: Organization | null = null) {
       .mockResolvedValue({ 'problems.author': false, 'topics.comment': true }),
   };
   const organizations = { findById: jest.fn().mockResolvedValue(org) };
+  const quotas = {
+    getUsageSummary: jest.fn().mockResolvedValue({
+      max_users: { used: 5, limit: 10 },
+      max_problems: { used: 2, limit: null },
+      max_assignments: { used: 1, limit: 0 },
+    }),
+  };
   const svc = new SessionContextService(
     users as unknown as UsersService,
     moduleAccess as unknown as ModuleAccessService,
     organizations as unknown as OrganizationsService,
+    quotas as never,
   );
-  return { svc, users, moduleAccess, organizations };
+  return { svc, users, moduleAccess, organizations, quotas };
 }
 
 const actor: AuthenticatedUser = {
@@ -80,15 +88,27 @@ describe('SessionContextService.build', () => {
     expect(organizations.findById).not.toHaveBeenCalled();
   });
 
-  it('fills features from the resolver (#64) and still stubs quotas (#66)', async () => {
-    const { svc } = makeService({
+  it('fills features (#64) and quotas (#66) for an org member', async () => {
+    const { svc, quotas } = makeService({
       id: 'local-1',
       role: Role.STUDENT,
       organizationId: 'org-1',
     });
     const ctx = await svc.build(actor);
     expect(ctx.features).toEqual({ 'problems.author': false, 'topics.comment': true });
+    expect(quotas.getUsageSummary).toHaveBeenCalledWith('org-1');
+    expect(ctx.quotas).toEqual({
+      max_users: { used: 5, limit: 10 },
+      max_problems: { used: 2, limit: null },
+      max_assignments: { used: 1, limit: 0 },
+    });
+  });
+
+  it('sends quotas: null for a SuperAdmin — org-less, so charged nothing', async () => {
+    const { svc, quotas } = makeService({ id: 'sa', role: Role.SUPERADMIN, organizationId: null });
+    const ctx = await svc.build(actor);
     expect(ctx.quotas).toBeNull();
+    expect(quotas.getUsageSummary).not.toHaveBeenCalled();
   });
 
   it('resolves both maps against the DB org, never the token org', async () => {

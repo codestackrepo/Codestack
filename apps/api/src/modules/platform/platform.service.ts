@@ -14,6 +14,8 @@ import {
 } from './dto/platform-organization-detail.dto';
 import { OrgCountsDto, PlatformOrgTileDto, PlatformOverviewDto } from './dto/platform-overview.dto';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
+import { QuotaResource } from '../quotas/enums/quota-resource.enum';
+import { QuotaService, QuotaUsageSummary } from '../quotas/quota.service';
 import { PlatformMetricsService } from './platform-metrics.service';
 
 /**
@@ -33,6 +35,7 @@ export class PlatformService {
     private readonly clerk: ClerkService,
     private readonly users: UsersService,
     private readonly metrics: PlatformMetricsService,
+    private readonly quotas: QuotaService,
   ) {}
 
   list(): Promise<Organization[]> {
@@ -96,27 +99,39 @@ export class PlatformService {
    */
   async detail(id: string): Promise<PlatformOrganizationDetailDto> {
     const org = await this.orgs.getById(id);
-    const counts = await this.metrics.countsForOrg(id);
-    return PlatformOrganizationDetailDto.fromOrg(org, counts, this.usageFor(counts));
+    const [counts, quotas] = await Promise.all([
+      this.metrics.countsForOrg(id),
+      this.quotas.getUsageSummary(id),
+    ]);
+    return PlatformOrganizationDetailDto.fromOrg(org, counts, this.usageFor(quotas));
   }
 
   /**
-   * Counts vs quotas. The *limits* belong to the quota subsystem (#66): until
-   * AddOrgQuotas + `QuotaService.getUsageSummary` land, no org has an `org_quotas`
-   * row — and per §5.4 "no row" already means UNLIMITED, so `limit: null` is the
-   * correct answer today, not a placeholder. #66 fills the limit in per resource
-   * without changing this wire shape.
+   * Counts vs quotas. Both numbers now come from QuotaService (#66), which owns the
+   * limits AND the counting, so the console can never disagree with what enforcement
+   * actually charges — the earlier version derived `used` from the census here, which
+   * would have drifted the moment the two definitions diverged.
    *
-   * `used` implements §5.4's seat formula now so the number will not move when the
-   * limits arrive: MAX_USERS charges active members + pending invites, which makes
-   * accepting an invitation net-zero (invite pending->accepted -1, user +1).
+   * `limit: null` still means UNLIMITED (no `org_quotas` row, or a NULL one) and is
+   * never coalesced to 0, which means BLOCKED.
    */
-  private usageFor(counts: OrgCountsDto): OrgQuotaUsageDto {
+  private usageFor(quotas: QuotaUsageSummary): OrgQuotaUsageDto {
     return {
-      users: QuotaUsageDto.of(counts.activeUsers + counts.pendingInvites, null),
+      // Seats = active members + pending invites, so accepting an invite is
+      // net-zero (invite pending->accepted -1, user +1).
+      users: QuotaUsageDto.of(
+        quotas[QuotaResource.MAX_USERS].used,
+        quotas[QuotaResource.MAX_USERS].limit,
+      ),
       // Global catalog problems are charged to no org (§5.4: global is exempt).
-      problems: QuotaUsageDto.of(counts.problems, null),
-      assignments: QuotaUsageDto.of(counts.assignments, null),
+      problems: QuotaUsageDto.of(
+        quotas[QuotaResource.MAX_PROBLEMS].used,
+        quotas[QuotaResource.MAX_PROBLEMS].limit,
+      ),
+      assignments: QuotaUsageDto.of(
+        quotas[QuotaResource.MAX_ASSIGNMENTS].used,
+        quotas[QuotaResource.MAX_ASSIGNMENTS].limit,
+      ),
     };
   }
 

@@ -11,7 +11,17 @@ type MockRepo = {
   findOne: jest.Mock;
   create: jest.Mock;
   save: jest.Mock;
+  // create() wraps its insert in repo.manager.transaction so the #66 quota check
+  // holds the org's row lock across the insert.
+  manager?: { transaction: jest.Mock };
 };
+
+/** repo.manager stub whose transaction() just runs the callback against `repo`. */
+const inlineTx = (repo: MockRepo): { transaction: jest.Mock } => ({
+  transaction: jest.fn((cb: (m: unknown) => unknown) => cb({ getRepository: () => repo })),
+});
+
+const noQuota = () => ({ assertWithinQuota: jest.fn().mockResolvedValue(undefined) });
 
 /** A QueryFailedError carrying a pg driver error code (as the real driver does). */
 function pgError(code: string): QueryFailedError {
@@ -21,6 +31,7 @@ function pgError(code: string): QueryFailedError {
 
 describe('UsersService.create — role assignment', () => {
   let repo: MockRepo;
+  let quotas: { assertWithinQuota: jest.Mock };
   let service: UsersService;
 
   const dto = (role?: Role): CreateUserDto => ({
@@ -44,7 +55,16 @@ describe('UsersService.create — role assignment', () => {
       create: jest.fn((data) => data),
       save: jest.fn((entity) => Promise.resolve({ ...entity, id: 'new-id' } as User)),
     };
-    service = new UsersService(repo as unknown as import('typeorm').Repository<User>);
+    // create() now runs inside repo.manager.transaction so the quota check holds a
+    // row lock for the insert (#66); the stub just runs the callback inline.
+    repo.manager = {
+      transaction: jest.fn((cb: (m: unknown) => unknown) => cb({ getRepository: () => repo })),
+    };
+    quotas = { assertWithinQuota: jest.fn().mockResolvedValue(undefined) };
+    service = new UsersService(
+      repo as unknown as import('typeorm').Repository<User>,
+      quotas as never,
+    );
   });
 
   it('rejects when the email is already registered', async () => {
@@ -57,6 +77,38 @@ describe('UsersService.create — role assignment', () => {
   it('defaults to STUDENT when no role is requested', async () => {
     const user = await service.create(dto(), actor(Role.ADMIN));
     expect(user.role).toBe(Role.STUDENT);
+  });
+
+  it('charges MAX_USERS inside the transaction, before the insert (#66)', async () => {
+    const order: string[] = [];
+    quotas.assertWithinQuota.mockImplementation(async () => void order.push('quota'));
+    repo.save.mockImplementation(async (e: unknown) => {
+      order.push('save');
+      return e;
+    });
+    await service.create(dto(), actor(Role.ADMIN));
+    expect(repo.manager!.transaction).toHaveBeenCalled();
+    expect(quotas.assertWithinQuota).toHaveBeenCalledWith(
+      'org-test',
+      'max_users',
+      1,
+      expect.anything(),
+    );
+    // A check after the insert would be decorative — the row would already exist.
+    expect(order).toEqual(['quota', 'save']);
+  });
+
+  it('propagates a quota breach and never inserts the user', async () => {
+    quotas.assertWithinQuota.mockRejectedValue(new ConflictException({ reason: 'quota_exceeded' }));
+    await expect(service.create(dto(), actor(Role.ADMIN))).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(repo.save).not.toHaveBeenCalled();
+  });
+
+  it('charges nothing for an org-less self-registration (no actor)', async () => {
+    await service.create(dto());
+    expect(quotas.assertWithinQuota).toHaveBeenCalledWith(null, 'max_users', 1, expect.anything());
   });
 
   // Regression test: a PROFESSOR actor was previously able to mint an ADMIN
@@ -100,7 +152,8 @@ describe('UsersService — Clerk identity (#51)', () => {
       create: jest.fn((data) => data),
       save: jest.fn((entity) => Promise.resolve({ ...entity, id: 'new-id' } as User)),
     };
-    service = new UsersService(repo as unknown as Repository<User>);
+    repo.manager = inlineTx(repo);
+    service = new UsersService(repo as unknown as Repository<User>, noQuota() as never);
   });
 
   describe('findByClerkId', () => {
@@ -186,7 +239,8 @@ describe('UsersService — Clerk webhook sync (#52)', () => {
       save: jest.fn((entity) => Promise.resolve({ ...entity, id: 'new-id' } as User)),
       update: jest.fn().mockResolvedValue({ affected: 1 }),
     };
-    service = new UsersService(repo as unknown as Repository<User>);
+    repo.manager = inlineTx(repo);
+    service = new UsersService(repo as unknown as Repository<User>, noQuota() as never);
   });
 
   describe('syncFromClerkUser', () => {

@@ -12,6 +12,8 @@ import { Role } from '../../common/enums/role.enum';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
 import { assertSameOrg, isSuperAdmin, scopeToOrg } from '../../common/tenancy/tenant-scope.util';
 import { LEGACY_ORG_ID } from '../organizations/organizations.constants';
+import { QuotaResource } from '../quotas/enums/quota-resource.enum';
+import { QuotaService } from '../quotas/quota.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { SearchUsersDto } from './dto/search-users.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -22,6 +24,7 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private readonly users: Repository<User>,
+    private readonly quotas: QuotaService,
   ) {}
 
   /**
@@ -35,17 +38,30 @@ export class UsersService {
     if (existing) throw new ConflictException('Email already registered');
 
     const role = !actor || actor.role === Role.ADMIN ? (dto.role ?? Role.STUDENT) : Role.STUDENT;
-    const user = this.users.create({
-      email: dto.email.toLowerCase(),
-      firstName: dto.firstName,
-      lastName: dto.lastName,
-      role,
-      // Stamp the actor's org (admin/professor add). No-actor self-register stays
-      // null -> fails chk_users_org_required until Clerk onboarding (#51).
-      organizationId: actor?.organizationId ?? null,
-      passwordHash: await this.hashPassword(dto.password),
+    // Stamp the actor's org (admin/professor add). No-actor self-register stays
+    // null -> fails chk_users_org_required until Clerk onboarding (#51).
+    const organizationId = actor?.organizationId ?? null;
+    const passwordHash = await this.hashPassword(dto.password);
+
+    // Hashing happens BEFORE the transaction on purpose: argon2 takes ~100ms, and
+    // doing it while holding the org's seat lock would serialise concurrent adds
+    // on the slowest step rather than the shortest one.
+    return this.users.manager.transaction(async (manager) => {
+      // MAX_USERS is checked inside the tx holding the quota row lock, so two
+      // concurrent adds at limit-1 can't both succeed (#66).
+      await this.quotas.assertWithinQuota(organizationId, QuotaResource.MAX_USERS, 1, manager);
+      const repo = manager.getRepository(User);
+      return repo.save(
+        repo.create({
+          email: dto.email.toLowerCase(),
+          firstName: dto.firstName,
+          lastName: dto.lastName,
+          role,
+          organizationId,
+          passwordHash,
+        }),
+      );
     });
-    return this.users.save(user);
   }
 
   findById(id: string): Promise<User | null> {

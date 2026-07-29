@@ -43,14 +43,22 @@ function setup(clerkConfigured = true, adminClerkId: string | null = 'user_admin
       .mockResolvedValue({ byOrg: {}, platform: { superAdmins: 0, globalProblems: 0 } }),
     countsForOrg: jest.fn().mockResolvedValue(OrgCountsDto.zero()),
   };
+  const quotas = {
+    getUsageSummary: jest.fn().mockResolvedValue({
+      max_users: { used: 0, limit: null },
+      max_problems: { used: 0, limit: null },
+      max_assignments: { used: 0, limit: null },
+    }),
+  };
   const svc = new PlatformService(
     orgs as unknown as OrganizationsService,
     orgCache as unknown as OrganizationCache,
     clerk as unknown as ClerkService,
     users as unknown as UsersService,
     metrics as unknown as PlatformMetricsService,
+    quotas as never,
   );
-  return { svc, orgs, orgCache, clerk, users, metrics };
+  return { svc, orgs, orgCache, clerk, users, metrics, quotas };
 }
 
 const counts = (patch: Partial<OrgCountsDto>): OrgCountsDto => ({
@@ -210,27 +218,35 @@ describe('PlatformService.detail (#63)', () => {
     expect(out.counts.activeUsers).toBe(10);
   });
 
-  it('charges a seat per pending invite so accepting an invite is net-zero (§5.4)', async () => {
-    const { svc, metrics } = setup();
-    metrics.countsForOrg.mockResolvedValue(counts({ activeUsers: 10, pendingInvites: 4 }));
-    const before = await svc.detail('org-1');
-    expect(before.usage.users.used).toBe(14);
-
-    // invite accepted: pending -1, active member +1 => identical seat usage.
-    metrics.countsForOrg.mockResolvedValue(counts({ activeUsers: 11, pendingInvites: 3 }));
-    const after = await svc.detail('org-1');
-    expect(after.usage.users.used).toBe(14);
+  it('takes usage from QuotaService, not the census — one definition of "used" (#66)', async () => {
+    const { svc, metrics, quotas } = setup();
+    // The census says 3 problems; the quota service says 6. Enforcement charges
+    // against the quota service, so that is the number the console must show.
+    metrics.countsForOrg.mockResolvedValue(counts({ problems: 3 }));
+    quotas.getUsageSummary.mockResolvedValue({
+      max_users: { used: 14, limit: 20 },
+      max_problems: { used: 6, limit: null },
+      max_assignments: { used: 1, limit: 0 },
+    });
+    const out = await svc.detail('org-1');
+    expect(quotas.getUsageSummary).toHaveBeenCalledWith('org-1');
+    expect(out.usage.problems.used).toBe(6);
+    expect(out.counts.problems).toBe(3); // the census still reports its own count
   });
 
-  it('reports every resource as unlimited until quotas land (#66) — never 0', async () => {
-    const { svc, metrics } = setup();
-    metrics.countsForOrg.mockResolvedValue(counts({ activeUsers: 3, problems: 2, assignments: 1 }));
+  it('maps limits without ever coalescing null (unlimited) into 0 (blocked)', async () => {
+    const { svc, quotas } = setup();
+    quotas.getUsageSummary.mockResolvedValue({
+      max_users: { used: 14, limit: 20 },
+      max_problems: { used: 6, limit: null },
+      max_assignments: { used: 1, limit: 0 },
+    });
     const out = await svc.detail('org-1');
-    for (const usage of Object.values(out.usage)) {
-      expect(usage.limit).toBeNull(); // null = unlimited; 0 would mean blocked
-      expect(usage.remaining).toBeNull();
-      expect(usage.exceeded).toBe(false);
-    }
+    expect(out.usage.users).toEqual({ used: 14, limit: 20, remaining: 6, exceeded: false });
+    // null => unlimited: no remaining, never exceeded.
+    expect(out.usage.problems).toEqual({ used: 6, limit: null, remaining: null, exceeded: false });
+    // 0 => fully blocked, and already over by one.
+    expect(out.usage.assignments).toEqual({ used: 1, limit: 0, remaining: 0, exceeded: true });
   });
 
   it('404s before counting when the org id is unknown', async () => {
