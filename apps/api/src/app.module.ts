@@ -11,6 +11,7 @@ import { QueueModule } from './queue/queue.module';
 import { HealthModule } from './health/health.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { AppThrottlerGuard } from './common/guards/app-throttler.guard';
+import { InvitesModule } from './modules/invites/invites.module';
 import { MailModule } from './modules/mail/mail.module';
 import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -71,6 +72,7 @@ import { DemoModule } from './modules/demo/demo.module';
     AuthModule,
     PlatformModule,
     OnboardingModule,
+    InvitesModule,
     ModuleAccessModule,
     QuotasModule,
     ProblemsModule,

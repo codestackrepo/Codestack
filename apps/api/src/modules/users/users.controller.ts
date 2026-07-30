@@ -11,6 +11,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiCookieAuth, ApiTags } from '@nestjs/swagger';
+import { AllowsUnassigned } from '../../common/decorators/allows-unassigned.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { PaginationQueryDto } from '../../common/dto/pagination.dto';
@@ -28,7 +29,10 @@ import { UsersService } from './users.service';
 export class UsersController {
   constructor(private readonly users: UsersService) {}
 
+  // @AllowsUnassigned: owner-scoped — returns exactly `actor`, reads no other row
+  // and touches no tenant.
   @Get('me')
+  @AllowsUnassigned()
   async me(@CurrentUser('id') id: string): Promise<UserResponseDto> {
     return UserResponseDto.from(await this.users.getById(id));
   }

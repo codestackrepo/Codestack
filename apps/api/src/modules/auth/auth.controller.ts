@@ -4,6 +4,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { Response } from 'express';
 import { AuthConfig } from '../../config/configuration';
+import { AllowsUnassigned } from '../../common/decorators/allows-unassigned.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
@@ -82,7 +83,11 @@ export class AuthController {
   // The full aggregated contract is assembled by SessionContextService so that
   // module-access/org/feature/quota subsystems contribute a field without editing
   // this controller (#54, §6 shared-file ownership).
+  // @AllowsUnassigned: this is the ONE route an org-less student must reach, or
+  // the frontend cannot even discover that they are confined — it would see a 403
+  // and bounce to /login, which succeeds, which re-fetches verify, which 403s.
   @Get('verify')
+  @AllowsUnassigned()
   verify(@CurrentUser() user: AuthenticatedUser): Promise<SessionContextDto> {
     return this.session.build(user);
   }

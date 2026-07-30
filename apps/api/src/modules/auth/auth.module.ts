@@ -7,7 +7,6 @@ import { TenantContextGuard } from '../../common/tenancy/tenant-context.guard';
 import { ModuleAccessModule } from '../module-access/module-access.module';
 import { FeatureGuard } from '../module-access/guards/feature.guard';
 import { ModuleAccessGuard } from '../module-access/guards/module-access.guard';
-import { OnboardingModule } from '../onboarding/onboarding.module';
 import { OrganizationsModule } from '../organizations/organizations.module';
 import { QuotasModule } from '../quotas/quotas.module';
 import { UsersModule } from '../users/users.module';
@@ -23,7 +22,6 @@ import { JwtStrategy } from './strategies/jwt.strategy';
   // the APP_GUARD-scoped ModuleAccessGuard resolves its dependency.
   imports: [
     UsersModule,
-    OnboardingModule,
     ModuleAccessModule,
     OrganizationsModule,
     QuotasModule,

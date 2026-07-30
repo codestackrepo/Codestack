@@ -1,11 +1,5 @@
-import {
-  BadRequestException,
-  ConflictException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { randomBytes } from 'crypto';
 import { Repository } from 'typeorm';
 import { PaginatedResult, PaginationQueryDto } from '../../common/dto/pagination.dto';
 import { Role } from '../../common/enums/role.enum';
@@ -14,99 +8,25 @@ import { assertSameOrg, scopeToOrg } from '../../common/tenancy/tenant-scope.uti
 import { NotificationType } from '../notifications/enums/notification-type.enum';
 import { NotificationsService } from '../notifications/notifications.service';
 import { UsersService } from '../users/users.service';
-import { CreateInviteDto, CreateProfessorRequestDto } from './dto/onboarding.dto';
-import { ProfessorInvite } from './entities/professor-invite.entity';
+import { CreateProfessorRequestDto } from './dto/onboarding.dto';
 import { ProfessorRequest } from './entities/professor-request.entity';
-import { InviteStatus, RequestStatus } from './enums/onboarding.enums';
+import { RequestStatus } from './enums/onboarding.enums';
 
-const DEFAULT_INVITE_TTL_DAYS = 14;
-const DAY_MS = 86_400_000;
-
+/**
+ * Professor ACCESS REQUESTS only. The invite half of this service was retired
+ * with `professor_invites` (#104) — invitations live in `modules/invites` now,
+ * with an organization_id, a hashed token and a role policy. A request is the
+ * different thing that survives: someone already inside an org asking to be
+ * promoted, which no invite expresses.
+ */
 @Injectable()
 export class OnboardingService {
   constructor(
-    @InjectRepository(ProfessorInvite)
-    private readonly invites: Repository<ProfessorInvite>,
     @InjectRepository(ProfessorRequest)
     private readonly requests: Repository<ProfessorRequest>,
     private readonly users: UsersService,
     private readonly notifications: NotificationsService,
   ) {}
-
-  // ---------------------------------------------------------------- invites
-
-  async mintInvite(dto: CreateInviteDto, adminId: string): Promise<ProfessorInvite> {
-    const ttlDays = dto.expiresInDays ?? DEFAULT_INVITE_TTL_DAYS;
-    const invite = this.invites.create({
-      // URL-safe bearer token embedded in the invite link.
-      token: randomBytes(24).toString('base64url'),
-      email: dto.email?.toLowerCase() ?? null,
-      status: InviteStatus.PENDING,
-      invitedById: adminId,
-      expiresAt: new Date(Date.now() + ttlDays * DAY_MS),
-    });
-    return this.invites.save(invite);
-  }
-
-  async listInvites(
-    query: PaginationQueryDto,
-    actor: AuthenticatedUser,
-  ): Promise<PaginatedResult<ProfessorInvite>> {
-    // Org-scoped via the inviter (SuperAdmin sees all). Invites whose inviter was
-    // deleted (invited_by_id NULL) are invisible to org-admins — acceptable
-    // because this whole surface is retired by the org_invites engine (#104),
-    // which carries its own organization_id.
-    const qb = this.invites
-      .createQueryBuilder('i')
-      .leftJoin('i.invitedBy', 'iu')
-      .orderBy('i.createdAt', 'DESC');
-    scopeToOrg(qb, 'iu', actor);
-    const [data, total] = await qb.skip(query.skip).take(query.limit).getManyAndCount();
-    return PaginatedResult.of(data, total, query);
-  }
-
-  /** Public token preview — returns the invite only if it is currently usable. */
-  async previewInvite(token: string): Promise<ProfessorInvite | null> {
-    const invite = await this.invites.findOne({ where: { token } });
-    return invite && this.isUsable(invite) ? invite : null;
-  }
-
-  async revokeInvite(id: string): Promise<ProfessorInvite> {
-    const invite = await this.getInvite(id);
-    if (invite.status === InviteStatus.CONSUMED) {
-      throw new ConflictException('Invite already consumed');
-    }
-    invite.status = InviteStatus.REVOKED;
-    return this.invites.save(invite);
-  }
-
-  /** Validates a token at registration time; throws if it cannot be consumed. */
-  async validateInviteForConsumption(token: string): Promise<ProfessorInvite> {
-    const invite = await this.invites.findOne({ where: { token } });
-    if (!invite || !this.isUsable(invite)) {
-      throw new BadRequestException('This invite is invalid, expired, or already used');
-    }
-    return invite;
-  }
-
-  async markInviteConsumed(invite: ProfessorInvite, userId: string): Promise<void> {
-    invite.status = InviteStatus.CONSUMED;
-    invite.consumedById = userId;
-    invite.consumedAt = new Date();
-    await this.invites.save(invite);
-  }
-
-  private isUsable(invite: ProfessorInvite): boolean {
-    if (invite.status !== InviteStatus.PENDING) return false;
-    if (invite.expiresAt && invite.expiresAt.getTime() < Date.now()) return false;
-    return true;
-  }
-
-  private async getInvite(id: string): Promise<ProfessorInvite> {
-    const invite = await this.invites.findOne({ where: { id } });
-    if (!invite) throw new NotFoundException('Invite not found');
-    return invite;
-  }
 
   // --------------------------------------------------------------- requests
 

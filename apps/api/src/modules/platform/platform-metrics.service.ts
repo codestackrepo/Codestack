@@ -68,9 +68,16 @@ export class PlatformMetricsService {
       await Promise.all([
         this.userRows(orgId),
         this.groupByOrg(this.invites, 'i', orgId, (qb) =>
-          // Only pending invites hold a seat: accepted ones are users already and
-          // revoked ones released theirs (idx_org_invites_org_pending is partial).
-          qb.andWhere('i.status = :pending', { pending: OrgInviteStatus.PENDING }),
+          // Only pending, NON-EXPIRED invites hold a seat: accepted ones are users
+          // already, revoked ones released theirs, and `expired` is a stored status
+          // flipped lazily, so a timed-out row can still read as 'pending'.
+          //
+          // This predicate is intentionally IDENTICAL to QuotaService.countSeats.
+          // If the two ever diverge, the console reports an org has room while
+          // enforcement 409s it, or the reverse — change them together.
+          qb
+            .andWhere('i.status = :pending', { pending: OrgInviteStatus.PENDING })
+            .andWhere('i.expiresAt > now()'),
         ),
         this.groupByOrg(this.classrooms, 'c', orgId),
         // A NULL organization_id here is exactly the global catalog — the DB CHECK

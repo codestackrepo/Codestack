@@ -85,6 +85,37 @@ describe('assertSameOrg', () => {
       assertSameOrg(actor({ role: Role.SUPERADMIN, organizationId: null }), 'orgB'),
     ).not.toThrow();
   });
+
+  // Org-less STUDENT rows became legal in 1785520000000. Before this branch,
+  // `null !== null` was false, so such an actor PASSED against any org-less
+  // target — a cross-tenant reference that reads as "same org" because neither
+  // side has one.
+  it('throws for an org-less non-superadmin, even against an org-less target', () => {
+    expect(() => assertSameOrg(actor({ organizationId: null }), null)).toThrow(ForbiddenException);
+  });
+
+  it('throws for an org-less non-superadmin against any org', () => {
+    expect(() => assertSameOrg(actor({ organizationId: null }), 'orgB')).toThrow(
+      ForbiddenException,
+    );
+  });
+
+  it('reports no_organization, distinct from the cross_org reason', () => {
+    const reasonOf = (fn: () => void): string => {
+      try {
+        fn();
+      } catch (err) {
+        return ((err as ForbiddenException).getResponse() as { reason: string }).reason;
+      }
+      throw new Error('expected a throw');
+    };
+    expect(reasonOf(() => assertSameOrg(actor({ organizationId: null }), 'orgB'))).toBe(
+      'no_organization',
+    );
+    expect(reasonOf(() => assertSameOrg(actor({ organizationId: 'orgA' }), 'orgB'))).toBe(
+      'cross_org',
+    );
+  });
 });
 
 describe('isSuperAdmin', () => {

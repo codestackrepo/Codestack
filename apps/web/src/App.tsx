@@ -102,11 +102,6 @@ const AdminRequestsPage = lazy(() =>
     default: m.AdminRequestsPage,
   })),
 );
-const AdminInvitesPage = lazy(() =>
-  import('@/features/onboarding/pages/admin-invites-page').then((m) => ({
-    default: m.AdminInvitesPage,
-  })),
-);
 const ProfilePage = lazy(() =>
   import('@/features/profile/pages/profile-page').then((m) => ({ default: m.ProfilePage })),
 );
@@ -185,7 +180,6 @@ function App() {
               <Route path="admin" element={<AdminOverviewPage />} />
               <Route path="admin/users" element={<AdminUsersPage />} />
               <Route path="admin/requests" element={<AdminRequestsPage />} />
-              <Route path="admin/invites" element={<AdminInvitesPage />} />
             </Route>
           </Route>
 

@@ -138,17 +138,18 @@ export function AdminOverviewPage() {
                     {data.onboarding.pendingRequests}
                   </p>
                 </Link>
-                <Link
-                  to="/home/admin/invites"
-                  className="rounded-lg border border-border p-3 transition-colors hover:bg-muted"
-                >
+                {/* Not a link: the professor-invite page is retired (#104) and the
+                    org-console invites tab lands with the console rewrite (#108).
+                    The COUNT is still live and correct — it now reads pending,
+                    non-expired org_invites, the same rows that hold seats. */}
+                <div className="rounded-lg border border-border p-3">
                   <span className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Mail className="size-4" /> Active invites
                   </span>
                   <p className="mt-1 font-heading text-2xl font-bold">
                     {data.onboarding.activeInvites}
                   </p>
-                </Link>
+                </div>
               </div>
             </Card>
           </div>

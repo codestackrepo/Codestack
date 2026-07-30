@@ -8,8 +8,9 @@ import { Assignment } from '../assignments/entities/assignment.entity';
 import { AssignmentKind } from '../assignments/enums/assignment-kind.enum';
 import { AssignmentStatus } from '../assignments/enums/assignment-status.enum';
 import { Classroom } from '../classrooms/entities/classroom.entity';
-import { InviteStatus, RequestStatus } from '../onboarding/enums/onboarding.enums';
-import { ProfessorInvite } from '../onboarding/entities/professor-invite.entity';
+import { RequestStatus } from '../onboarding/enums/onboarding.enums';
+import { OrgInviteStatus } from '../invites/enums/org-invite.enums';
+import { OrgInvite } from '../invites/entities/org-invite.entity';
 import { ProfessorRequest } from '../onboarding/entities/professor-request.entity';
 import { Problem } from '../problems/entities/problem.entity';
 import { Submission } from '../submissions/entities/submission.entity';
@@ -45,8 +46,8 @@ export class AdminService {
     @InjectRepository(Submission) private readonly submissions: Repository<Submission>,
     @InjectRepository(ProfessorRequest)
     private readonly professorRequests: Repository<ProfessorRequest>,
-    @InjectRepository(ProfessorInvite)
-    private readonly professorInvites: Repository<ProfessorInvite>,
+    @InjectRepository(OrgInvite)
+    private readonly orgInvites: Repository<OrgInvite>,
   ) {}
 
   /**
@@ -102,13 +103,17 @@ export class AdminService {
         'u',
         actor,
       ).getCount(),
+      // org_invites carries its own organization_id, so this scopes DIRECTLY
+      // instead of through a join on the inviter. That also closes the old blind
+      // spot: an invite whose inviter had since been deleted (invited_by_id NULL)
+      // fell out of the join and was invisible to every org admin, while still
+      // holding a seat. Predicate matches countSeats exactly.
       scopeToOrg(
-        this.professorInvites
+        this.orgInvites
           .createQueryBuilder('i')
-          .leftJoin('i.invitedBy', 'iu')
-          .where('i.status = :pending', { pending: InviteStatus.PENDING })
-          .andWhere('(i.expires_at IS NULL OR i.expires_at > now())'),
-        'iu',
+          .where('i.status = :pending', { pending: OrgInviteStatus.PENDING })
+          .andWhere('i.expiresAt > now()'),
+        'i',
         actor,
       ).getCount(),
       scopeToOrg(

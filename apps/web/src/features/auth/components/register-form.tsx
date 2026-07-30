@@ -1,11 +1,9 @@
 import { useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { GraduationCap, Lock, Mail, User } from 'lucide-react';
-import { onboardingApi } from '@/features/onboarding/api/onboarding.api';
+import { Lock, Mail, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Form,
@@ -40,24 +38,19 @@ type RegisterFormValues = z.infer<typeof registerSchema>;
 export function RegisterForm({ onSwitch }: { onSwitch: () => void }) {
   const { register } = useAuth();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const inviteToken = searchParams.get('invite') ?? undefined;
   const [formError, setFormError] = useState<string | null>(null);
 
-  const { data: invitePreview } = useQuery({
-    queryKey: ['onboarding', 'invite-preview', inviteToken],
-    queryFn: () => onboardingApi.previewInvite(inviteToken!),
-    enabled: !!inviteToken,
-    retry: false,
-  });
-  const invitedAsProfessor = !!invitePreview?.valid;
+  // No invite handling here any more. Self-registration always produces an
+  // org-less STUDENT; an invitee lands on /invite/:token instead, which is its own
+  // surface with its own accept call. Reading `?invite=` here would have kept a
+  // second, quota-free path into a role.
 
   const form = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
     defaultValues: {
       firstName: '',
       lastName: '',
-      email: invitePreview?.email ?? '',
+      email: '',
       password: '',
     },
   });
@@ -65,7 +58,7 @@ export function RegisterForm({ onSwitch }: { onSwitch: () => void }) {
   async function onSubmit(values: RegisterFormValues) {
     setFormError(null);
     try {
-      await register({ ...values, inviteToken });
+      await register(values);
       navigate('/home', { replace: true });
     } catch (error) {
       setFormError(parseApiError(error).message);
@@ -76,22 +69,8 @@ export function RegisterForm({ onSwitch }: { onSwitch: () => void }) {
     <div className="space-y-6">
       <div className="space-y-1.5">
         <h1 className="font-heading text-2xl font-bold tracking-tight">Create your account</h1>
-        <p className="text-sm text-muted-foreground">
-          {invitedAsProfessor
-            ? 'Complete your professor account to get started.'
-            : 'Start solving problems on CodeStack.'}
-        </p>
+        <p className="text-sm text-muted-foreground">Start solving problems on CodeStack.</p>
       </div>
-
-      {invitedAsProfessor && (
-        <div className="flex items-start gap-3 rounded-lg border border-brand/30 bg-brand/10 p-3 text-sm">
-          <GraduationCap className="mt-0.5 size-4 shrink-0 text-brand" />
-          <p>
-            You&apos;ve been invited to join as a <span className="font-semibold">professor</span>.
-            Finish signing up and you&apos;ll have teaching access right away.
-          </p>
-        </div>
-      )}
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">

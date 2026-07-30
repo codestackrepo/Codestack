@@ -4,7 +4,6 @@ import { JwtService } from '@nestjs/jwt';
 import { AuthConfig } from '../../config/configuration';
 import { Role } from '../../common/enums/role.enum';
 import { AuthenticatedUser, JwtPayload } from '../../common/types/authenticated-user';
-import { OnboardingService } from '../onboarding/onboarding.service';
 import { User } from '../users/entities/user.entity';
 import { UsersService } from '../users/users.service';
 import { RegisterDto } from './dto/register.dto';
@@ -21,7 +20,6 @@ export class AuthService {
   constructor(
     private readonly users: UsersService,
     private readonly jwt: JwtService,
-    private readonly onboarding: OnboardingService,
     config: ConfigService,
   ) {
     this.auth = config.getOrThrow<AuthConfig>('auth');
@@ -39,23 +37,18 @@ export class AuthService {
   }
 
   /**
-   * Self-registration. Defaults to a student account. If a valid professor
-   * `inviteToken` is supplied, the invite is validated first, the account is
-   * created with the professor role, and the invite is then marked consumed
-   * (only after the user is successfully created, so a failed registration
-   * doesn't burn the invite).
+   * Self-registration. ALWAYS a student, and always org-less — there is no token
+   * branch here any more.
+   *
+   * Registration used to accept a professor `inviteToken` and grant the professor
+   * role inline. Invites are now their own surface (`POST /invites/accept`), which
+   * is the only way a registration can yield anything but a STUDENT, and which
+   * charges the org's seat quota in the same transaction that consumes the invite.
+   * Keeping a second, quota-free path into a role would have made the two
+   * disagree.
    */
-  async register(dto: RegisterDto): Promise<User> {
-    const { inviteToken, ...userDto } = dto;
-
-    if (!inviteToken) {
-      return this.users.create({ ...userDto, role: Role.STUDENT });
-    }
-
-    const invite = await this.onboarding.validateInviteForConsumption(inviteToken);
-    const user = await this.users.create({ ...userDto, role: Role.PROFESSOR });
-    await this.onboarding.markInviteConsumed(invite, user.id);
-    return user;
+  register(dto: RegisterDto): Promise<User> {
+    return this.users.create({ ...dto, role: Role.STUDENT });
   }
 
   async login(user: User): Promise<TokenPair> {

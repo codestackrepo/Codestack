@@ -5,7 +5,6 @@ import {
   ClipboardCheck,
   CalendarClock,
   Inbox,
-  Mail,
 } from 'lucide-react';
 import { assignmentsApi } from '@/features/assignments/api/assignments.api';
 import { classroomsApi } from '@/features/classrooms/api/classrooms.api';
@@ -22,7 +21,6 @@ import {
 
 const ACTIONS: QuickAction[] = [
   { to: '/home/admin/requests', label: 'Access requests', icon: Inbox },
-  { to: '/home/admin/invites', label: 'Professor invites', icon: Mail },
   { to: '/home/classrooms', label: 'All classrooms', icon: GraduationCap },
   { to: '/home/problems', label: 'Problem library', icon: FileCode2 },
   { to: '/home/grading', label: 'Open gradebook', icon: ClipboardCheck },

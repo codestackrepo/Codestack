@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Assignment } from '../assignments/entities/assignment.entity';
 import { Classroom } from '../classrooms/entities/classroom.entity';
-import { ProfessorInvite } from '../onboarding/entities/professor-invite.entity';
+import { OrgInvite } from '../invites/entities/org-invite.entity';
 import { ProfessorRequest } from '../onboarding/entities/professor-request.entity';
 import { Problem } from '../problems/entities/problem.entity';
 import { Submission } from '../submissions/entities/submission.entity';
@@ -19,7 +19,7 @@ import { AdminService } from './admin.service';
       Assignment,
       Submission,
       ProfessorRequest,
-      ProfessorInvite,
+      OrgInvite,
     ]),
   ],
   controllers: [AdminController],

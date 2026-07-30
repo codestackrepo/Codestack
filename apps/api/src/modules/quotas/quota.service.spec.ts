@@ -127,6 +127,19 @@ describe('QuotaService.assertWithinQuota', () => {
     expect(count).toContain('status =');
   });
 
+  // `expired` is a STORED status flipped lazily (1785530000000), so a timed-out
+  // invite can still read as 'pending'. Without this term it would hold a seat
+  // forever, and PlatformMetricsService.census() applies the identical predicate —
+  // if these two ever diverge the console and enforcement disagree about how full
+  // an org is.
+  it('excludes EXPIRED-but-still-pending invites from the seat count', async () => {
+    const { service } = makeService();
+    const { manager, sql } = makeManager({ limit: 10, count: 4 });
+    await service.assertWithinQuota(ORG, QuotaResource.MAX_USERS, 1, manager);
+    const count = sql.find((s) => s.includes('FROM org_invites'))!;
+    expect(count).toContain('expires_at > now()');
+  });
+
   it('counts problems/assignments by organization_id (so the global catalog is exempt)', async () => {
     const { service } = makeService();
     for (const [resource, table] of [
