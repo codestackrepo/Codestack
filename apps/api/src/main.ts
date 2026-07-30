@@ -41,6 +41,17 @@ async function bootstrap(): Promise<void> {
   if (appCfg.isProd && appCfg.corsOrigins.length === 0) {
     throw new Error('CORS_ORIGINS must be set to an explicit allow-list in production');
   }
+
+  // Every invite, reminder and password-reset link is built from WEB_APP_URL. A
+  // loopback value in production is not a degraded experience, it is a silent
+  // total failure: the mail sends, the link is unreachable for the recipient, and
+  // nothing on the server side ever errors. Fail closed at boot instead.
+  if (appCfg.isProd && /localhost|127\.0\.0\.1/.test(appCfg.webAppUrl)) {
+    throw new Error(
+      `WEB_APP_URL must be the public web origin in production (got "${appCfg.webAppUrl}") — ` +
+        'every mailed link is built from it',
+    );
+  }
   app.enableCors({
     origin: appCfg.corsOrigins.length ? appCfg.corsOrigins : true,
     credentials: true,

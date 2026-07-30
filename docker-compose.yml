@@ -32,6 +32,21 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # Local SMTP sink: accepts everything, delivers nothing outbound, and shows
+  # every message at http://localhost:8025. apps/api/.env.sample points at it by
+  # default, so a fresh clone that flips EMAIL_ENABLED=true cannot accidentally
+  # attempt authenticated Gmail submission (which is what the old sample did).
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: codestack_mailpit
+    ports:
+      - '1025:1025' # SMTP
+      - '8025:8025' # web UI
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+    restart: unless-stopped
+
   piston:
     image: ghcr.io/engineer-man/piston:latest
     container_name: codestack_piston
@@ -75,6 +90,11 @@ services:
       DATABASE_HOST: postgres
       REDIS_HOST: redis
       PISTON_URLS: http://piston:2000/api/v2/execute
+      EMAIL_HOST: mailpit
+      # Explicit, because the .env default is the HOST's localhost — inside the
+      # container that would bake an unreachable origin into every mailed link,
+      # and main.ts's fail-closed check only fires when NODE_ENV=production.
+      WEB_APP_URL: ${WEB_APP_URL:-http://localhost:5173}
     ports:
       - '3000:3000'
     depends_on:
@@ -98,6 +118,10 @@ services:
       DATABASE_HOST: postgres
       REDIS_HOST: redis
       PISTON_URLS: http://piston:2000/api/v2/execute
+      # The worker renders nothing, but it re-renders on delivery, so it needs the
+      # same web origin as the API or retried mail would carry a different link.
+      EMAIL_HOST: mailpit
+      WEB_APP_URL: ${WEB_APP_URL:-http://localhost:5173}
     depends_on:
       postgres:
         condition: service_healthy

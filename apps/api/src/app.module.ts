@@ -11,6 +11,7 @@ import { QueueModule } from './queue/queue.module';
 import { HealthModule } from './health/health.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { AppThrottlerGuard } from './common/guards/app-throttler.guard';
+import { MailModule } from './modules/mail/mail.module';
 import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { OnboardingModule } from './modules/onboarding/onboarding.module';
@@ -61,6 +62,9 @@ import { DemoModule } from './modules/demo/demo.module';
     RedisModule,
     QueueModule,
     HealthModule,
+    // Transactional mail (#103). Registered before the tenant backbone because
+    // the invite, access-change and password-reset flows all inject MailService.
+    MailModule,
     // Tenant backbone — foundational, registered before feature modules.
     OrganizationsModule,
     UsersModule,
