@@ -15,8 +15,6 @@ import { Logo } from '@/components/shared/logo';
 import { ThemeToggle } from '@/components/shared/theme-toggle';
 import { NotificationBell } from '@/features/notifications/components/notification-bell';
 import { useAuth } from '@/features/auth/context/auth-context';
-import { ClerkNavControls } from '@/features/auth/clerk/clerk-nav-controls';
-import { isClerkEnabled } from '@/lib/clerk';
 
 function initials(firstName: string, lastName: string): string {
   return `${firstName[0] ?? ''}${lastName[0] ?? ''}`.toUpperCase();
@@ -53,41 +51,35 @@ export function Navbar({ onMenuClick }: { onMenuClick?: () => void }) {
       <div className="flex items-center gap-1">
         <ThemeToggle />
         <NotificationBell />
-        {/* Clerk mode (#59): Clerk's org switcher + user button own identity and
-            sign-out; cookie mode keeps the custom avatar dropdown below. */}
-        {isClerkEnabled ? (
-          <ClerkNavControls />
-        ) : (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="gap-2 px-2">
-                <Avatar className="size-8">
-                  <AvatarFallback>{initials(user.firstName, user.lastName)}</AvatarFallback>
-                </Avatar>
-                <span className="hidden text-sm font-medium sm:inline">
-                  {user.firstName} {user.lastName}
-                </span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuLabel className="font-normal">
-                <p className="text-sm font-medium">{user.email}</p>
-                <p className="text-xs text-muted-foreground capitalize">{user.role}</p>
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => navigate('/home/profile')}>
-                <UserIcon className="size-4" /> Profile
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => navigate('/home/settings')}>
-                <Settings className="size-4" /> Settings
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem variant="destructive" onSelect={handleLogout}>
-                <LogOut className="size-4" /> Log out
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" className="gap-2 px-2">
+              <Avatar className="size-8">
+                <AvatarFallback>{initials(user.firstName, user.lastName)}</AvatarFallback>
+              </Avatar>
+              <span className="hidden text-sm font-medium sm:inline">
+                {user.firstName} {user.lastName}
+              </span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuLabel className="font-normal">
+              <p className="text-sm font-medium">{user.email}</p>
+              <p className="text-xs text-muted-foreground capitalize">{user.role}</p>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => navigate('/home/profile')}>
+              <UserIcon className="size-4" /> Profile
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => navigate('/home/settings')}>
+              <Settings className="size-4" /> Settings
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" onSelect={handleLogout}>
+              <LogOut className="size-4" /> Log out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </header>
   );

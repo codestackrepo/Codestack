@@ -27,7 +27,11 @@ describe('RolesGuard (rank-aware)', () => {
   });
 
   it('admin passes @Roles(ADMIN) and @Roles(ADMIN, PROFESSOR) (behaviour-preserving)', () => {
-    expect(new RolesGuard(reflectorFor([Role.ADMIN])).canActivate(makeContext({ id: 'a', role: Role.ADMIN }))).toBe(true);
+    expect(
+      new RolesGuard(reflectorFor([Role.ADMIN])).canActivate(
+        makeContext({ id: 'a', role: Role.ADMIN }),
+      ),
+    ).toBe(true);
     expect(
       new RolesGuard(reflectorFor([Role.ADMIN, Role.PROFESSOR])).canActivate(
         makeContext({ id: 'a', role: Role.ADMIN }),

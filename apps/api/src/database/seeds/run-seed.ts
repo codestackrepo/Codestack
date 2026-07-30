@@ -22,9 +22,8 @@ import { ProblemTemplate } from '../../modules/assignments/entities/problem-temp
 import { AssignmentStatus } from '../../modules/assignments/enums/assignment-status.enum';
 // Billing plans are no longer seeded (M0 — "Disable & hide AI + Billing").
 
-// Must survive Clerk's sign-in policy, not just our own argon2 check: Clerk
-// rejects a password found in a breach corpus (the old 'Password1!' is in one),
-// so a seeded account with a weak password cannot log in once Clerk is enabled.
+// Deliberately not a breach-corpus password (the old 'Password1!' is in one).
+// Local dev only — never seeded outside a developer's own database.
 const PASSWORD = 'CodeStack#Dev2026!';
 
 /**
@@ -145,7 +144,15 @@ async function upsertUser(
   const existing = await repo.findOne({ where: { email } });
   if (existing) return existing;
   return repo.save(
-    repo.create({ email, role, firstName, lastName, passwordHash, isActive: true, organizationId: LEGACY_ORG_ID }),
+    repo.create({
+      email,
+      role,
+      firstName,
+      lastName,
+      passwordHash,
+      isActive: true,
+      organizationId: LEGACY_ORG_ID,
+    }),
   );
 }
 

@@ -5,10 +5,9 @@ import { Organization } from './entities/organization.entity';
 import { OrganizationStatus, OrganizationType } from './enums/organization.enums';
 
 /**
- * Tenant-root data access + writes. Reads (#48) plus the SuperAdmin org CRUD /
- * suspend-activate / Clerk-org linkage (#62). The Clerk-org provisioning itself
- * is orchestrated by PlatformService (it needs ClerkService); this service owns
- * the local rows so org writes stay in one place.
+ * Tenant-root data access + writes: reads (#48) plus the SuperAdmin org CRUD and
+ * suspend/activate (#62). Every org write lives here so there is one place that
+ * owns the tenant row.
  */
 @Injectable()
 export class OrganizationsService {
@@ -33,15 +32,11 @@ export class OrganizationsService {
     return this.repo.find({ order: { createdAt: 'DESC' } });
   }
 
-  findByClerkOrgId(clerkOrgId: string): Promise<Organization | null> {
-    return this.repo.findOne({ where: { clerkOrgId } });
-  }
-
   /**
-   * SuperAdmin org creation (#62). The Clerk org is created + linked separately by
-   * PlatformService; this persists the authoritative local row. Slug is derived
-   * (or taken) and must be unique — an explicit collision is a 409 (clearer than
-   * silently suffixing, unlike the webhook path which has no user to inform).
+   * SuperAdmin org creation (#62). Slug is derived (or taken) and must be unique —
+   * an explicit collision is a 409 rather than a silent suffix, because there is a
+   * human present to be told which name was rejected. The 23505 catch is the race
+   * twin of the pre-check: two concurrent creates of the same name.
    */
   async create(input: {
     name: string;
@@ -88,81 +83,7 @@ export class OrganizationsService {
     return this.repo.save(org);
   }
 
-  /**
-   * Link a local org to its Clerk Organization once created (#62). Race-safe: if
-   * the organization.created webhook already linked this clerk id to a row (it
-   * beat us), return that winner instead of stranding on a 23505 unique violation.
-   */
-  async attachClerkOrgId(id: string, clerkOrgId: string): Promise<Organization> {
-    const org = await this.getById(id);
-    if (org.clerkOrgId === clerkOrgId) return org; // already linked
-    org.clerkOrgId = clerkOrgId;
-    try {
-      return await this.repo.save(org);
-    } catch (err) {
-      const code = (err as { driverError?: { code?: string } })?.driverError?.code;
-      if (err instanceof QueryFailedError && code === '23505') {
-        const linked = await this.repo.findOne({ where: { clerkOrgId } });
-        if (linked) return linked;
-      }
-      throw err;
-    }
-  }
-
-  /**
-   * Webhook sync (#52) for `organization.created` / `.updated`, and for the org
-   * embedded in a membership event. Upserts by clerkOrgId (idempotent, race-safe
-   * on the partial-unique index). The slug is set only on create (deduped against
-   * uq_organizations_slug) — an update never churns it, so a Clerk slug rename
-   * can never collide an existing local slug.
-   */
-  async upsertFromClerk(input: {
-    clerkOrgId: string;
-    name: string;
-    slug: string;
-  }): Promise<Organization> {
-    const existing = await this.repo.findOne({ where: { clerkOrgId: input.clerkOrgId } });
-    if (existing) {
-      if (input.name) existing.name = input.name;
-      return this.repo.save(existing);
-    }
-
-    // Link a SuperAdmin-created org that already holds this slug but no clerk id
-    // yet (POST /platform/organizations created the local row, then Clerk fired
-    // organization.created) — link it rather than inserting a duplicate (#62).
-    if (input.slug) {
-      const bySlug = await this.repo.findOne({ where: { slug: this.slugify(input.slug) } });
-      if (bySlug && !bySlug.clerkOrgId) {
-        bySlug.clerkOrgId = input.clerkOrgId;
-        if (input.name) bySlug.name = input.name;
-        return this.repo.save(bySlug);
-      }
-    }
-
-    const org = this.repo.create({
-      name: input.name || input.slug || 'Organization',
-      slug: await this.uniqueSlug(input.slug || input.clerkOrgId, input.clerkOrgId),
-      clerkOrgId: input.clerkOrgId,
-    });
-    try {
-      return await this.repo.save(org);
-    } catch (err) {
-      // Race: a concurrent org/membership event already mirrored this Clerk org.
-      const code = (err as { driverError?: { code?: string } })?.driverError?.code;
-      if (err instanceof QueryFailedError && code === '23505') {
-        const raced = await this.repo.findOne({ where: { clerkOrgId: input.clerkOrgId } });
-        if (raced) return raced;
-      }
-      throw err;
-    }
-  }
-
-  /** Webhook sync (#52): suspend the local mirror on `organization.deleted`. */
-  async suspendByClerkId(clerkOrgId: string): Promise<void> {
-    await this.repo.update({ clerkOrgId }, { status: OrganizationStatus.SUSPENDED });
-  }
-
-  /** Normalize a name/slug to the canonical url-safe form (shared by create + webhook). */
+  /** Normalize a name/slug to the canonical url-safe form. */
   slugify(base: string): string {
     return (
       base
@@ -172,18 +93,15 @@ export class OrganizationsService {
         .slice(0, 80) || 'org' // 80 = the organizations.slug column limit
     );
   }
-
-  /** Slugify `base`; if the slug is taken, suffix it with a stable slice of `seed`. */
-  private async uniqueSlug(base: string, seed: string): Promise<string> {
-    const slug = this.slugify(base);
-    const clash = await this.repo.findOne({ where: { slug } });
-    if (!clash) return slug;
-    const suffix =
-      seed
-        .replace(/[^a-z0-9]/gi, '')
-        .slice(-6)
-        .toLowerCase() || 'x';
-    // Trim the base so slug + '-' + suffix still fits the 80-char column.
-    return `${slug.slice(0, 80 - suffix.length - 1)}-${suffix}`;
-  }
 }
+// NOTE: there is exactly ONE way a tenant comes into existence —
+// `POST /platform/organizations`, which is @Platform-gated to a SuperAdmin.
+//
+// The retired third-party identity webhook was a second way, and it was an
+// escalation: a verified signature proves an event came from the provider, never
+// that whoever acted was authorised. So any user who created an organization
+// there had a local tenant minted for them, and the membership handler then
+// stamped them its ADMIN — detaching them from their real tenant. Deleting that
+// path is what closes it. Nothing may reintroduce a second creation path, and in
+// particular nothing may adopt a tenant by SLUG: the legacy tenant holds every
+// non-superadmin, so a name chosen to slugify onto it would bind to the real one.

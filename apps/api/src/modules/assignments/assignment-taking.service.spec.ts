@@ -18,7 +18,12 @@ describe('AssignmentTakingService', () => {
   let assignmentsService: { findOne: jest.Mock };
   let service: AssignmentTakingService;
 
-  const actor: AuthenticatedUser = { id: 'stu-1', role: Role.STUDENT, email: 's@x.io', organizationId: 'org-test' };
+  const actor: AuthenticatedUser = {
+    id: 'stu-1',
+    role: Role.STUDENT,
+    email: 's@x.io',
+    organizationId: 'org-test',
+  };
   const ITEM_ID = 'i-1';
 
   const mcqItem = (): AssignmentItem =>

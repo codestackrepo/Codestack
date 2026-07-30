@@ -15,21 +15,19 @@ export class User extends BaseEntity {
   lastName!: string;
 
   // Never selected by default — must be explicitly requested for auth.
-  // Nullable: Clerk-managed accounts (dual-auth #51) have no local password.
+  // Nullable because an invited account exists before it has a password: the
+  // invitee sets one at acceptance.
   @Column({ type: 'varchar', length: 255, name: 'password_hash', select: false, nullable: true })
   passwordHash!: string | null;
-
-  // Clerk identity (#51). Partial-unique so the many JWT-only NULL rows never
-  // collide (index owned by migration 1785460000000).
-  @Index('idx_user_clerk_user_id', { unique: true, where: '"clerk_user_id" IS NOT NULL' })
-  @Column({ type: 'varchar', length: 255, name: 'clerk_user_id', nullable: true })
-  clerkUserId!: string | null;
 
   @Index('idx_user_role')
   @Column({ type: 'varchar', length: 20, default: Role.STUDENT })
   role!: Role;
 
-  // Tenant FK. NULL only for SUPERADMIN (DB-enforced by chk_users_org_required).
+  // Tenant FK. NULL for a SUPERADMIN (always) and for a self-registered STUDENT
+  // who has not yet been assigned or claimed an invite — those are the only two
+  // legal cases, DB-enforced by chk_users_org_required's CASE form
+  // (1785520000000). An org-less student is confined to the holding state.
   @Index('idx_user_organization')
   @Column({ type: 'uuid', name: 'organization_id', nullable: true })
   organizationId!: string | null;

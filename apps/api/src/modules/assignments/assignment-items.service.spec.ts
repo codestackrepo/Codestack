@@ -13,7 +13,12 @@ describe('AssignmentItemsService', () => {
   let dataSource: { manager: { query: jest.Mock; transaction: jest.Mock } };
   let service: AssignmentItemsService;
 
-  const actor: AuthenticatedUser = { id: 'prof-1', role: Role.PROFESSOR, email: 'p@x.io', organizationId: 'org-test' };
+  const actor: AuthenticatedUser = {
+    id: 'prof-1',
+    role: Role.PROFESSOR,
+    email: 'p@x.io',
+    organizationId: 'org-test',
+  };
 
   beforeEach(() => {
     items = {

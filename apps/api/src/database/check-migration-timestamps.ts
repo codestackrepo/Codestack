@@ -80,7 +80,8 @@ if (require.main === module) {
   const conflicts = findTimestampConflicts(entries);
   if (conflicts.length) {
     console.error(`✖ migration timestamp check failed (${conflicts.length}):`);
-    for (const c of conflicts) console.error(`  - [${c.type}] ${c.detail}  {${c.files.join(', ')}}`);
+    for (const c of conflicts)
+      console.error(`  - [${c.type}] ${c.detail}  {${c.files.join(', ')}}`);
     process.exit(1);
   }
   console.log(`✔ ${entries.length} migrations — all timestamps unique and consistent`);

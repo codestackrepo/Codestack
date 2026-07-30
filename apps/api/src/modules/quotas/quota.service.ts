@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
-import { OrgInviteStatus } from '../clerk-sync/enums/org-invite.enums';
+import { OrgInviteStatus } from '../invites/enums/org-invite.enums';
 import { ALL_QUOTA_RESOURCES, QuotaResource } from './enums/quota-resource.enum';
 import { QuotaExceededException } from './quota-exceeded.exception';
 
@@ -164,7 +164,7 @@ export class QuotaService {
    * Seats = ACTIVE members + PENDING invites (§5.4). Reserving a seat at invite
    * time is what makes acceptance net-zero (invite pending->accepted -1, user +1),
    * so an org can't be oversubscribed by minting invites. Read from the local
-   * `org_invites` mirror (#52) — never a live Clerk call on an enforcement path.
+   * `org_invites` table, which is local and authoritative.
    */
   private async countSeats(orgId: string, manager: EntityManager): Promise<number> {
     const rows = await manager.query<{ count: string }[]>(

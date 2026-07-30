@@ -75,9 +75,7 @@ export class AddOrganizations1785400000000 implements MigrationInterface {
     await queryRunner.query(
       `ALTER TABLE "users" ADD CONSTRAINT "FK_users_organization" FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE RESTRICT`,
     );
-    await queryRunner.query(
-      `CREATE INDEX "idx_user_organization" ON "users" ("organization_id")`,
-    );
+    await queryRunner.query(`CREATE INDEX "idx_user_organization" ON "users" ("organization_id")`);
     await queryRunner.query(
       `ALTER TABLE "users" ADD CONSTRAINT "chk_users_org_required" CHECK ("role" = 'superadmin' OR "organization_id" IS NOT NULL)`,
     );

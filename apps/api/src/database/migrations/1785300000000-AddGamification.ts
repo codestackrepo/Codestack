@@ -68,9 +68,7 @@ export class AddGamification1785300000000 implements MigrationInterface {
     await queryRunner.query(
       `CREATE UNIQUE INDEX "uq_points_ledger_dedupe" ON "points_ledger" ("user_id", "reason", "ref_key")`,
     );
-    await queryRunner.query(
-      `CREATE INDEX "idx_points_ledger_user" ON "points_ledger" ("user_id")`,
-    );
+    await queryRunner.query(`CREATE INDEX "idx_points_ledger_user" ON "points_ledger" ("user_id")`);
 
     await queryRunner.query(`
       CREATE TABLE "daily_activity" (

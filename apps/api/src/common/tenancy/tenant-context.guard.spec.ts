@@ -28,9 +28,9 @@ describe('TenantContextGuard', () => {
 
   it('passes a superadmin (org-less)', () => {
     const guard = new TenantContextGuard(reflectorFor(false), cacheFor());
-    expect(
-      guard.canActivate(makeContext({ role: Role.SUPERADMIN, organizationId: null })),
-    ).toBe(true);
+    expect(guard.canActivate(makeContext({ role: Role.SUPERADMIN, organizationId: null }))).toBe(
+      true,
+    );
   });
 
   it('403 no_organization for a non-superadmin with no org (fail-closed)', () => {
@@ -52,9 +52,9 @@ describe('TenantContextGuard', () => {
 
   it('passes a member of an active org', () => {
     const guard = new TenantContextGuard(reflectorFor(false), cacheFor(OrganizationStatus.ACTIVE));
-    expect(
-      guard.canActivate(makeContext({ role: Role.PROFESSOR, organizationId: 'orgA' })),
-    ).toBe(true);
+    expect(guard.canActivate(makeContext({ role: Role.PROFESSOR, organizationId: 'orgA' }))).toBe(
+      true,
+    );
   });
 
   it('throws when a non-public route has no user', () => {

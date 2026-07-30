@@ -6,12 +6,11 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as argon2 from 'argon2';
-import { Brackets, QueryFailedError, Repository } from 'typeorm';
+import { Brackets, Repository } from 'typeorm';
 import { PaginatedResult, PaginationQueryDto } from '../../common/dto/pagination.dto';
 import { Role } from '../../common/enums/role.enum';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
 import { assertSameOrg, isSuperAdmin, scopeToOrg } from '../../common/tenancy/tenant-scope.util';
-import { LEGACY_ORG_ID } from '../organizations/organizations.constants';
 import { QuotaResource } from '../quotas/enums/quota-resource.enum';
 import { QuotaService } from '../quotas/quota.service';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -38,8 +37,10 @@ export class UsersService {
     if (existing) throw new ConflictException('Email already registered');
 
     const role = !actor || actor.role === Role.ADMIN ? (dto.role ?? Role.STUDENT) : Role.STUDENT;
-    // Stamp the actor's org (admin/professor add). No-actor self-register stays
-    // null -> fails chk_users_org_required until Clerk onboarding (#51).
+    // Stamp the actor's org (admin/professor add). A no-actor self-register stays
+    // NULL, which chk_users_org_required now permits for a STUDENT
+    // (1785520000000) — they land in the confined holding state until staff
+    // assign them or they claim an invite.
     const organizationId = actor?.organizationId ?? null;
     const passwordHash = await this.hashPassword(dto.password);
 
@@ -66,167 +67,6 @@ export class UsersService {
 
   findById(id: string): Promise<User | null> {
     return this.users.findOne({ where: { id } });
-  }
-
-  findByClerkId(clerkUserId: string): Promise<User | null> {
-    return this.users.findOne({ where: { clerkUserId } });
-  }
-
-  /**
-   * JIT provisioning for a Clerk-authenticated user (#51). Order:
-   *  1) already linked by clerk id -> return as-is.
-   *  2) a legacy JWT row owns the email -> LINK it (set clerkUserId) rather than
-   *     inserting a duplicate (email is UNIQUE -> would throw ConflictException).
-   *  3) else create a fresh Clerk-only row (passwordHash null) in the Legacy org
-   *     (a valid local org satisfying chk_users_org_required; the #52 webhook
-   *     reconciles the real role + org from Clerk membership).
-   * Bypasses create() (which mandates a password) and is race-safe on clerkUserId.
-   */
-  async upsertFromClerk(input: {
-    clerkUserId: string;
-    email: string;
-    firstName?: string;
-    lastName?: string;
-  }): Promise<User> {
-    const linked = await this.findByClerkId(input.clerkUserId);
-    if (linked) return linked;
-
-    const email = input.email.toLowerCase();
-    const byEmail = await this.users.findOne({ where: { email } });
-    if (byEmail) {
-      byEmail.clerkUserId = input.clerkUserId;
-      return this.users.save(byEmail);
-    }
-
-    return this.insertClerkUser(
-      this.users.create({
-        email,
-        firstName: input.firstName ?? '',
-        lastName: input.lastName ?? '',
-        role: Role.STUDENT,
-        organizationId: LEGACY_ORG_ID,
-        clerkUserId: input.clerkUserId,
-        passwordHash: null,
-      }),
-      input.clerkUserId,
-    );
-  }
-
-  /**
-   * Race-safe insert of a brand-new Clerk-linked user: on a 23505 (a concurrent
-   * first-sight insert already won the partial-unique clerk-id index) re-read the
-   * winner rather than 500ing. Shared by the JIT (#51) and webhook (#52) paths.
-   */
-  private async insertClerkUser(user: User, clerkUserId: string): Promise<User> {
-    try {
-      return await this.users.save(user);
-    } catch (err) {
-      const code = (err as { driverError?: { code?: string } })?.driverError?.code;
-      if (err instanceof QueryFailedError && code === '23505') {
-        const raced = await this.findByClerkId(clerkUserId);
-        if (raced) return raced;
-      }
-      throw err;
-    }
-  }
-
-  /**
-   * Webhook sync (#52) for `user.created` / `user.updated`. Clerk is authoritative
-   * for identity (email/name), the isActive kill-switch and the platform
-   * SuperAdmin flag — but NOT for org/role, which are membership-authoritative
-   * (see syncClerkMembership). A brand-new non-superadmin lands in the Legacy org
-   * as STUDENT until a membership event moves them, so chk_users_org_required can
-   * never be violated. Existing rows keep their membership-assigned org/role.
-   */
-  async syncFromClerkUser(input: {
-    clerkUserId: string;
-    email: string;
-    firstName: string;
-    lastName: string;
-    isActive: boolean;
-    isSuperAdmin: boolean;
-  }): Promise<User> {
-    const email = input.email.toLowerCase();
-    const existing =
-      (await this.findByClerkId(input.clerkUserId)) ??
-      (await this.users.findOne({ where: { email } }));
-
-    if (!existing) {
-      return this.insertClerkUser(
-        this.users.create({
-          email,
-          firstName: input.firstName,
-          lastName: input.lastName,
-          clerkUserId: input.clerkUserId,
-          role: input.isSuperAdmin ? Role.SUPERADMIN : Role.STUDENT,
-          organizationId: input.isSuperAdmin ? null : LEGACY_ORG_ID,
-          passwordHash: null,
-          isActive: input.isActive,
-        }),
-        input.clerkUserId,
-      );
-    }
-
-    existing.clerkUserId = input.clerkUserId;
-    existing.email = email;
-    existing.firstName = input.firstName;
-    existing.lastName = input.lastName;
-    existing.isActive = input.isActive;
-    // Promote to SuperAdmin from metadata; membership events own every other role,
-    // so a non-superadmin's role/org are deliberately left untouched here.
-    if (input.isSuperAdmin && existing.role !== Role.SUPERADMIN) {
-      existing.role = Role.SUPERADMIN;
-      existing.organizationId = null;
-    }
-    return this.users.save(existing);
-  }
-
-  /**
-   * Webhook sync (#52) for `organizationMembership.created` / `.updated`. This
-   * event embeds the org AND the user, so it provisions them together with the
-   * org+role stamped in one write — making provisioning arrival-order-tolerant:
-   * a membership arriving before `user.created` never deadlocks on
-   * chk_users_org_required. Membership is authoritative for org+role; a
-   * SuperAdmin is never demoted by a membership event.
-   */
-  async syncClerkMembership(input: {
-    clerkUserId: string;
-    email: string;
-    firstName: string;
-    lastName: string;
-    organizationId: string;
-    role: Role;
-  }): Promise<User> {
-    const email = input.email.toLowerCase();
-    const existing =
-      (await this.findByClerkId(input.clerkUserId)) ??
-      (await this.users.findOne({ where: { email } }));
-
-    if (!existing) {
-      return this.insertClerkUser(
-        this.users.create({
-          email,
-          firstName: input.firstName,
-          lastName: input.lastName,
-          clerkUserId: input.clerkUserId,
-          role: input.role,
-          organizationId: input.organizationId,
-          passwordHash: null,
-        }),
-        input.clerkUserId,
-      );
-    }
-
-    if (existing.role === Role.SUPERADMIN) return existing; // never demote a superadmin
-    existing.clerkUserId = input.clerkUserId;
-    existing.organizationId = input.organizationId;
-    existing.role = input.role;
-    return this.users.save(existing);
-  }
-
-  /** Webhook sync (#52): flip the isActive kill-switch on `user.deleted` (soft, not a hard delete). */
-  async deactivateByClerkId(clerkUserId: string): Promise<void> {
-    await this.users.update({ clerkUserId }, { isActive: false });
   }
 
   async getById(id: string): Promise<User> {
@@ -344,7 +184,9 @@ export class UsersService {
   }
 
   verifyPassword(user: User, plain: string): Promise<boolean> {
-    if (!user.passwordHash) return Promise.resolve(false); // Clerk-managed: no local login
+    // No hash = an invited account that has not been accepted yet. It cannot log
+    // in until the invitee sets a password.
+    if (!user.passwordHash) return Promise.resolve(false);
     return argon2.verify(user.passwordHash, plain);
   }
 

@@ -4,7 +4,8 @@ import { OrganizationStatus, OrganizationType } from '../enums/organization.enum
 
 /**
  * The tenant root (a university/organization). Every `organization_id` FK across
- * the data model points here. SuperAdmin is the only role with no org.
+ * the data model points here. A SuperAdmin never has an org; a self-registered
+ * student has none until staff assign them or they claim an invite.
  *
  * Numeric quotas and usage counters deliberately do NOT live here — per-org
  * quotas are a separate sparse `org_quotas` table owned by the quotas subsystem
@@ -24,12 +25,6 @@ export class Organization extends BaseEntity {
 
   @Column({ type: 'varchar', length: 20, default: OrganizationStatus.ACTIVE })
   status!: OrganizationStatus;
-
-  // 1:1 mirror to a Clerk Organization. Nullable so a local org can exist before
-  // its Clerk org is provisioned (Clerk integration, #51). Unique-when-present
-  // (partial index owned by the migration).
-  @Column({ type: 'varchar', length: 120, name: 'clerk_org_id', nullable: true })
-  clerkOrgId!: string | null;
 
   // Per-org branding / default timezone / feature flags.
   @Column({ type: 'jsonb', default: {} })

@@ -53,8 +53,9 @@ export class OnboardingService {
     actor: AuthenticatedUser,
   ): Promise<PaginatedResult<ProfessorInvite>> {
     // Org-scoped via the inviter (SuperAdmin sees all). Invites whose inviter was
-    // deleted (invited_by_id NULL) are invisible to org-admins — acceptable until
-    // #51 reworks invites via Clerk with a denormalized org column.
+    // deleted (invited_by_id NULL) are invisible to org-admins — acceptable
+    // because this whole surface is retired by the org_invites engine (#104),
+    // which carries its own organization_id.
     const qb = this.invites
       .createQueryBuilder('i')
       .leftJoin('i.invitedBy', 'iu')

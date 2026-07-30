@@ -34,7 +34,7 @@ export class SessionContextDto {
   })
   quotas!: Record<string, unknown> | null;
 
-  // Retained from the legacy contract so existing clients keep working through
-  // the Clerk cutover; the frontend migration (#59) consumes the richer fields.
+  // Retained from the legacy contract so existing clients keep working; the
+  // richer fields above are what the frontend actually consumes (#59).
   @ApiProperty() isValid!: boolean;
 }

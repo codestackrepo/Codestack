@@ -21,7 +21,12 @@ describe('BatchesService', () => {
   let service: BatchesService;
 
   const CLASSROOM_ID = 'c-1';
-  const actor: AuthenticatedUser = { id: 'prof-1', role: Role.PROFESSOR, email: 'p@x.io', organizationId: 'org-test' };
+  const actor: AuthenticatedUser = {
+    id: 'prof-1',
+    role: Role.PROFESSOR,
+    email: 'p@x.io',
+    organizationId: 'org-test',
+  };
 
   const classroom = (studentIds: string[]): Classroom =>
     ({ id: CLASSROOM_ID, students: studentIds.map((id) => ({ id })) }) as Classroom;
