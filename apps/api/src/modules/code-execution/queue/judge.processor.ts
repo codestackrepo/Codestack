@@ -1,5 +1,5 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Logger, OnModuleInit } from '@nestjs/common';
+import { Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Job } from 'bullmq';
 import { JudgeConfig } from '../../../config/configuration';
@@ -14,9 +14,9 @@ interface JudgeJobData {
 // rarely needs runtime tuning, so it mirrors the .env.sample defaults here
 // (BullMQ bakes `limiter` into Worker construction, which — unlike
 // `concurrency` — cannot be adjusted after the fact). `concurrency` below IS
-// live-configurable via judgeConfig.workerConcurrency (see onModuleInit).
+// live-configurable via judgeConfig.workerConcurrency (see onApplicationBootstrap).
 @Processor(QUEUE_JUDGE, { concurrency: 8, limiter: { max: 100, duration: 1000 } })
-export class JudgeProcessor extends WorkerHost implements OnModuleInit {
+export class JudgeProcessor extends WorkerHost implements OnApplicationBootstrap {
   private readonly logger = new Logger(JudgeProcessor.name);
 
   constructor(
@@ -26,7 +26,14 @@ export class JudgeProcessor extends WorkerHost implements OnModuleInit {
     super();
   }
 
-  onModuleInit(): void {
+  /**
+   * `onApplicationBootstrap`, not `onModuleInit` — @nestjs/bullmq attaches the
+   * Worker from its own `onModuleInit`, so reading `this.worker` there is a race
+   * decided by module registration order. This module happens to be registered
+   * late enough to have got away with it; MailProcessor (#103) was not, and threw
+   * "Worker has not yet been initialized" at boot. Same fix, applied to both.
+   */
+  onApplicationBootstrap(): void {
     const judgeConfig = this.config.getOrThrow<JudgeConfig>('judge');
     this.worker.concurrency = judgeConfig.workerConcurrency;
   }

@@ -12,9 +12,31 @@ import { User } from '../users/entities/user.entity';
 import { OrgCountsDto } from './dto/platform-overview.dto';
 
 /** Rows that belong to no tenant: org-less SuperAdmins and the global catalog. */
+/** Org-less rows, split by what they actually are. */
+export interface PlatformUnassignedCounts {
+  /** Self-registered students awaiting assignment or a claim. */
+  students: number;
+  activeStudents: number;
+  inactiveStudents: number;
+  /**
+   * Org-less ADMIN/PROFESSOR rows — impossible via any current write path
+   * (chk_users_org_required forbids them), so a non-zero here is a data-integrity
+   * alarm rather than a normal state. Surfaced instead of silently dropped.
+   */
+  orphanedStaff: number;
+  activeOrphanedStaff: number;
+  inactiveOrphanedStaff: number;
+}
+
 export interface PlatformOnlyCounts {
   superAdmins: number;
   globalProblems: number;
+  /**
+   * Added in #105. `census()` previously dropped every org-less non-superadmin on
+   * the floor with a bare `continue`, so the very console meant to surface
+   * unassigned students reported that none existed.
+   */
+  unassigned: PlatformUnassignedCounts;
 }
 
 export interface PlatformCensus {
@@ -91,13 +113,35 @@ export class PlatformMetricsService {
     const bucket = (id: string): OrgCountsDto => (byOrg[id] ??= OrgCountsDto.zero());
 
     let superAdmins = 0;
+    const unassigned: PlatformUnassignedCounts = {
+      students: 0,
+      activeStudents: 0,
+      inactiveStudents: 0,
+      orphanedStaff: 0,
+      activeOrphanedStaff: 0,
+      inactiveOrphanedStaff: 0,
+    };
+
+    // Still SIX queries: userRows already groups by (orgId, role, isActive), so
+    // the new buckets are a fold over rows we were fetching and discarding.
     for (const row of userRows) {
       const count = Number(row.count);
       if (row.orgId === null) {
-        // Org-less rows are SuperAdmins (§5.3). A mis-provisioned org-less user of
-        // any other role is not a tenant member either, so it stays out of byOrg
-        // rather than being attributed to some org.
-        if (row.role === Role.SUPERADMIN) superAdmins += count;
+        // Org-less rows are a SuperAdmin, an unassigned student, or (illegally) an
+        // orphaned staff row. None belongs in byOrg — attributing them to a tenant
+        // would inflate that tenant's seat picture — but they must be COUNTED, or
+        // the unassigned pool looks empty from the console.
+        if (row.role === Role.SUPERADMIN) {
+          superAdmins += count;
+        } else if (row.role === Role.STUDENT) {
+          unassigned.students += count;
+          if (row.isActive) unassigned.activeStudents += count;
+          else unassigned.inactiveStudents += count;
+        } else {
+          unassigned.orphanedStaff += count;
+          if (row.isActive) unassigned.activeOrphanedStaff += count;
+          else unassigned.inactiveOrphanedStaff += count;
+        }
         continue;
       }
       const counts = bucket(row.orgId);
@@ -116,7 +160,7 @@ export class PlatformMetricsService {
     // Problems are the one table with legitimately org-less rows (the catalog).
     const globalProblems = this.fold(problemRows, bucket, 'problems');
 
-    return { byOrg, platform: { superAdmins, globalProblems } };
+    return { byOrg, platform: { superAdmins, globalProblems, unassigned } };
   }
 
   /**

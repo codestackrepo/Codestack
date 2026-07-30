@@ -4,19 +4,49 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as argon2 from 'argon2';
-import { Brackets, EntityManager, Repository } from 'typeorm';
-import { PaginatedResult, PaginationQueryDto } from '../../common/dto/pagination.dto';
+import {
+  Brackets,
+  EntityManager,
+  Repository,
+  SelectQueryBuilder,
+  WhereExpressionBuilder,
+} from 'typeorm';
+import { PaginatedResult } from '../../common/dto/pagination.dto';
+import {
+  USER_ACCESS_GRANTED,
+  USER_ACCESS_REVOKED,
+  USER_ORGANIZATION_ASSIGNED,
+  UserAccessChangedEvent,
+  UserOrganizationAssignedEvent,
+} from '../../common/events/user-events';
 import { Role } from '../../common/enums/role.enum';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
 import { assertSameOrg, isSuperAdmin, scopeToOrg } from '../../common/tenancy/tenant-scope.util';
 import { QuotaResource } from '../quotas/enums/quota-resource.enum';
 import { QuotaService } from '../quotas/quota.service';
 import { CreateUserDto } from './dto/create-user.dto';
+import { ListUsersQueryDto } from './dto/list-users-query.dto';
 import { SearchUsersDto } from './dto/search-users.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { User } from './entities/user.entity';
+import { assertAssignableRole, assertCanToggleAccess } from './user-role.policy';
+
+/** The name/email OR-group, shared by findAll, findUnassigned and search. */
+function nameEmailBrackets(w: WhereExpressionBuilder, q: string): WhereExpressionBuilder {
+  return w
+    .where('u.email ILIKE :q', { q: `%${q}%` })
+    .orWhere('u.firstName ILIKE :q', { q: `%${q}%` })
+    .orWhere('u.lastName ILIKE :q', { q: `%${q}%` });
+}
+
+/** Appends the name/email filter when `q` is a non-empty search term. */
+function applyNameEmailSearch(qb: SelectQueryBuilder<User>, q?: string): void {
+  if (!q?.trim()) return;
+  qb.andWhere(new Brackets((w) => nameEmailBrackets(w, q.trim())));
+}
 
 @Injectable()
 export class UsersService {
@@ -24,6 +54,7 @@ export class UsersService {
     @InjectRepository(User)
     private readonly users: Repository<User>,
     private readonly quotas: QuotaService,
+    private readonly events: EventEmitter2,
   ) {}
 
   /**
@@ -36,7 +67,19 @@ export class UsersService {
     const existing = await this.users.findOne({ where: { email: dto.email.toLowerCase() } });
     if (existing) throw new ConflictException('Email already registered');
 
-    const role = !actor || actor.role === Role.ADMIN ? (dto.role ?? Role.STUDENT) : Role.STUDENT;
+    // DEFECT (fixed): this used to be
+    //   `!actor || actor.role === ADMIN ? (dto.role ?? STUDENT) : STUDENT`
+    // so any org ADMIN could POST {"role":"superadmin"} and mint a platform
+    // SuperAdmin, inheriting every isSuperAdmin() bypass in tenant-scope.util.
+    // The rank-aware policy refuses SUPERADMIN outright and refuses any role at
+    // or above the actor's own.
+    const role = dto.role ?? Role.STUDENT;
+    if (actor) assertAssignableRole(actor, role);
+    else if (role !== Role.STUDENT) {
+      // No actor = public self-registration, which is always a student. Callers
+      // force this already; the guard is here so a future caller cannot forget.
+      throw new ForbiddenException({ reason: 'role_not_assignable' });
+    }
     // Stamp the actor's org (admin/professor add). A no-actor self-register stays
     // NULL, which chk_users_org_required now permits for a STUDENT
     // (1785520000000) — they land in the confined holding state until staff
@@ -133,22 +176,53 @@ export class UsersService {
   }
 
   async findAll(
-    query: PaginationQueryDto,
+    query: ListUsersQueryDto,
     actor: AuthenticatedUser,
+    opts: { organizationId?: string } = {},
   ): Promise<PaginatedResult<User>> {
     const qb = this.users.createQueryBuilder('u').orderBy('u.createdAt', 'DESC');
 
-    // Role scoping mirrors the original: admin sees all; professor sees
-    // non-admins; student sees only students.
-    if (actor.role === Role.PROFESSOR) {
-      qb.andWhere('u.role != :admin', { admin: Role.ADMIN });
-    } else if (actor.role === Role.STUDENT) {
+    // A PROFESSOR now has the same READ surface as an ADMIN (the requirement):
+    // they can see the admins in their own org. The escalation boundary stays a
+    // WRITE boundary — assertCanModify is unchanged, so a professor still cannot
+    // modify anyone but a student.
+    if (actor.role === Role.STUDENT) {
       qb.andWhere('u.role = :student', { student: Role.STUDENT });
     }
 
-    // Org bound (omit includeGlobal: org-null SUPERADMIN rows must not surface).
-    scopeToOrg(qb, 'u', actor);
+    if (query.role) qb.andWhere('u.role = :roleFilter', { roleFilter: query.role });
+    if (query.isActive !== undefined) {
+      qb.andWhere('u.isActive = :isActive', { isActive: query.isActive });
+    }
+    applyNameEmailSearch(qb, query.q);
 
+    // Org bound (omit includeGlobal: org-null SUPERADMIN rows must not surface).
+    // `overrideOrgId` is read ONLY inside scopeToOrg's isSuperAdmin branch, so an
+    // org admin cannot craft their way into another tenant through it.
+    scopeToOrg(qb, 'u', actor, opts.organizationId ? { overrideOrgId: opts.organizationId } : {});
+
+    const [data, total] = await qb.skip(query.skip).take(query.limit).getManyAndCount();
+    return PaginatedResult.of(data, total, query);
+  }
+
+  /**
+   * The unassigned pool: self-registered students with no organization.
+   *
+   * Deliberately does NOT call scopeToOrg. There is no tenant to scope to, and
+   * `includeGlobal: true` emits `col IS NULL`, which here would surface every
+   * org-less SUPERADMIN row alongside the students. The filter is hardcoded
+   * instead — `organization_id IS NULL AND role = 'student'` — so an orphaned
+   * STAFF row can never appear in the pool and be claimed at its elevated role.
+   *
+   * Matches the predicate of `idx_user_unassigned` (1785520000000) exactly.
+   */
+  async findUnassigned(query: ListUsersQueryDto): Promise<PaginatedResult<User>> {
+    const qb = this.users
+      .createQueryBuilder('u')
+      .where('u.organizationId IS NULL')
+      .andWhere('u.role = :student', { student: Role.STUDENT })
+      .orderBy('u.createdAt', 'DESC');
+    applyNameEmailSearch(qb, query.q);
     const [data, total] = await qb.skip(query.skip).take(query.limit).getManyAndCount();
     return PaginatedResult.of(data, total, query);
   }
@@ -157,19 +231,18 @@ export class UsersService {
     // Mirror findAll's visibility rule: students may only discover students,
     // regardless of the requested `type` (search is used for member pickers,
     // not a general people-lookup — students should not enumerate staff).
+    // Widened in lockstep with findAll's read parity: staff searching 'both' now
+    // reach admins too, so listing and searching agree about who exists. A student
+    // is still confined to students.
     const requestedType = actor.role === Role.STUDENT ? 'student' : dto.type;
     const roles =
-      requestedType === 'both' ? [Role.STUDENT, Role.PROFESSOR] : [requestedType as Role];
+      requestedType === 'both'
+        ? [Role.STUDENT, Role.PROFESSOR, Role.ADMIN]
+        : [requestedType as Role];
     const qb = this.users
       .createQueryBuilder('u')
       .where('u.role IN (:...roles)', { roles })
-      .andWhere(
-        new Brackets((w) => {
-          w.where('u.email ILIKE :q', { q: `%${dto.q}%` })
-            .orWhere('u.firstName ILIKE :q', { q: `%${dto.q}%` })
-            .orWhere('u.lastName ILIKE :q', { q: `%${dto.q}%` });
-        }),
-      );
+      .andWhere(new Brackets((w) => nameEmailBrackets(w, dto.q)));
     scopeToOrg(qb, 'u', actor);
     return qb.limit(dto.limit).getMany();
   }
@@ -184,9 +257,14 @@ export class UsersService {
   private canView(actor: AuthenticatedUser, target: User): boolean {
     if (isSuperAdmin(actor)) return true;
     if (actor.id === target.id) return true;
+    // An org-less non-superadmin has no tenant, so `null !== null` would read as
+    // "same org" and expose every other org-less row. Self-only for them.
+    if (actor.organizationId === null) return false;
     if (actor.organizationId !== target.organizationId) return false; // org bound
     if (actor.role === Role.ADMIN) return true;
-    if (actor.role === Role.PROFESSOR) return target.role !== Role.ADMIN;
+    // Read parity with ADMIN — same-org is already asserted above. The write
+    // boundary is assertCanModify, which is unchanged.
+    if (actor.role === Role.PROFESSOR) return true;
     return target.role === Role.STUDENT;
   }
 
@@ -201,12 +279,37 @@ export class UsersService {
     }
     if (dto.firstName !== undefined) user.firstName = dto.firstName;
     if (dto.lastName !== undefined) user.lastName = dto.lastName;
-    // Only admins may change roles or the active flag (same gate as role).
-    if (dto.role !== undefined && actor.role === Role.ADMIN) user.role = dto.role;
-    if (dto.isActive !== undefined && actor.role === Role.ADMIN) user.isActive = dto.isActive;
-    if (dto.password) user.passwordHash = await this.hashPassword(dto.password);
 
-    return this.users.save(user);
+    // DEFECT (fixed): `actor.role === Role.ADMIN` gated this, which a SUPERADMIN
+    // FAILS — so PATCH /users/:id {"role":...} silently did nothing for the one
+    // actor most likely to be doing it. Rank policy replaces the equality check.
+    if (dto.role !== undefined && dto.role !== user.role) {
+      assertAssignableRole(actor, dto.role);
+      user.role = dto.role;
+    }
+
+    // DEFECT (fixed): same broken `=== ADMIN` gate, so a SuperAdmin's
+    // PATCH {"isActive":false} returned 200 with the row UNCHANGED — a revoke
+    // that silently did nothing. Routed through setAccess so it charges a seat on
+    // re-activation and emits the access events. Handled after the save below.
+    const accessChange = dto.isActive !== undefined && dto.isActive !== user.isActive;
+
+    // DEFECT (fixed): any ADMIN could set ANOTHER user's password — a plain
+    // account-takeover primitive. Self-only now; everyone else uses the reset
+    // flow, which proves mailbox control.
+    if (dto.password) {
+      if (actor.id !== user.id) {
+        throw new ForbiddenException({
+          reason: 'password_self_only',
+          message: 'You can only change your own password',
+        });
+      }
+      user.passwordHash = await this.hashPassword(dto.password);
+    }
+
+    const saved = await this.users.save(user);
+    if (accessChange) return this.setAccess(saved.id, dto.isActive as boolean, actor);
+    return saved;
   }
 
   async remove(id: string, actor: AuthenticatedUser): Promise<void> {
@@ -240,6 +343,120 @@ export class UsersService {
 
   private hashPassword(plain: string): Promise<string> {
     return argon2.hash(plain);
+  }
+
+  /**
+   * The revoke/grant primitive. Idempotent: a no-op transition emits no event and
+   * sends no mail, so re-revoking an already-revoked account does not mail them a
+   * second time about something that happened last week.
+   *
+   * `false -> true` MUST charge a seat. `countSeats` counts `is_active = true`, so
+   * without this an org at its cap could deactivate a member, invite a
+   * replacement, and re-activate the first one — ending up permanently over cap
+   * with every individual step having passed its check.
+   */
+  async setAccess(targetId: string, isActive: boolean, actor: AuthenticatedUser): Promise<User> {
+    const target = await this.getById(targetId);
+    assertCanToggleAccess(actor, target, () => assertSameOrg(actor, target.organizationId));
+
+    if (target.isActive === isActive) return target; // idempotent — no event, no mail
+
+    const saved = await this.users.manager.transaction(async (manager) => {
+      if (isActive) {
+        // Re-activation is a genuine +1 against the cap.
+        await this.quotas.assertWithinQuota(
+          target.organizationId,
+          QuotaResource.MAX_USERS,
+          1,
+          manager,
+        );
+      }
+      const repo = manager.getRepository(User);
+      target.isActive = isActive;
+      return repo.save(target);
+    });
+
+    // After commit: a rollback cannot unsend a mail.
+    const payload: UserAccessChangedEvent = {
+      userId: saved.id,
+      email: saved.email,
+      firstName: saved.firstName,
+      lastName: saved.lastName,
+      actorId: actor.id,
+    };
+    this.events.emit(isActive ? USER_ACCESS_GRANTED : USER_ACCESS_REVOKED, payload);
+    return saved;
+  }
+
+  /**
+   * Moves an unassigned student into an organization.
+   *
+   * `expectedOrgId` is the ORG path's tenant (from the actor, never the body);
+   * the platform path passes undefined and names the org explicitly.
+   *
+   * Everything not in the unassigned pool answers a UNIFORM 404 for a
+   * non-superadmin. Distinct codes here — "already in an org", "is a professor",
+   * "no such user" — are a cross-tenant existence and membership oracle: an org
+   * admin could enumerate which arbitrary uuids are real users and where they
+   * belong.
+   */
+  async assignOrganization(
+    targetId: string,
+    organizationId: string,
+    actor: AuthenticatedUser,
+    role: Role = Role.STUDENT,
+    organizationName = '',
+  ): Promise<User> {
+    assertAssignableRole(actor, role);
+
+    const saved = await this.users.manager.transaction(async (manager) => {
+      const repo = manager.getRepository(User);
+      // FOR UPDATE: two concurrent assignments of the same person must not both
+      // pass the "still unassigned" check and both charge a seat.
+      const rows = (await manager.query(
+        'SELECT id, role, organization_id FROM users WHERE id = $1 FOR UPDATE',
+        [targetId],
+      )) as { id: string; role: Role; organization_id: string | null }[];
+      const row = rows[0];
+
+      if (!row || row.organization_id !== null || row.role !== Role.STUDENT) {
+        throw new NotFoundException({ reason: 'user_not_assignable' });
+      }
+
+      await this.quotas.assertWithinQuota(organizationId, QuotaResource.MAX_USERS, 1, manager);
+
+      await repo.update({ id: targetId }, { organizationId, role });
+
+      // NOT optional. An org-less student's rows are stamped LEGACY_ORG_ID by
+      // `?? LEGACY_ORG_ID` in gamification and code-execution, so without this
+      // re-stamp their whole history stays attributed to the Legacy tenant and the
+      // org they just joined under-reports its own activity forever.
+      await manager.query('UPDATE user_gamification SET organization_id = $1 WHERE user_id = $2', [
+        organizationId,
+        targetId,
+      ]);
+      await manager.query('UPDATE submissions SET organization_id = $1 WHERE user_id = $2', [
+        organizationId,
+        targetId,
+      ]);
+
+      return repo.findOneOrFail({ where: { id: targetId } });
+    });
+
+    // After commit — a rollback cannot unsend a mail. The org name is fetched by
+    // the listener's caller rather than here so UsersService keeps no dependency
+    // on OrganizationsService.
+    const payload: UserOrganizationAssignedEvent = {
+      userId: saved.id,
+      email: saved.email,
+      firstName: saved.firstName,
+      lastName: saved.lastName,
+      organizationId,
+      organizationName,
+      actorId: actor.id,
+    };
+    this.events.emit(USER_ORGANIZATION_ASSIGNED, payload);
+    return saved;
   }
 
   /** Non-admins may only modify students or themselves. */

@@ -225,6 +225,17 @@ export class ModuleAccessService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Every feature off. For the org-less holding state (#105) — an unassigned user
+   * resolves through no org, and reporting entitlements they cannot exercise would
+   * make the UI advertise controls that 403.
+   */
+  allFalseFeatureMap(): Record<FeatureKey, boolean> {
+    const map = {} as Record<FeatureKey, boolean>;
+    for (const k of ALL_FEATURES) map[k] = false;
+    return map;
+  }
+
+  /**
    * Matrix for a console. `orgId` null renders the platform layer (the SuperAdmin
    * view); an org id renders that org's effective values. `locked` marks a cell
    * this layer cannot move — admin immunity or a role ceiling owns it.

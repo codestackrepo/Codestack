@@ -74,8 +74,26 @@ export class PlatformOrgTotalsDto {
   @ApiProperty() suspended!: number;
 }
 
+/** Org-less rows the console must surface rather than silently drop (#105). */
+export class PlatformUnassignedDto {
+  @ApiProperty({ description: 'Self-registered students awaiting assignment or a claim.' })
+  students!: number;
+  @ApiProperty() activeStudents!: number;
+  @ApiProperty() inactiveStudents!: number;
+  @ApiProperty({
+    description:
+      'Org-less admin/professor rows. chk_users_org_required forbids these, so a ' +
+      'non-zero value is a data-integrity alarm, not a normal state.',
+  })
+  orphanedStaff!: number;
+  @ApiProperty() activeOrphanedStaff!: number;
+  @ApiProperty() inactiveOrphanedStaff!: number;
+}
+
 export class PlatformUserTotalsDto {
-  @ApiProperty({ description: 'Every user row, org members plus org-less SuperAdmins.' })
+  @ApiProperty({
+    description: 'Every user row: org members, org-less SuperAdmins, and the unassigned.',
+  })
   total!: number;
   @ApiProperty({ description: 'Platform operators — org-less by definition (§5.3).' })
   superAdmins!: number;
@@ -85,6 +103,7 @@ export class PlatformUserTotalsDto {
   @ApiProperty() active!: number;
   @ApiProperty() inactive!: number;
   @ApiProperty() pendingInvites!: number;
+  @ApiProperty({ type: PlatformUnassignedDto }) unassigned!: PlatformUnassignedDto;
 }
 
 export class PlatformProblemTotalsDto {

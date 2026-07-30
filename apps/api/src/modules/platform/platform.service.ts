@@ -35,6 +35,11 @@ export class PlatformService {
     return this.orgs.list();
   }
 
+  /** 404s an unknown org. Used by routes that scope something else to it. */
+  getOrganization(id: string): Promise<Organization> {
+    return this.orgs.getById(id);
+  }
+
   /**
    * `GET /platform/overview` (#63) — one cross-org KPI block plus a tile per org.
    * The org list and the whole census are fetched concurrently, then joined in
@@ -51,6 +56,8 @@ export class PlatformService {
     const sum = (pick: (c: OrgCountsDto) => number): number =>
       tiles.reduce((acc, tile) => acc + pick(tile.counts), 0);
     const orgProblems = sum((c) => c.problems);
+    const unassignedTotal =
+      census.platform.unassigned.students + census.platform.unassigned.orphanedStaff;
 
     return {
       generatedAt: new Date().toISOString(),
@@ -60,16 +67,29 @@ export class PlatformService {
         suspended: orgs.filter((o) => o.status === OrganizationStatus.SUSPENDED).length,
       },
       users: {
-        total: sum((c) => c.users) + census.platform.superAdmins,
+        // Unassigned rows are folded in HERE and in `active`/`inactive` together,
+        // or the invariant this endpoint's own comment promises —
+        // `active + inactive === total` — breaks the moment one student
+        // self-registers. The spec pins it.
+        total: sum((c) => c.users) + census.platform.superAdmins + unassignedTotal,
         superAdmins: census.platform.superAdmins,
         admins: sum((c) => c.admins),
         professors: sum((c) => c.professors),
-        students: sum((c) => c.students),
+        // Org-less students are students; they are just nobody's tenant members yet.
+        students: sum((c) => c.students) + census.platform.unassigned.students,
         // SuperAdmins are always active to reach this endpoint at all, but they are
         // counted from their own bucket so `active + inactive === total` holds.
-        active: sum((c) => c.activeUsers) + census.platform.superAdmins,
-        inactive: sum((c) => c.inactiveUsers),
+        active:
+          sum((c) => c.activeUsers) +
+          census.platform.superAdmins +
+          census.platform.unassigned.activeStudents +
+          census.platform.unassigned.activeOrphanedStaff,
+        inactive:
+          sum((c) => c.inactiveUsers) +
+          census.platform.unassigned.inactiveStudents +
+          census.platform.unassigned.inactiveOrphanedStaff,
         pendingInvites: sum((c) => c.pendingInvites),
+        unassigned: census.platform.unassigned,
       },
       content: {
         classrooms: sum((c) => c.classrooms),

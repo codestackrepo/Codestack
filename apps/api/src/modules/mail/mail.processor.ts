@@ -1,5 +1,5 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Logger, OnModuleInit } from '@nestjs/common';
+import { Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Job } from 'bullmq';
 import { EmailConfig } from '../../config/configuration';
@@ -24,7 +24,7 @@ import { AnyMailMessage } from './mail.types';
  * and is set from config in onModuleInit, matching JudgeProcessor.
  */
 @Processor(QUEUE_MAIL, { concurrency: 4, limiter: { max: 20, duration: 1000 } })
-export class MailProcessor extends WorkerHost implements OnModuleInit {
+export class MailProcessor extends WorkerHost implements OnApplicationBootstrap {
   private readonly logger = new Logger(MailProcessor.name);
 
   constructor(
@@ -34,7 +34,16 @@ export class MailProcessor extends WorkerHost implements OnModuleInit {
     super();
   }
 
-  onModuleInit(): void {
+  /**
+   * `onApplicationBootstrap`, NOT `onModuleInit`.
+   *
+   * @nestjs/bullmq attaches the Worker from its OWN `onModuleInit`, so reading
+   * `this.worker` from another `onModuleInit` is a race decided by module
+   * registration order — it throws "Worker has not yet been initialized" whenever
+   * this module happens to initialise first. `onApplicationBootstrap` runs strictly
+   * after every `onModuleInit`, so the worker always exists by then.
+   */
+  onApplicationBootstrap(): void {
     const cfg = this.config.getOrThrow<EmailConfig>('email');
     this.worker.concurrency = cfg.workerConcurrency;
   }

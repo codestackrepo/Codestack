@@ -86,18 +86,37 @@ describe('PlatformMetricsService.census', () => {
   it('attributes org-less rows to the platform, never to an org', async () => {
     const { service } = build();
     const { byOrg, platform } = await service.census();
-    expect(platform).toEqual({ superAdmins: 2, globalProblems: 30 });
+    expect(platform).toEqual({
+      superAdmins: 2,
+      globalProblems: 30,
+      unassigned: {
+        students: 0,
+        activeStudents: 0,
+        inactiveStudents: 0,
+        orphanedStaff: 0,
+        activeOrphanedStaff: 0,
+        inactiveOrphanedStaff: 0,
+      },
+    });
     // The global catalog must not inflate any tenant's problem count.
     expect(byOrg['org-A'].problems).toBe(7);
     expect(Object.keys(byOrg).sort()).toEqual(['org-A', 'org-B']);
   });
 
-  it('ignores an org-less non-superadmin instead of attributing it somewhere', async () => {
+  // Was "ignores an org-less non-superadmin". It no longer ignores them: the
+  // console meant to surface unassigned students used to report none existed,
+  // because census() dropped every org-less non-superadmin with a bare `continue`.
+  it('COUNTS an org-less non-superadmin into the unassigned bucket, never into an org', async () => {
     const { service } = build({
       users: repo([{ orgId: null, role: Role.ADMIN, isActive: true, count: '1' }]),
     });
     const { byOrg, platform } = await service.census();
     expect(platform.superAdmins).toBe(0);
+    // An org-less ADMIN is illegal under chk_users_org_required, so it lands in
+    // orphanedStaff — surfaced as an integrity alarm rather than silently dropped.
+    expect(platform.unassigned.orphanedStaff).toBe(1);
+    expect(platform.unassigned.activeOrphanedStaff).toBe(1);
+    expect(platform.unassigned.students).toBe(0);
     expect(byOrg['org-A']?.users ?? 0).toBe(0);
   });
 
