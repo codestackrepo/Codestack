@@ -161,10 +161,16 @@ export class QuotaService {
   }
 
   /**
-   * Seats = ACTIVE members + PENDING invites (§5.4). Reserving a seat at invite
-   * time is what makes acceptance net-zero (invite pending->accepted -1, user +1),
-   * so an org can't be oversubscribed by minting invites. Read from the local
-   * `org_invites` table, which is local and authoritative.
+   * Seats = ACTIVE members + PENDING, NON-EXPIRED invites (§5.4). Reserving a
+   * seat at invite time is what makes acceptance net-zero (invite pending->accepted
+   * -1, user +1), so an org can't be oversubscribed by minting invites.
+   *
+   * The `expires_at > now()` term matters because `expired` is a STORED status
+   * flipped lazily (1785530000000) — a timed-out invite can sit as `pending` until
+   * someone touches that address again, and without this predicate it would hold a
+   * seat forever. `PlatformMetricsService.census()` applies the IDENTICAL predicate;
+   * the two must move together or the console and enforcement disagree about how
+   * full an org is.
    */
   private async countSeats(orgId: string, manager: EntityManager): Promise<number> {
     const rows = await manager.query<{ count: string }[]>(
@@ -173,7 +179,7 @@ export class QuotaService {
            WHERE organization_id = $1 AND is_active = true)
          +
          (SELECT COUNT(*) FROM org_invites
-           WHERE organization_id = $1 AND status = $2)
+           WHERE organization_id = $1 AND status = $2 AND expires_at > now())
        ) AS count`,
       [orgId, OrgInviteStatus.PENDING],
     );

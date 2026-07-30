@@ -61,6 +61,17 @@ export function scopeToOrg<T extends ObjectLiteral>(
  */
 export function assertSameOrg(actor: AuthenticatedUser, targetOrgId: string | null): void {
   if (isSuperAdmin(actor)) return;
+  // An org-less non-superadmin has no tenant to be "the same" as. Without this,
+  // `null !== null` is false and such an actor silently PASSES against any
+  // org-less target — an IDOR the moment org-less rows became legal
+  // (1785520000000). Every handler an org-less user can reach is owner- or
+  // token-scoped and must never call this, so reaching here is itself the bug.
+  if (actor.organizationId === null) {
+    throw new ForbiddenException({
+      reason: 'no_organization',
+      message: 'You are not a member of an organization',
+    });
+  }
   if (targetOrgId !== actor.organizationId) {
     throw new ForbiddenException({
       reason: 'cross_org',

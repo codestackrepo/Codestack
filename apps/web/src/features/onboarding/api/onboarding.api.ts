@@ -1,24 +1,7 @@
 import { apiClient } from '@/lib/api-client';
 import type { PaginatedResult } from '@/types/common';
 
-export type InviteStatus = 'pending' | 'consumed' | 'revoked';
 export type RequestStatus = 'pending' | 'approved' | 'rejected';
-
-export interface Invite {
-  id: string;
-  token: string;
-  email: string | null;
-  status: InviteStatus;
-  expiresAt: string | null;
-  consumedAt: string | null;
-  createdAt: string;
-}
-
-export interface InvitePreview {
-  valid: boolean;
-  email: string | null;
-  role: string;
-}
 
 export interface ProfessorRequest {
   id: string;
@@ -32,30 +15,13 @@ export interface ProfessorRequest {
   createdAt: string;
 }
 
+/**
+ * Professor ACCESS REQUESTS only. The invite half was retired with
+ * `professor_invites` (#104) — invitations are `org_invites` now, minted from the
+ * org console and accepted at /invite/:token, and no client surface ever receives
+ * the raw token.
+ */
 export const onboardingApi = {
-  // ---- invites (admin) ----
-  async listInvites(page = 1, limit = 20): Promise<PaginatedResult<Invite>> {
-    const { data } = await apiClient.get<PaginatedResult<Invite>>('/onboarding/invites', {
-      params: { page, limit },
-    });
-    return data;
-  },
-  async mintInvite(input: { email?: string; expiresInDays?: number }): Promise<Invite> {
-    const { data } = await apiClient.post<Invite>('/onboarding/invites', input);
-    return data;
-  },
-  async revokeInvite(id: string): Promise<Invite> {
-    const { data } = await apiClient.post<Invite>(`/onboarding/invites/${id}/revoke`);
-    return data;
-  },
-  /** Public — used by the register page to render an invite banner. */
-  async previewInvite(token: string): Promise<InvitePreview> {
-    const { data } = await apiClient.get<InvitePreview>(
-      `/onboarding/invites/${encodeURIComponent(token)}/preview`,
-    );
-    return data;
-  },
-
   // ---- requests ----
   async createRequest(input: { message?: string }): Promise<ProfessorRequest> {
     const { data } = await apiClient.post<ProfessorRequest>('/onboarding/requests', input);

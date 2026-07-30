@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as argon2 from 'argon2';
-import { Brackets, Repository } from 'typeorm';
+import { Brackets, EntityManager, Repository } from 'typeorm';
 import { PaginatedResult, PaginationQueryDto } from '../../common/dto/pagination.dto';
 import { Role } from '../../common/enums/role.enum';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
@@ -65,8 +65,56 @@ export class UsersService {
     });
   }
 
+  /**
+   * Creates an account from an ACCEPTED invite, inside the caller's transaction.
+   *
+   * A named, greppable bypass of `create()` rather than an inline `repo.save`,
+   * because it deliberately violates two of `create()`'s invariants and a reader
+   * needs to see that stated:
+   *
+   *  - `create()` forces `organizationId = actor?.organizationId ?? null`. There
+   *    is no actor here — the invitee is not yet a user — and the org comes from
+   *    the invite row.
+   *  - `create()` opens its OWN quota transaction. The invite flow must charge
+   *    the seat inside the same transaction that consumed the invite, and in that
+   *    order, so it does the quota call itself and this must not repeat it.
+   *
+   * The password is hashed by the CALLER, before the transaction opens: argon2
+   * costs ~100ms and doing it while holding the `org_quotas` row lock would
+   * serialise every concurrent join on the slowest step.
+   */
+  createFromInvite(
+    input: {
+      email: string;
+      firstName: string;
+      lastName: string;
+      role: Role;
+      organizationId: string;
+      passwordHash: string;
+    },
+    manager: EntityManager,
+  ): Promise<User> {
+    const repo = manager.getRepository(User);
+    return repo.save(
+      repo.create({
+        email: input.email.toLowerCase(),
+        firstName: input.firstName,
+        lastName: input.lastName,
+        role: input.role,
+        organizationId: input.organizationId,
+        passwordHash: input.passwordHash,
+        isActive: true,
+      }),
+    );
+  }
+
   findById(id: string): Promise<User | null> {
     return this.users.findOne({ where: { id } });
+  }
+
+  /** Case-insensitive lookup. `users.email` is stored lowercased and is unique. */
+  findByEmail(email: string): Promise<User | null> {
+    return this.users.findOne({ where: { email: email.toLowerCase() } });
   }
 
   async getById(id: string): Promise<User> {

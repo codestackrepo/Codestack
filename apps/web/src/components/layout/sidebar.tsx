@@ -17,7 +17,6 @@ import {
   UserPlus,
   Users,
   Inbox,
-  Mail,
   PanelLeftClose,
   PanelLeftOpen,
   LogOut,
@@ -110,7 +109,6 @@ const NAV_SECTIONS: NavSection[] = [
       { to: '/home/admin', label: 'Overview', icon: LayoutDashboard, roles: [Role.ADMIN], end: true },
       { to: '/home/admin/users', label: 'Users', icon: Users, roles: [Role.ADMIN] },
       { to: '/home/admin/requests', label: 'Access requests', icon: Inbox, roles: [Role.ADMIN] },
-      { to: '/home/admin/invites', label: 'Invites', icon: Mail, roles: [Role.ADMIN] },
     ],
   },
 ];

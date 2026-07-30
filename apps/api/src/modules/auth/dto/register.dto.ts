@@ -1,16 +1,12 @@
-import { ApiPropertyOptional, OmitType } from '@nestjs/swagger';
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { OmitType } from '@nestjs/swagger';
 import { CreateUserDto } from '../../users/dto/create-user.dto';
 
 /**
- * Public self-registration. Role is forced to student and cannot be set here —
- * UNLESS a valid professor `inviteToken` is supplied, in which case AuthService
- * consumes the invite and grants the professor role (see AuthService.register).
+ * Public self-registration. Role is forced to STUDENT and cannot be set here.
+ *
+ * The `inviteToken` field is gone: an invite is redeemed at
+ * `POST /invites/accept`, which creates the account with the invited role inside
+ * the transaction that consumes the invite and charges the seat. A token field
+ * here would be a second path into a role that skipped the quota.
  */
-export class RegisterDto extends OmitType(CreateUserDto, ['role'] as const) {
-  @ApiPropertyOptional({ description: 'Professor invite token (from an invite link)' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(64)
-  inviteToken?: string;
-}
+export class RegisterDto extends OmitType(CreateUserDto, ['role'] as const) {}
