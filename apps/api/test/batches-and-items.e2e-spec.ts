@@ -17,8 +17,10 @@ import { Role } from '../src/common/enums/role.enum';
 import { User } from '../src/modules/users/entities/user.entity';
 import {
   createTestApp,
+  createTestOrg,
   destroyTestApp,
   extractAuthCookies,
+  getDataSource,
   resetThrottleStorage,
   TestAppContext,
 } from './utils/test-app';
@@ -33,10 +35,12 @@ interface Registered {
 describe('batches + targeting + items (e2e)', () => {
   let ctx: TestAppContext;
   let http: import('http').Server;
+  let orgId: string;
 
   beforeAll(async () => {
     ctx = await createTestApp();
     http = ctx.app.getHttpServer();
+    orgId = await createTestOrg(getDataSource(ctx));
   });
 
   afterAll(async () => {
@@ -44,23 +48,30 @@ describe('batches + targeting + items (e2e)', () => {
   });
 
   let seq = 0;
+  /**
+   * Registers through the real endpoint, then stamps the tenant (and role) and
+   * re-authenticates so the issued JWT carries both.
+   *
+   * The tenant stamp is unconditional, not just for staff. `POST /auth/register`
+   * writes `organization_id = NULL` — legal for a STUDENT since 1785520000000, but
+   * `TenantContextGuard` 403s `no_organization` on every non-`@Public` route, and
+   * `chk_users_org_required` rejects an org-less PROFESSOR (23514). Everyone shares
+   * one org so the classroom/batch pickers are never a cross-org reference.
+   */
   const register = async (role: Role = Role.STUDENT): Promise<Registered> => {
     resetThrottleStorage(ctx);
     const email = `bt${seq++}.e2e@codestack.dev`;
     const reg = await request(http)
       .post('/api/v1/auth/register')
       .send({ email, password: 'Password1', firstName: 'BT', lastName: `U${seq}` });
-    let cookie = extractAuthCookies(reg.headers['set-cookie'] as unknown as string[]);
     const id: string = reg.body.user.id;
-    if (role !== Role.STUDENT) {
-      const userRepo = ctx.app.get<Repository<User>>(getRepositoryToken(User));
-      await userRepo.update({ id }, { role });
-      const login = await request(http)
-        .post('/api/v1/auth/login')
-        .send({ email, password: 'Password1' });
-      cookie = extractAuthCookies(login.headers['set-cookie'] as unknown as string[]);
-    }
-    return { id, cookie };
+
+    const userRepo = ctx.app.get<Repository<User>>(getRepositoryToken(User));
+    await userRepo.update({ id }, { organizationId: orgId, role });
+    const login = await request(http)
+      .post('/api/v1/auth/login')
+      .send({ email, password: 'Password1' });
+    return { id, cookie: extractAuthCookies(login.headers['set-cookie'] as unknown as string[]) };
   };
 
   describe('batch targeting: 3-site student visibility', () => {

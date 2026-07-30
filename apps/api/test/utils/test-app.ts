@@ -10,47 +10,12 @@ import { AppModule } from '../../src/app.module';
 import { ExecutorService } from '../../src/modules/code-execution/executors/executor.service';
 import { FakeExecutorService } from './fake-executor.service';
 
-import { InitUsers1784388727774 } from '../../src/database/migrations/1784388727774-InitUsers';
-import { InitProblems1784388980702 } from '../../src/database/migrations/1784388980702-InitProblems';
-import { InitClassrooms1784389334962 } from '../../src/database/migrations/1784389334962-InitClassrooms';
-import { InitAssignments1784389613287 } from '../../src/database/migrations/1784389613287-InitAssignments';
-import { InitSubmissions1784390487648 } from '../../src/database/migrations/1784390487648-InitSubmissions';
-import { InitGrading1784390834115 } from '../../src/database/migrations/1784390834115-InitGrading';
-import { InitDemo1784390961571 } from '../../src/database/migrations/1784390961571-InitDemo';
-import { DropRedundantIndexes1784404788981 } from '../../src/database/migrations/1784404788981-DropRedundantIndexes';
-import { AddAiGenerationTables1784409505122 } from '../../src/database/migrations/1784409505122-AddAiGenerationTables';
-import { AddBillingTables1784431044465 } from '../../src/database/migrations/1784431044465-AddBillingTables';
-import { AddNotifications1784500000000 } from '../../src/database/migrations/1784500000000-AddNotifications';
-import { NotificationTypeToVarchar1784600000000 } from '../../src/database/migrations/1784600000000-NotificationTypeToVarchar';
-import { AddOnboardingTables1784700000000 } from '../../src/database/migrations/1784700000000-AddOnboardingTables';
-import { AddProblemCatalog1784800000000 } from '../../src/database/migrations/1784800000000-AddProblemCatalog';
-import { AddBatchesAndAssignmentTargeting1784900000000 } from '../../src/database/migrations/1784900000000-AddBatchesAndAssignmentTargeting';
-import { AddAssignmentItems1785000000000 } from '../../src/database/migrations/1785000000000-AddAssignmentItems';
-import { GeneralizeSubmissionTarget1785100000000 } from '../../src/database/migrations/1785100000000-GeneralizeSubmissionTarget';
-import { AddModuleAccess1785200000000 } from '../../src/database/migrations/1785200000000-AddModuleAccess';
-import { AddGamification1785300000000 } from '../../src/database/migrations/1785300000000-AddGamification';
+import { ALL_MIGRATIONS } from './all-migrations';
 
-const ALL_MIGRATIONS = [
-  InitUsers1784388727774,
-  InitProblems1784388980702,
-  InitClassrooms1784389334962,
-  InitAssignments1784389613287,
-  InitSubmissions1784390487648,
-  InitGrading1784390834115,
-  InitDemo1784390961571,
-  DropRedundantIndexes1784404788981,
-  AddAiGenerationTables1784409505122,
-  AddBillingTables1784431044465,
-  AddNotifications1784500000000,
-  NotificationTypeToVarchar1784600000000,
-  AddOnboardingTables1784700000000,
-  AddProblemCatalog1784800000000,
-  AddBatchesAndAssignmentTargeting1784900000000,
-  AddAssignmentItems1785000000000,
-  GeneralizeSubmissionTarget1785100000000,
-  AddModuleAccess1785200000000,
-  AddGamification1785300000000,
-];
+// Re-exported so a suite (and the drift guard's own consumers) can reach the list
+// through the harness it belongs to. The array itself lives in its own module
+// because the unit-jest environment cannot load this file's testcontainers imports.
+export { ALL_MIGRATIONS };
 
 export interface TestAppContext {
   app: INestApplication;
@@ -136,6 +101,41 @@ export async function createTestApp(): Promise<TestAppContext> {
 export function resetThrottleStorage(ctx: TestAppContext): void {
   const storage = ctx.app.get<ThrottlerStorageService>(getStorageToken());
   storage.storage.clear();
+}
+
+let orgSeq = 0;
+
+/**
+ * Inserts a real `organizations` row and returns its id.
+ *
+ * Fixtures need a tenant for two independent reasons, and BOTH bite before a
+ * single assertion runs:
+ *
+ *  - `chk_users_org_required` exempts only SUPERADMIN and (since
+ *    1785520000000) STUDENT, so `userRepo.update({ role: PROFESSOR })` on an
+ *    org-less self-registrant raises 23514.
+ *  - `TenantContextGuard` is live at APP_GUARD slot 2, so an org-less
+ *    non-superadmin — student included — 403s `no_organization` on every route
+ *    that isn't `@Public`.
+ *
+ * So a suite must stamp `organization_id` on every fixture user it drives
+ * through the API, not just the ones it promotes. `OrganizationCache` warms once
+ * at bootstrap and treats an unknown org as NOT suspended, so a row created after
+ * boot passes the guard with no cache reload.
+ */
+export async function createTestOrg(dataSource: DataSource): Promise<string> {
+  const n = ++orgSeq;
+  const rows = await dataSource.query<{ id: string }[]>(
+    `INSERT INTO "organizations" ("name","slug","type","status")
+       VALUES ($1,$2,'university','active') RETURNING "id"`,
+    [`E2E Org ${n}`, `e2e-org-${n}`],
+  );
+  return rows[0].id;
+}
+
+/** The app's live DataSource — for fixture SQL and repository shortcuts. */
+export function getDataSource(ctx: TestAppContext): DataSource {
+  return ctx.app.get(DataSource);
 }
 
 export async function destroyTestApp(ctx: TestAppContext): Promise<void> {
