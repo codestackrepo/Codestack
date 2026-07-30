@@ -1,4 +1,14 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
@@ -7,6 +17,9 @@ import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { PlatformOrganizationDetailDto } from './dto/platform-organization-detail.dto';
 import { PlatformOrganizationDto } from './dto/platform-organization.dto';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
+import { ListUsersQueryDto } from '../users/dto/list-users-query.dto';
+import { UserResponseDto } from '../users/dto/user-response.dto';
+import { UsersService } from '../users/users.service';
 import { PlatformService } from './platform.service';
 
 /**
@@ -19,7 +32,10 @@ import { PlatformService } from './platform.service';
 @Platform()
 @Controller('platform/organizations')
 export class PlatformController {
-  constructor(private readonly platform: PlatformService) {}
+  constructor(
+    private readonly platform: PlatformService,
+    private readonly users: UsersService,
+  ) {}
 
   @Get()
   async list(): Promise<PlatformOrganizationDto[]> {
@@ -33,6 +49,26 @@ export class PlatformController {
     @CurrentUser() actor: AuthenticatedUser,
   ): Promise<PlatformOrganizationDto> {
     return PlatformOrganizationDto.from(await this.platform.create(dto, actor));
+  }
+
+  /**
+   * One org's members. `overrideOrgId`'s first consumer, and it is safe by
+   * construction: scopeToOrg reads that option ONLY inside its isSuperAdmin
+   * branch, so an org admin cannot craft `?organizationId=` into another tenant
+   * through the ordinary /users route.
+   *
+   * `getById` first, so an unknown org 404s instead of returning an empty page —
+   * matching `detail()`.
+   */
+  @Get(':id/users')
+  async orgUsers(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: ListUsersQueryDto,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
+    await this.platform.getOrganization(id);
+    const page = await this.users.findAll(query, actor, { organizationId: id });
+    return { data: page.data.map(UserResponseDto.from), meta: page.meta };
   }
 
   /** Superset of a list row: the org plus its live census read against quotas (#63). */

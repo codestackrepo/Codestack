@@ -30,9 +30,21 @@ function setup() {
   };
   const orgCache = { reload: jest.fn().mockResolvedValue(undefined) };
   const metrics = {
-    census: jest
-      .fn()
-      .mockResolvedValue({ byOrg: {}, platform: { superAdmins: 0, globalProblems: 0 } }),
+    census: jest.fn().mockResolvedValue({
+      byOrg: {},
+      platform: {
+        superAdmins: 0,
+        globalProblems: 0,
+        unassigned: {
+          students: 0,
+          activeStudents: 0,
+          inactiveStudents: 0,
+          orphanedStaff: 0,
+          activeOrphanedStaff: 0,
+          inactiveOrphanedStaff: 0,
+        },
+      },
+    }),
     countsForOrg: jest.fn().mockResolvedValue(OrgCountsDto.zero()),
   };
   const quotas = {
@@ -129,7 +141,20 @@ describe('PlatformService.overview (#63)', () => {
         }),
         // org-B is deliberately absent from byOrg below to cover the zero-fill.
       },
-      platform: { superAdmins: 2, globalProblems: 30 },
+      platform: {
+        superAdmins: 2,
+        globalProblems: 30,
+        // Two unassigned students, one of them deactivated — so the totals below
+        // exercise the fold rather than adding zero.
+        unassigned: {
+          students: 2,
+          activeStudents: 1,
+          inactiveStudents: 1,
+          orphanedStaff: 0,
+          activeOrphanedStaff: 0,
+          inactiveOrphanedStaff: 0,
+        },
+      },
     });
     return { svc, orgs, metrics };
   }
@@ -151,13 +176,21 @@ describe('PlatformService.overview (#63)', () => {
       suspended: 1,
     });
     expect(out.users).toEqual({
-      total: 14, // 12 org members + 2 org-less SuperAdmins
+      total: 16, // 12 org members + 2 org-less SuperAdmins + 2 unassigned
       superAdmins: 2,
       admins: 2,
       professors: 3,
-      students: 7,
-      active: 12,
-      inactive: 2,
+      students: 9, // 7 in orgs + 2 unassigned — org-less students are still students
+      active: 13, // 10 org-active + 2 superadmins + 1 active unassigned
+      inactive: 3, // 2 org-inactive + 1 inactive unassigned
+      unassigned: {
+        students: 2,
+        activeStudents: 1,
+        inactiveStudents: 1,
+        orphanedStaff: 0,
+        activeOrphanedStaff: 0,
+        inactiveOrphanedStaff: 0,
+      },
       pendingInvites: 4,
     });
     // active + inactive must reconcile to total, SuperAdmins included.

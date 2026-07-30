@@ -36,5 +36,12 @@ export class SessionContextDto {
 
   // Retained from the legacy contract so existing clients keep working; the
   // richer fields above are what the frontend actually consumes (#59).
+  @ApiProperty({
+    description:
+      'True for a non-superadmin with no organization — the confined holding state. ' +
+      'The frontend routes these users to /pending rather than the app shell.',
+  })
+  isUnassigned!: boolean;
+
   @ApiProperty() isValid!: boolean;
 }

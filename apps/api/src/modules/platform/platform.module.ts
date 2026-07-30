@@ -12,6 +12,7 @@ import { UsersModule } from '../users/users.module';
 import { PlatformMetricsService } from './platform-metrics.service';
 import { PlatformOverviewController } from './platform-overview.controller';
 import { PlatformController } from './platform.controller';
+import { PlatformUsersController } from './platform-users.controller';
 import { PlatformService } from './platform.service';
 import { PlatformGuard } from './guards/platform.guard';
 
@@ -33,7 +34,7 @@ import { PlatformGuard } from './guards/platform.guard';
     UsersModule,
     QuotasModule,
   ],
-  controllers: [PlatformController, PlatformOverviewController],
+  controllers: [PlatformController, PlatformOverviewController, PlatformUsersController],
   providers: [PlatformService, PlatformMetricsService, PlatformGuard],
   exports: [PlatformService],
 })

@@ -1,5 +1,6 @@
 import { Role } from '../../common/enums/role.enum';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
+import { SYSTEM_MODULES, TOGGLEABLE_MODULES } from '../module-access/enums/app-module-key.enum';
 import { ModuleAccessService } from '../module-access/module-access.service';
 import { Organization } from '../organizations/entities/organization.entity';
 import { OrganizationsService } from '../organizations/organizations.service';
@@ -14,6 +15,7 @@ function makeService(user: Partial<User>, org: Organization | null = null) {
     effectiveFeatureMap: jest
       .fn()
       .mockResolvedValue({ 'problems.author': false, 'topics.comment': true }),
+    allFalseFeatureMap: jest.fn().mockReturnValue({ 'problems.author': false }),
   };
   const organizations = { findById: jest.fn().mockResolvedValue(org) };
   const quotas = {
@@ -121,5 +123,61 @@ describe('SessionContextService.build', () => {
     await svc.build(actor);
     expect(moduleAccess.effectiveMapForRole).toHaveBeenCalledWith(Role.PROFESSOR, 'org-2');
     expect(moduleAccess.effectiveFeatureMap).toHaveBeenCalledWith(Role.PROFESSOR, 'org-2');
+  });
+});
+
+/**
+ * The org-less holding state (#105). Resolving MODULE_ACCESS_DEFAULTS for these
+ * users would report classrooms/problems/assignments/playground/topics as
+ * enabled, so the nav would advertise five areas that every request 403s
+ * `no_organization` on — the app reading as broken rather than as awaiting setup.
+ */
+describe('SessionContextService.build — unassigned projection', () => {
+  const unassigned = { id: 'u-1', role: Role.STUDENT, organizationId: null } as User;
+
+  it('flags isUnassigned for a non-superadmin with no org', async () => {
+    const { svc } = makeService(unassigned);
+    const out = await svc.build({ ...actor, organizationId: null });
+    expect(out.isUnassigned).toBe(true);
+    expect(out.organization).toBeNull();
+    expect(out.quotas).toBeNull();
+  });
+
+  it('reports every toggleable module FALSE and the SYSTEM ones true', async () => {
+    const { svc } = makeService(unassigned);
+    const out = await svc.build({ ...actor, organizationId: null });
+    for (const key of TOGGLEABLE_MODULES) expect(out.modules[key]).toBe(false);
+    // Somewhere to land, and a way to sign out.
+    for (const key of SYSTEM_MODULES) expect(out.modules[key]).toBe(true);
+  });
+
+  it('bypasses the resolver entirely rather than filtering its output', async () => {
+    const { svc, moduleAccess } = makeService(unassigned);
+    await svc.build({ ...actor, organizationId: null });
+    // The projection lives HERE, not in ModuleAccessService.resolveModule —
+    // pushing it into the resolver would make getMatrix(null), the platform
+    // console's own defaults view, render all-false.
+    expect(moduleAccess.effectiveMapForRole).not.toHaveBeenCalled();
+    expect(moduleAccess.effectiveFeatureMap).not.toHaveBeenCalled();
+    expect(moduleAccess.allFalseFeatureMap).toHaveBeenCalled();
+  });
+
+  // A SuperAdmin is org-less BY DEFINITION and must keep full access.
+  it('does NOT flag an org-less SUPERADMIN as unassigned', async () => {
+    const { svc, moduleAccess } = makeService({
+      id: 'sa',
+      role: Role.SUPERADMIN,
+      organizationId: null,
+    } as User);
+    const out = await svc.build({ ...actor, role: Role.SUPERADMIN, organizationId: null });
+    expect(out.isUnassigned).toBe(false);
+    expect(out.isSuperAdmin).toBe(true);
+    expect(moduleAccess.effectiveMapForRole).toHaveBeenCalled();
+  });
+
+  it('does not flag a normal org member', async () => {
+    const { svc } = makeService({ id: 'u', role: Role.STUDENT, organizationId: 'org-1' } as User);
+    const out = await svc.build(actor);
+    expect(out.isUnassigned).toBe(false);
   });
 });

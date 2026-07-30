@@ -13,4 +13,12 @@ export enum NotificationType {
   PROFESSOR_REQUEST_APPROVED = 'professor_request_approved',
   /** An admin declined the recipient's professor-access request. */
   PROFESSOR_REQUEST_REJECTED = 'professor_request_rejected',
+  /** Staff turned the recipient's access off / back on (#105). */
+  ACCESS_REVOKED = 'access_revoked',
+  ACCESS_RESTORED = 'access_restored',
+  /** The recipient was placed into an organization, leaving the holding state. */
+  ORGANIZATION_ASSIGNED = 'organization_assigned',
 }
+// NOTE: no migration needed — `notifications.type` is varchar(50) with no CHECK
+// (1784600000000 converted it off the PG enum precisely so new types are
+// code-only).
