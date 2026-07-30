@@ -68,13 +68,30 @@ export const envValidationSchema = Joi.object({
   THROTTLE_GLOBAL_PER_DAY: Joi.number().default(1000),
 
   // Email
-  EMAIL_HOST: Joi.string().allow('').default(''),
+  // EMAIL_HOST is required ONLY when the mailer is on. Expressed as a single
+  // Joi.when, not as `.allow('')` plus a separate rule — two rules would let the
+  // empty-string allowance leak into the enabled branch, and a blank host fails
+  // at first send instead of at boot.
+  EMAIL_ENABLED: Joi.boolean().default(false),
+  EMAIL_HOST: Joi.when('EMAIL_ENABLED', {
+    is: true,
+    then: Joi.string().min(1).required(),
+    otherwise: Joi.string().allow('').default(''),
+  }),
   EMAIL_PORT: Joi.number().default(587),
   EMAIL_USER: Joi.string().allow('').default(''),
   EMAIL_PASSWORD: Joi.string().allow('').default(''),
   EMAIL_USE_TLS: Joi.boolean().default(true),
   DEFAULT_FROM_EMAIL: Joi.string().default('no-reply@codestack.dev'),
   DEMO_NOTIFICATION_EMAILS: Joi.string().allow('').default(''),
+  EMAIL_WORKER_CONCURRENCY: Joi.number().default(4),
+  EMAIL_RATE_MAX: Joi.number().default(20),
+  EMAIL_RATE_DURATION_MS: Joi.number().default(1000),
+
+  // Public origin of the WEB app — every mailed link is built from it.
+  // main.ts additionally refuses to boot in production while it is a loopback
+  // address; a URI check alone would happily accept http://localhost:5173.
+  WEB_APP_URL: Joi.string().uri().default('http://localhost:5173'),
 
   // AI (Phase 2)
   LLM_PROVIDER: Joi.string().valid('anthropic', 'openai').default('anthropic'),

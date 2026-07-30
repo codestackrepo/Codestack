@@ -88,6 +88,9 @@ importers:
       nestjs-pino:
         specifier: ^4.1.0
         version: 4.6.1(@nestjs/common@10.4.22(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.2))(pino-http@10.5.0)(pino@9.14.0)(rxjs@7.8.2)
+      nodemailer:
+        specifier: ^6.9
+        version: 6.10.1
       openai:
         specifier: ^6.48.0
         version: 6.48.0(ws@8.21.1)(zod@4.4.3)
@@ -164,6 +167,9 @@ importers:
       '@types/node':
         specifier: ^18.19.68
         version: 18.19.130
+      '@types/nodemailer':
+        specifier: ^8.0.1
+        version: 8.0.1
       '@types/passport-jwt':
         specifier: ^4.0.1
         version: 4.0.1
@@ -2390,6 +2396,9 @@ packages:
 
   '@types/node@24.13.3':
     resolution: {integrity: sha512-Dh8vAsV36ig5wa9OX4pXvMc9D3Veibfw2wix0CUwYODLD8nkj9UsLjASr49nPg+2eKzxhBV+v7L8pXvT4e639Q==}
+
+  '@types/nodemailer@8.0.1':
+    resolution: {integrity: sha512-PxpaInm8V1JQDd4j0ds5HfvWQk8JupS1C0Picb96QJsrrRDjBH+DlK7L4ZdNSqNULhiZRQHc40nLVShaGxXAMw==}
 
   '@types/passport-jwt@4.0.1':
     resolution: {integrity: sha512-Y0Ykz6nWP4jpxgEUYq8NoVZeCQPo1ZndJLfapI249g1jHChvRfZRO/LS3tqu26YgAS/laI1qx98sYGz0IalRXQ==}
@@ -5298,6 +5307,10 @@ packages:
     resolution: {integrity: sha512-wRNIrw4DmVLKQlbgOMdkMx27Wrpzes2hh5Jtbi2bjPd+4wJstWIqP5A+lscnqbm0xxmT5Bpg8Lec5ItEBwx6BQ==}
     engines: {node: '>=18'}
 
+  nodemailer@6.10.1:
+    resolution: {integrity: sha512-Z+iLaBGVaSjbIzQ4pX6XV41HrooLsQ10ZWPUehGmuantvzWoDVBnmsdUcOIDM1t+yPor5pDhVlDESgOMEGxhHA==}
+    engines: {node: '>=6.0.0'}
+
   normalize-path@3.0.0:
     resolution: {integrity: sha512-6eZs5Ls3WtCisHWp9S2GUy8dqkpGi4BVSz3GaqiE6ezub0512ESztXUwUB6C6IKbQkY2Pnb/mD4WYojCRwcwLA==}
     engines: {node: '>=0.10.0'}
@@ -7610,7 +7623,7 @@ snapshots:
     dependencies:
       '@jest/fake-timers': 29.7.0
       '@jest/types': 29.6.3
-      '@types/node': 18.19.130
+      '@types/node': 24.13.3
       jest-mock: 29.7.0
 
   '@jest/expect-utils@29.7.0':
@@ -7628,7 +7641,7 @@ snapshots:
     dependencies:
       '@jest/types': 29.6.3
       '@sinonjs/fake-timers': 10.3.0
-      '@types/node': 18.19.130
+      '@types/node': 24.13.3
       jest-message-util: 29.7.0
       jest-mock: 29.7.0
       jest-util: 29.7.0
@@ -9167,7 +9180,7 @@ snapshots:
 
   '@types/cors@2.8.19':
     dependencies:
-      '@types/node': 18.19.130
+      '@types/node': 24.13.3
 
   '@types/d3-array@3.2.2': {}
 
@@ -9241,7 +9254,7 @@ snapshots:
 
   '@types/graceful-fs@4.1.9':
     dependencies:
-      '@types/node': 18.19.130
+      '@types/node': 24.13.3
 
   '@types/hast@3.0.5':
     dependencies:
@@ -9295,6 +9308,10 @@ snapshots:
     dependencies:
       undici-types: 7.18.2
 
+  '@types/nodemailer@8.0.1':
+    dependencies:
+      '@types/node': 24.13.3
+
   '@types/passport-jwt@4.0.1':
     dependencies:
       '@types/jsonwebtoken': 9.0.10
@@ -9334,7 +9351,7 @@ snapshots:
 
   '@types/ssh2-streams@0.1.13':
     dependencies:
-      '@types/node': 18.19.130
+      '@types/node': 24.13.3
 
   '@types/ssh2@0.5.52':
     dependencies:
@@ -9376,7 +9393,7 @@ snapshots:
 
   '@types/ws@8.18.1':
     dependencies:
-      '@types/node': 18.19.130
+      '@types/node': 24.13.3
 
   '@types/yargs-parser@21.0.3': {}
 
@@ -11737,7 +11754,7 @@ snapshots:
       '@jest/expect': 29.7.0
       '@jest/test-result': 29.7.0
       '@jest/types': 29.6.3
-      '@types/node': 18.19.130
+      '@types/node': 24.13.3
       chalk: 4.1.2
       co: 4.6.0
       dedent: 1.7.2
@@ -11831,7 +11848,7 @@ snapshots:
       '@jest/environment': 29.7.0
       '@jest/fake-timers': 29.7.0
       '@jest/types': 29.6.3
-      '@types/node': 18.19.130
+      '@types/node': 24.13.3
       jest-mock: 29.7.0
       jest-util: 29.7.0
 
@@ -11880,7 +11897,7 @@ snapshots:
   jest-mock@29.7.0:
     dependencies:
       '@jest/types': 29.6.3
-      '@types/node': 18.19.130
+      '@types/node': 24.13.3
       jest-util: 29.7.0
 
   jest-pnp-resolver@1.2.3(jest-resolve@29.7.0):
@@ -12017,13 +12034,13 @@ snapshots:
 
   jest-worker@27.5.1:
     dependencies:
-      '@types/node': 18.19.130
+      '@types/node': 24.13.3
       merge-stream: 2.0.0
       supports-color: 8.1.1
 
   jest-worker@29.7.0:
     dependencies:
-      '@types/node': 18.19.130
+      '@types/node': 24.13.3
       jest-util: 29.7.0
       merge-stream: 2.0.0
       supports-color: 8.1.1
@@ -12850,6 +12867,8 @@ snapshots:
   node-int64@0.4.0: {}
 
   node-releases@2.0.51: {}
+
+  nodemailer@6.10.1: {}
 
   normalize-path@3.0.0: {}
 

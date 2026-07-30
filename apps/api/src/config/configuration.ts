@@ -16,6 +16,11 @@ export const appConfig = registerAs('app', () => ({
   apiPrefix: process.env.API_PREFIX ?? 'api/v1',
   corsOrigins: list(process.env.CORS_ORIGINS),
   isProd: process.env.NODE_ENV === 'production',
+  // Public origin of the WEB app, not the API — every mailed link is built from
+  // it. Read in exactly one place (`MailService.webUrl`), and main.ts refuses to
+  // boot in production if it still points at localhost: a wrong value here ships
+  // unusable links to every invitee, and nothing else would notice.
+  webAppUrl: (process.env.WEB_APP_URL ?? 'http://localhost:5173').replace(/\/+$/, ''),
 }));
 
 export const databaseConfig = registerAs('database', () => ({
@@ -81,14 +86,33 @@ export const throttleConfig = registerAs('throttle', () => ({
   globalPerDay: num(process.env.THROTTLE_GLOBAL_PER_DAY, 1000),
 }));
 
+/**
+ * Transactional mail (#103). These vars existed but had no reader until now, so
+ * the namespace is extended rather than replaced — there is deliberately no
+ * `MAIL_*` twin.
+ *
+ * `enabled` defaults FALSE, which is what makes a fresh clone safe: with it off
+ * the mailer logs the rendered text body instead of sending, and only outside
+ * production (otherwise the default posture would be "every invite token in the
+ * application log").
+ */
 export const emailConfig = registerAs('email', () => ({
+  enabled: bool(process.env.EMAIL_ENABLED, false),
   host: process.env.EMAIL_HOST ?? '',
   port: num(process.env.EMAIL_PORT, 587),
   user: process.env.EMAIL_USER ?? '',
   password: process.env.EMAIL_PASSWORD ?? '',
   useTls: bool(process.env.EMAIL_USE_TLS, true),
   from: process.env.DEFAULT_FROM_EMAIL ?? 'no-reply@codestack.dev',
+  // Demo-request notifications. Predates the mailer and still has no consumer;
+  // wiring DemoService to MailService is deliberately out of #103's scope.
   notificationEmails: list(process.env.DEMO_NOTIFICATION_EMAILS),
+  // Worker-side delivery shape. The limiter is Redis-global in BullMQ, which is
+  // exactly what an SMTP provider's rate cap needs — a per-pod cap would be
+  // multiplied by the pod count.
+  workerConcurrency: num(process.env.EMAIL_WORKER_CONCURRENCY, 4),
+  rateMax: num(process.env.EMAIL_RATE_MAX, 20),
+  rateDurationMs: num(process.env.EMAIL_RATE_DURATION_MS, 1000),
 }));
 
 export const aiConfig = registerAs('ai', () => ({
