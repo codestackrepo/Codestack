@@ -113,17 +113,9 @@ export const billingConfig = registerAs('billing', () => ({
   cancelUrl: process.env.BILLING_CANCEL_URL ?? 'http://localhost:5173/billing/cancel',
 }));
 
-export const clerkConfig = registerAs('clerk', () => ({
-  secretKey: process.env.CLERK_SECRET_KEY ?? '',
-  publishableKey: process.env.CLERK_PUBLISHABLE_KEY ?? '',
-  webhookSigningSecret: process.env.CLERK_WEBHOOK_SIGNING_SECRET ?? '',
-  // PEM public key -> networkless verifyToken. undefined (not '') so the option is omitted.
-  jwtKey: process.env.CLERK_JWT_KEY || undefined,
-}));
-
 export const platformConfig = registerAs('platform', () => ({
-  // Emails bootstrapped to SUPERADMIN by seed-superadmin.ts; the user.created
-  // webhook also promotes a post-boot signup whose Clerk metadata carries the role (#62).
+  // Emails bootstrapped to SUPERADMIN by seed-superadmin.ts (#62). This is the
+  // only promotion path — a self-registration never yields a SUPERADMIN.
   superadminEmails: list(process.env.CODESTACK_SUPERADMIN_EMAILS).map((e) => e.toLowerCase()),
 }));
 
@@ -139,7 +131,6 @@ export const allConfigs = [
   emailConfig,
   aiConfig,
   billingConfig,
-  clerkConfig,
   platformConfig,
 ];
 
@@ -154,5 +145,4 @@ export type ThrottleConfig = ReturnType<typeof throttleConfig>;
 export type EmailConfig = ReturnType<typeof emailConfig>;
 export type AiConfig = ReturnType<typeof aiConfig>;
 export type BillingConfig = ReturnType<typeof billingConfig>;
-export type ClerkConfig = ReturnType<typeof clerkConfig>;
 export type PlatformConfig = ReturnType<typeof platformConfig>;

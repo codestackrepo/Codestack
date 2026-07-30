@@ -5,8 +5,11 @@ import { Role } from '../enums/role.enum';
  * user loads happen in services when needed.
  *
  * `organizationId` is the tenant carrier consumed by scopeToOrg / assertSameOrg
- * and (once wired, #51) the TenantContextGuard. NULL only for SUPERADMIN. It is
- * populated from the JWT today and by the Clerk guard after the auth cutover.
+ * and by the TenantContextGuard. NULL for a SUPERADMIN and for a self-registered
+ * student awaiting assignment.
+ *
+ * Every field is re-stamped from the DB row by JwtAuthGuard on each authenticated
+ * request, so this is the CURRENT state, not the state the token was minted with.
  */
 export interface AuthenticatedUser {
   id: string;

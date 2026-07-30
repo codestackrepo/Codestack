@@ -1,5 +1,5 @@
 import { Role } from '../../common/enums/role.enum';
-import { OrgInviteStatus } from '../clerk-sync/enums/org-invite.enums';
+import { OrgInviteStatus } from '../invites/enums/org-invite.enums';
 import { PlatformMetricsService } from './platform-metrics.service';
 
 /**

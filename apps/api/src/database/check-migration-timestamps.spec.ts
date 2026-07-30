@@ -7,7 +7,10 @@ describe('findTimestampConflicts', () => {
     expect(
       findTimestampConflicts([
         { file: '1785400000000-A.ts', content: 'export class A1785400000000 {}' },
-        { file: '1785410000000-B.ts', content: `export class B1785410000000 { name = 'B1785410000000'; }` },
+        {
+          file: '1785410000000-B.ts',
+          content: `export class B1785410000000 { name = 'B1785410000000'; }`,
+        },
       ]),
     ).toEqual([]);
   });

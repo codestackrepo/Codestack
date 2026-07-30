@@ -19,9 +19,7 @@ import { LEGACY_ORG_ID } from '../../modules/organizations/organizations.constan
  * 1785100000000). Deploy this migration together with the org-stamping code
  * (migrate-then-restart) so no old pod inserts a NULL org after SET NOT NULL.
  */
-export class AddOrgToAssignmentsSubmissionsGamification1785440000000
-  implements MigrationInterface
-{
+export class AddOrgToAssignmentsSubmissionsGamification1785440000000 implements MigrationInterface {
   name = 'AddOrgToAssignmentsSubmissionsGamification1785440000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
@@ -34,7 +32,9 @@ export class AddOrgToAssignmentsSubmissionsGamification1785440000000
       `UPDATE "assignments" SET "organization_id" = $1 WHERE "organization_id" IS NULL`,
       [LEGACY_ORG_ID],
     );
-    await queryRunner.query(`ALTER TABLE "assignments" ALTER COLUMN "organization_id" SET NOT NULL`);
+    await queryRunner.query(
+      `ALTER TABLE "assignments" ALTER COLUMN "organization_id" SET NOT NULL`,
+    );
     await queryRunner.query(
       `ALTER TABLE "assignments" ADD CONSTRAINT "FK_assignments_organization" FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE RESTRICT`,
     );
@@ -52,7 +52,9 @@ export class AddOrgToAssignmentsSubmissionsGamification1785440000000
       `UPDATE "submissions" SET "organization_id" = $1 WHERE "organization_id" IS NULL`,
       [LEGACY_ORG_ID],
     );
-    await queryRunner.query(`ALTER TABLE "submissions" ALTER COLUMN "organization_id" SET NOT NULL`);
+    await queryRunner.query(
+      `ALTER TABLE "submissions" ALTER COLUMN "organization_id" SET NOT NULL`,
+    );
     await queryRunner.query(
       `ALTER TABLE "submissions" ADD CONSTRAINT "FK_submissions_organization" FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE RESTRICT`,
     );

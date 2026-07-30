@@ -4,7 +4,7 @@ import { OrganizationStatus, OrganizationType } from '../enums/organization.enum
 
 /**
  * Compact org view for the session contract (#54) and member-facing screens.
- * Deliberately omits internal fields (clerkOrgId, createdById, settings) — those
+ * Deliberately omits internal fields (createdById, settings) — those
  * are for the SuperAdmin console (#62), not every session bootstrap.
  */
 export class OrganizationSummaryDto {

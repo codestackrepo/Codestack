@@ -77,11 +77,11 @@ export class AuthController {
     return { message: 'Successfully logged out' };
   }
 
-  // Session bootstrap. Identity resolves from whichever auth path the request
-  // used (Clerk bearer or JWT cookie — both set request.user to the LOCAL user,
-  // #51). The full aggregated contract is assembled by SessionContextService so
-  // that module-access/org/feature/quota subsystems contribute a field without
-  // editing this controller (#54, §6 shared-file ownership).
+  // Session bootstrap. `request.user` is the projection JwtAuthGuard re-stamped
+  // from the fresh DB row, so this reflects a just-applied assignment or revoke.
+  // The full aggregated contract is assembled by SessionContextService so that
+  // module-access/org/feature/quota subsystems contribute a field without editing
+  // this controller (#54, §6 shared-file ownership).
   @Get('verify')
   verify(@CurrentUser() user: AuthenticatedUser): Promise<SessionContextDto> {
     return this.session.build(user);

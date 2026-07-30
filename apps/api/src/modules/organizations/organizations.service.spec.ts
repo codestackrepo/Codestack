@@ -35,95 +35,6 @@ describe('OrganizationsService', () => {
     expect(repo.findOne).toHaveBeenCalledWith({ where: { slug: 'mit' } });
   });
 
-  describe('upsertFromClerk (#52)', () => {
-    it('updates the name of an existing mirror without churning the slug', async () => {
-      const existing = { id: 'o1', name: 'Old', slug: 'acme', clerkOrgId: 'org_1' } as Organization;
-      const save = jest.fn((o) => Promise.resolve(o));
-      const repo = makeRepo({ findOne: jest.fn().mockResolvedValue(existing), save });
-      const service = new OrganizationsService(repo);
-      const out = await service.upsertFromClerk({
-        clerkOrgId: 'org_1',
-        name: 'Acme University',
-        slug: 'renamed-in-clerk',
-      });
-      expect(out.name).toBe('Acme University');
-      expect(out.slug).toBe('acme'); // slug preserved
-    });
-
-    it('creates a new mirror with the clerk slug when free', async () => {
-      const findOne = jest
-        .fn()
-        .mockResolvedValueOnce(null) // by clerkOrgId — miss
-        .mockResolvedValueOnce(null); // slug availability — free
-      const repo = makeRepo({
-        findOne,
-        create: jest.fn((d) => d),
-        save: jest.fn((o) => Promise.resolve({ ...o, id: 'new' })),
-      });
-      const service = new OrganizationsService(repo);
-      const out = await service.upsertFromClerk({
-        clerkOrgId: 'org_2',
-        name: 'MIT',
-        slug: 'mit',
-      });
-      expect(out.slug).toBe('mit');
-      expect(out.clerkOrgId).toBe('org_2');
-    });
-
-    it('suffixes the slug when a DIFFERENT clerk org already owns it', async () => {
-      const findOne = jest
-        .fn()
-        .mockResolvedValueOnce(null) // by clerkOrgId — miss
-        .mockResolvedValueOnce({ id: 'other', clerkOrgId: 'org_other' }) // slug owned by another clerk org — no link
-        .mockResolvedValueOnce({ id: 'other' }); // uniqueSlug: slug taken -> suffix
-      const repo = makeRepo({
-        findOne,
-        create: jest.fn((d) => d),
-        save: jest.fn((o) => Promise.resolve(o)),
-      });
-      const service = new OrganizationsService(repo);
-      const out = await service.upsertFromClerk({
-        clerkOrgId: 'org_abcdef123456',
-        name: 'MIT',
-        slug: 'mit',
-      });
-      expect(out.slug).toMatch(/^mit-/);
-    });
-
-    it('is race-safe: re-reads the winner on a 23505 during create', async () => {
-      const winner = { id: 'o9', clerkOrgId: 'org_3' } as Organization;
-      const findOne = jest
-        .fn()
-        .mockResolvedValueOnce(null) // by clerkOrgId — miss
-        .mockResolvedValueOnce(null) // slug-fallback — miss
-        .mockResolvedValueOnce(null) // uniqueSlug — slug free
-        .mockResolvedValueOnce(winner); // re-find after the race
-      const driver = Object.assign(new Error('dup'), { code: '23505' });
-      const repo = makeRepo({
-        findOne,
-        create: jest.fn((d) => d),
-        save: jest
-          .fn()
-          .mockRejectedValueOnce(new QueryFailedError('q', [], driver as unknown as Error)),
-      });
-      const service = new OrganizationsService(repo);
-      await expect(
-        service.upsertFromClerk({ clerkOrgId: 'org_3', name: 'X', slug: 'x' }),
-      ).resolves.toBe(winner);
-    });
-  });
-
-  it('suspendByClerkId flips status to SUSPENDED', async () => {
-    const update = jest.fn().mockResolvedValue({ affected: 1 });
-    const repo = makeRepo({ update });
-    const service = new OrganizationsService(repo);
-    await service.suspendByClerkId('org_1');
-    expect(update).toHaveBeenCalledWith(
-      { clerkOrgId: 'org_1' },
-      { status: OrganizationStatus.SUSPENDED },
-    );
-  });
-
   describe('SuperAdmin CRUD (#62)', () => {
     it('create slugifies the name and persists an active org', async () => {
       const repo = makeRepo({
@@ -178,52 +89,22 @@ describe('OrganizationsService', () => {
       expect(service.slugify('')).toBe('org');
     });
 
-    it('attachClerkOrgId is a no-op when the org is already linked to that clerk id', async () => {
-      const existing = { id: 'o1', clerkOrgId: 'org_clerk_1' } as Organization;
-      const save = jest.fn();
-      const repo = makeRepo({ findOne: jest.fn().mockResolvedValue(existing), save });
-      const service = new OrganizationsService(repo);
-      const out = await service.attachClerkOrgId('o1', 'org_clerk_1');
-      expect(out).toBe(existing);
-      expect(save).not.toHaveBeenCalled();
-    });
-
-    it('attachClerkOrgId returns the webhook-linked winner on a 23505 race', async () => {
-      const local = { id: 'o1', clerkOrgId: null } as Organization;
-      const winner = { id: 'o2', clerkOrgId: 'org_clerk_1' } as Organization;
+    it('create surfaces a concurrent same-slug insert as a 409, not a 500', async () => {
+      // The pre-check and this catch are the same rule at two layers: the check is
+      // for the common case, uq_organizations_slug is what actually holds under a
+      // race, and both must reach the caller as the same 409.
       const driver = Object.assign(new Error('dup'), { code: '23505' });
       const repo = makeRepo({
-        findOne: jest
-          .fn()
-          .mockResolvedValueOnce(local) // getById(o1)
-          .mockResolvedValueOnce(winner), // re-find by clerkOrgId after the 23505
+        findOne: jest.fn().mockResolvedValue(null), // slug looked free
+        create: jest.fn((d) => d),
         save: jest
           .fn()
           .mockRejectedValueOnce(new QueryFailedError('q', [], driver as unknown as Error)),
       });
       const service = new OrganizationsService(repo);
-      await expect(service.attachClerkOrgId('o1', 'org_clerk_1')).resolves.toBe(winner);
-    });
-
-    it('upsertFromClerk links a platform-created org by slug instead of duplicating', async () => {
-      const bySlug = { id: 'o1', slug: 'acme', clerkOrgId: null } as Organization;
-      const create = jest.fn((d) => d);
-      const repo = makeRepo({
-        findOne: jest
-          .fn()
-          .mockResolvedValueOnce(null) // by clerkOrgId — miss
-          .mockResolvedValueOnce(bySlug), // by slug — unlinked hit
-        save: jest.fn((o) => Promise.resolve(o)),
-        create,
-      });
-      const service = new OrganizationsService(repo);
-      const out = await service.upsertFromClerk({
-        clerkOrgId: 'org_clerk_1',
-        name: 'Acme U',
-        slug: 'acme',
-      });
-      expect(out.clerkOrgId).toBe('org_clerk_1');
-      expect(create).not.toHaveBeenCalled();
+      await expect(
+        service.create({ name: 'Acme', slug: 'acme', createdById: 'sa' }),
+      ).rejects.toBeInstanceOf(ConflictException);
     });
   });
 });

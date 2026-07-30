@@ -1,6 +1,5 @@
 import 'reflect-metadata';
 import * as argon2 from 'argon2';
-import { createClerkClient } from '@clerk/backend';
 import dataSource from '../data-source';
 import { Role } from '../../common/enums/role.enum';
 import { User } from '../../modules/users/entities/user.entity';
@@ -8,13 +7,12 @@ import { User } from '../../modules/users/entities/user.entity';
 /**
  * #62 — SuperAdmin bootstrap. Idempotently ensures every email in
  * CODESTACK_SUPERADMIN_EMAILS is an active SUPERADMIN (role=superadmin,
- * organization_id=NULL) locally, and — when Clerk is configured — stamps that
- * Clerk user's publicMetadata.role='superadmin' so a Clerk login is recognized
- * (the user.created webhook, #52, promotes post-boot signups the same way).
+ * organization_id=NULL). This is the ONLY way a SUPERADMIN comes into existence:
+ * no self-registration, invite acceptance or `PATCH /users` can mint one.
  *
- * A brand-new SuperAdmin gets a password ONLY if CODESTACK_SUPERADMIN_PASSWORD
- * is set (so cookie-mode login works); otherwise it's Clerk-managed (null hash).
- * Promoting an EXISTING user preserves their password.
+ * A brand-new SuperAdmin gets a password ONLY if CODESTACK_SUPERADMIN_PASSWORD is
+ * set; without one the row has a NULL hash and cannot log in at all until a
+ * password reset. Promoting an EXISTING user always preserves their password.
  *
  *   CODESTACK_SUPERADMIN_EMAILS=a@x.dev,b@x.dev pnpm --filter @codestack/api seed:superadmin
  */
@@ -32,16 +30,21 @@ async function main(): Promise<void> {
   await dataSource.initialize();
   const users = dataSource.getRepository(User);
 
-  const secretKey = process.env.CLERK_SECRET_KEY;
-  const clerk = secretKey ? createClerkClient({ secretKey }) : null;
-
   const newPassword = process.env.CODESTACK_SUPERADMIN_PASSWORD;
   const newHash = newPassword ? await argon2.hash(newPassword) : null;
 
   for (const email of emails) {
     // Per-email isolation: one failure logs + continues to the rest.
     try {
-      let user = await users.findOne({ where: { email } });
+      // addSelect is mandatory: passwordHash is `select: false` on the entity, so
+      // a plain findOne leaves it undefined and every `!user.passwordHash` branch
+      // below reads as "no password" — which silently RESET an existing
+      // SuperAdmin's password on each re-run.
+      let user = await users
+        .createQueryBuilder('u')
+        .addSelect('u.passwordHash')
+        .where('u.email = :email', { email })
+        .getOne();
 
       if (!user) {
         user = await users.save(
@@ -56,7 +59,7 @@ async function main(): Promise<void> {
           }),
         );
         console.log(
-          `created SUPERADMIN ${email}${newHash ? ' (with password)' : ' (Clerk-managed)'}`,
+          `created SUPERADMIN ${email}${newHash ? ' (with password)' : ' (NO password — needs a reset to sign in)'}`,
         );
       } else if (user.role !== Role.SUPERADMIN || user.organizationId !== null || !user.isActive) {
         user.role = Role.SUPERADMIN;
@@ -74,26 +77,6 @@ async function main(): Promise<void> {
           console.log(`${email} already SUPERADMIN — backfilled a password`);
         } else {
           console.log(`${email} already an active SUPERADMIN`);
-        }
-      }
-
-      if (clerk) {
-        const list = await clerk.users.getUserList({ emailAddress: [email] });
-        const clerkUser = list.data[0];
-        if (clerkUser) {
-          await clerk.users.updateUserMetadata(clerkUser.id, {
-            publicMetadata: { role: 'superadmin' },
-          });
-          if (!user.clerkUserId) {
-            user.clerkUserId = clerkUser.id;
-            await users.save(user);
-          }
-          console.log(`  set Clerk publicMetadata.role=superadmin for ${email}`);
-        } else {
-          // No Clerk account yet: the webhook only promotes if the SIGNUP itself
-          // carries superadmin metadata, which it won't — re-run this seed after
-          // the user signs up (or import them) to stamp the metadata.
-          console.log(`  (no Clerk user for ${email} yet — re-run this seed after they sign up)`);
         }
       }
     } catch (err) {

@@ -1,12 +1,10 @@
 import { NotFoundException } from '@nestjs/common';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
 import { Role } from '../../common/enums/role.enum';
-import { ClerkService } from '../auth/clerk/clerk.service';
 import { Organization } from '../organizations/entities/organization.entity';
 import { OrganizationStatus } from '../organizations/enums/organization.enums';
 import { OrganizationCache } from '../organizations/organization-cache.service';
 import { OrganizationsService } from '../organizations/organizations.service';
-import { UsersService } from '../users/users.service';
 import { QuotaUsageDto } from './dto/platform-organization-detail.dto';
 import { OrgCountsDto } from './dto/platform-overview.dto';
 import { PlatformMetricsService } from './platform-metrics.service';
@@ -19,8 +17,8 @@ const actor: AuthenticatedUser = {
   organizationId: null,
 };
 
-function setup(clerkConfigured = true, adminClerkId: string | null = 'user_admin') {
-  const org = { id: 'org-1', name: 'Acme U', slug: 'acme', clerkOrgId: null } as Organization;
+function setup() {
+  const org = { id: 'org-1', name: 'Acme U', slug: 'acme' } as Organization;
   const orgs = {
     list: jest.fn().mockResolvedValue([]),
     getById: jest.fn().mockResolvedValue(org),
@@ -29,14 +27,8 @@ function setup(clerkConfigured = true, adminClerkId: string | null = 'user_admin
     setStatus: jest.fn((_id: string, status: OrganizationStatus) =>
       Promise.resolve({ ...org, status }),
     ),
-    attachClerkOrgId: jest.fn().mockResolvedValue({ ...org, clerkOrgId: 'org_clerk_1' }),
   };
   const orgCache = { reload: jest.fn().mockResolvedValue(undefined) };
-  const clerk = {
-    isConfigured: jest.fn().mockReturnValue(clerkConfigured),
-    createOrganization: jest.fn().mockResolvedValue({ id: 'org_clerk_1' }),
-  };
-  const users = { findById: jest.fn().mockResolvedValue({ id: 'sa', clerkUserId: adminClerkId }) };
   const metrics = {
     census: jest
       .fn()
@@ -53,12 +45,10 @@ function setup(clerkConfigured = true, adminClerkId: string | null = 'user_admin
   const svc = new PlatformService(
     orgs as unknown as OrganizationsService,
     orgCache as unknown as OrganizationCache,
-    clerk as unknown as ClerkService,
-    users as unknown as UsersService,
     metrics as unknown as PlatformMetricsService,
     quotas as never,
   );
-  return { svc, orgs, orgCache, clerk, users, metrics, quotas };
+  return { svc, orgs, orgCache, metrics, quotas };
 }
 
 const counts = (patch: Partial<OrgCountsDto>): OrgCountsDto => ({
@@ -67,41 +57,25 @@ const counts = (patch: Partial<OrgCountsDto>): OrgCountsDto => ({
 });
 
 describe('PlatformService.create', () => {
-  it('persists the local org, mirrors it to Clerk, links the id, and reloads the cache', async () => {
-    const { svc, orgs, orgCache, clerk } = setup();
-    await svc.create({ name: 'Acme U', slug: 'acme' }, actor);
+  it('persists the local org and reloads the status cache', async () => {
+    const { svc, orgs, orgCache } = setup();
+    const out = await svc.create({ name: 'Acme U', slug: 'acme' }, actor);
     expect(orgs.create).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'Acme U', slug: 'acme', createdById: 'sa' }),
     );
-    expect(clerk.createOrganization).toHaveBeenCalledWith({
-      name: 'Acme U',
-      slug: 'acme',
-      createdBy: 'user_admin',
-    });
-    expect(orgs.attachClerkOrgId).toHaveBeenCalledWith('org-1', 'org_clerk_1');
+    // Without the reload, TenantContextGuard's OrganizationCache has no entry for
+    // the new org — it treats unknown as not-suspended today, so this is about the
+    // cache being correct rather than about the guard failing.
     expect(orgCache.reload).toHaveBeenCalled();
+    expect(out.id).toBe('org-1');
   });
 
-  it('skips Clerk when unconfigured — the local org is still created', async () => {
-    const { svc, orgs, clerk } = setup(false);
+  it('returns the created row without a second read', async () => {
+    // The re-read existed only to pick up a linkage written after create(); with
+    // no linkage step there is nothing to re-read.
+    const { svc, orgs } = setup();
     await svc.create({ name: 'Acme U' }, actor);
-    expect(orgs.create).toHaveBeenCalled();
-    expect(clerk.createOrganization).not.toHaveBeenCalled();
-    expect(orgs.attachClerkOrgId).not.toHaveBeenCalled();
-  });
-
-  it('skips Clerk when the acting SuperAdmin has no clerk_user_id yet', async () => {
-    const { svc, clerk, orgs } = setup(true, null);
-    await svc.create({ name: 'Acme U' }, actor);
-    expect(clerk.createOrganization).not.toHaveBeenCalled();
-    expect(orgs.attachClerkOrgId).not.toHaveBeenCalled();
-  });
-
-  it('does not fail the request when Clerk org creation throws (local org stands)', async () => {
-    const { svc, clerk, orgs } = setup();
-    clerk.createOrganization.mockRejectedValue(new Error('clerk down'));
-    await expect(svc.create({ name: 'Acme U' }, actor)).resolves.toBeDefined();
-    expect(orgs.attachClerkOrgId).not.toHaveBeenCalled();
+    expect(orgs.getById).not.toHaveBeenCalled();
   });
 });
 
@@ -127,14 +101,12 @@ describe('PlatformService.overview (#63)', () => {
     name: 'Acme U',
     slug: 'acme',
     status: OrganizationStatus.ACTIVE,
-    clerkOrgId: 'org_clerk_1',
   } as Organization;
   const orgB = {
     id: 'org-B',
     name: 'Beta Poly',
     slug: 'beta',
     status: OrganizationStatus.SUSPENDED,
-    clerkOrgId: null,
   } as Organization;
 
   function withCensus() {
@@ -166,8 +138,7 @@ describe('PlatformService.overview (#63)', () => {
     const { svc } = withCensus();
     const out = await svc.overview();
     expect(out.tiles.map((t) => t.id)).toEqual(['org-A', 'org-B']);
-    expect(out.tiles[0]).toEqual(expect.objectContaining({ name: 'Acme U', clerkLinked: true }));
-    expect(out.tiles[1].clerkLinked).toBe(false);
+    expect(out.tiles[0]).toEqual(expect.objectContaining({ name: 'Acme U' }));
     expect(out.tiles[1].counts).toEqual(OrgCountsDto.zero());
   });
 
@@ -178,7 +149,6 @@ describe('PlatformService.overview (#63)', () => {
       total: 2,
       active: 1,
       suspended: 1,
-      clerkLinked: 1,
     });
     expect(out.users).toEqual({
       total: 14, // 12 org members + 2 org-less SuperAdmins

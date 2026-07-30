@@ -37,12 +37,6 @@ export const envValidationSchema = Joi.object({
   AUTH_COOKIE_SECURE: Joi.boolean().default(false),
   AUTH_COOKIE_SAMESITE: Joi.string().valid('lax', 'strict', 'none').default('lax'),
 
-  // Clerk (dual-auth #51) — OPTIONAL so the app still boots on JWT-only with Clerk unset.
-  CLERK_PUBLISHABLE_KEY: Joi.string().allow('').default(''),
-  CLERK_SECRET_KEY: Joi.string().allow('').default(''),
-  CLERK_WEBHOOK_SIGNING_SECRET: Joi.string().allow('').default(''),
-  CLERK_JWT_KEY: Joi.string().allow('').optional(),
-
   // Platform (#62) — comma-separated SuperAdmin bootstrap emails (optional).
   CODESTACK_SUPERADMIN_EMAILS: Joi.string().allow('').default(''),
 

@@ -16,7 +16,7 @@ export class OrgCountsDto {
   @ApiProperty() activeUsers!: number;
   @ApiProperty() inactiveUsers!: number;
   @ApiProperty({
-    description: 'Pending mirrored Clerk invitations (#52) — seats reserved but not yet accepted.',
+    description: 'Pending invites — seats reserved but not yet accepted.',
   })
   pendingInvites!: number;
   @ApiProperty() classrooms!: number;
@@ -52,8 +52,6 @@ export class PlatformOrgTileDto {
   @ApiProperty() slug!: string;
   @ApiProperty({ enum: OrganizationType }) type!: OrganizationType;
   @ApiProperty({ enum: OrganizationStatus }) status!: OrganizationStatus;
-  @ApiProperty({ description: 'True once a Clerk Organization is linked.' })
-  clerkLinked!: boolean;
   @ApiProperty() createdAt!: Date;
   @ApiProperty({ type: OrgCountsDto }) counts!: OrgCountsDto;
 
@@ -64,7 +62,6 @@ export class PlatformOrgTileDto {
       slug: org.slug,
       type: org.type,
       status: org.status,
-      clerkLinked: Boolean(org.clerkOrgId),
       createdAt: org.createdAt,
       counts,
     };
@@ -75,8 +72,6 @@ export class PlatformOrgTotalsDto {
   @ApiProperty() total!: number;
   @ApiProperty() active!: number;
   @ApiProperty() suspended!: number;
-  @ApiProperty({ description: 'Orgs with a linked Clerk Organization.' })
-  clerkLinked!: number;
 }
 
 export class PlatformUserTotalsDto {

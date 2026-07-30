@@ -28,9 +28,7 @@ export class OrganizationCache implements OnModuleInit, OnModuleDestroy {
   private status = new Map<string, OrganizationStatus>();
   private retryTimer?: NodeJS.Timeout;
 
-  constructor(
-    @InjectRepository(Organization) private readonly repo: Repository<Organization>,
-  ) {}
+  constructor(@InjectRepository(Organization) private readonly repo: Repository<Organization>) {}
 
   onModuleInit(): void {
     // Fire-and-forget: never block bootstrap on this read.

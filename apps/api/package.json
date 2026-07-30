@@ -32,12 +32,10 @@
     "seed": "ts-node -r tsconfig-paths/register src/database/seeds/run-seed.ts",
     "seed:deadlines": "ts-node -r tsconfig-paths/register src/database/seeds/seed-deadlines.ts",
     "seed:catalog": "ts-node -r tsconfig-paths/register src/database/seeds/seed-catalog.ts",
-    "seed:superadmin": "ts-node -r tsconfig-paths/register src/database/seeds/seed-superadmin.ts",
-    "import:clerk": "ts-node -r tsconfig-paths/register src/database/scripts/import-users-to-clerk.ts"
+    "seed:superadmin": "ts-node -r tsconfig-paths/register src/database/seeds/seed-superadmin.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.3",
-    "@clerk/backend": "^3.13.0",
     "@nestjs/bullmq": "^10.2.3",
     "@nestjs/common": "^10.4.15",
     "@nestjs/config": "^3.3.0",
@@ -74,7 +72,6 @@
     "rxjs": "^7.8.1",
     "socket.io": "^4.8.1",
     "stripe": "^22.3.2",
-    "svix": "^1.99.1",
     "typeorm": "^0.3.20",
     "undici": "^6.21.0",
     "uuid": "^11.0.3",

@@ -139,7 +139,9 @@ export class ClassroomsService {
       }
     }
     if (dto.professorId !== undefined) {
-      classroom.professor = dto.professorId ? await this.loadProfessor(dto.professorId, actor) : null;
+      classroom.professor = dto.professorId
+        ? await this.loadProfessor(dto.professorId, actor)
+        : null;
       classroom.professorId = classroom.professor?.id ?? null;
     }
 

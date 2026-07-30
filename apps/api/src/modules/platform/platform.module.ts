@@ -1,9 +1,8 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Assignment } from '../assignments/entities/assignment.entity';
-import { AuthModule } from '../auth/auth.module';
 import { Classroom } from '../classrooms/entities/classroom.entity';
-import { OrgInvite } from '../clerk-sync/entities/org-invite.entity';
+import { OrgInvite } from '../invites/entities/org-invite.entity';
 import { OrganizationsModule } from '../organizations/organizations.module';
 import { Problem } from '../problems/entities/problem.entity';
 import { Submission } from '../submissions/entities/submission.entity';
@@ -18,9 +17,8 @@ import { PlatformGuard } from './guards/platform.guard';
 
 /**
  * SuperAdmin platform console (#62, #63). Consumes OrganizationsService +
- * OrganizationCache (tenant root), UsersService (fresh-DB platform authority
- * check + acting admin's clerk id), and ClerkService (exported by AuthModule) to
- * mirror orgs into Clerk.
+ * OrganizationCache (tenant root) and UsersService (PlatformGuard's fresh-DB
+ * authority re-check). AuthModule is NOT imported — nothing here needs it.
  *
  * The cross-org census (#63) registers the counted entities directly instead of
  * importing their feature modules: it only ever reads aggregates, and routing
@@ -33,7 +31,6 @@ import { PlatformGuard } from './guards/platform.guard';
     TypeOrmModule.forFeature([User, Classroom, Problem, Assignment, Submission, OrgInvite]),
     OrganizationsModule,
     UsersModule,
-    AuthModule,
     QuotasModule,
   ],
   controllers: [PlatformController, PlatformOverviewController],

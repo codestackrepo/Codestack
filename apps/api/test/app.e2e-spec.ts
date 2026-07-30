@@ -6,26 +6,63 @@ import { Role } from '../src/common/enums/role.enum';
 import { User } from '../src/modules/users/entities/user.entity';
 import {
   createTestApp,
+  createTestOrg,
   destroyTestApp,
   extractAuthCookies,
+  getDataSource,
   resetThrottleStorage,
   TestAppContext,
 } from './utils/test-app';
 
 jest.setTimeout(120_000); // container boot + migrations can take a while on first pull
 
+/** One student's row in the professor gradebook (`GET .../students-scores`). */
+interface ScoreRow {
+  userId: string;
+  assignmentScore: { finalScore: number | null; maxScore: number };
+  items: { score: number | null; gradingStatus: string; solved?: boolean | null }[];
+}
+
 describe('CodeStack e2e', () => {
   let ctx: TestAppContext;
   let http: import('http').Server;
+  let orgId: string;
 
   beforeAll(async () => {
     ctx = await createTestApp();
     http = ctx.app.getHttpServer();
+    orgId = await createTestOrg(getDataSource(ctx));
   });
 
   afterAll(async () => {
     await destroyTestApp(ctx);
   });
+
+  /**
+   * Puts a just-registered user into the suite's tenant (and optionally promotes
+   * them), then re-authenticates and returns the fresh cookie.
+   *
+   * Both halves are mandatory. `POST /auth/register` writes `organization_id
+   * = NULL` — legal for a STUDENT since 1785520000000, but `TenantContextGuard`
+   * (APP_GUARD slot 2) 403s `no_organization` on every route that is not
+   * `@Public`, `/auth/verify` included, and `chk_users_org_required` rejects an
+   * org-less PROFESSOR outright (23514). So every fixture user needs a tenant,
+   * not just the promoted ones. The re-login is what gets the stamped org and role
+   * into the issued JWT.
+   *
+   * Confined org-less (holding-state) behaviour is deliberately NOT covered here —
+   * it arrives with `@AllowsUnassigned` (#104) and gets its own suite.
+   */
+  const joinOrg = async (email: string, role?: Role): Promise<string> => {
+    const userRepo = ctx.app.get<Repository<User>>(getRepositoryToken(User));
+    await userRepo.update({ email }, { organizationId: orgId, ...(role ? { role } : {}) });
+    resetThrottleStorage(ctx);
+    const login = await request(http)
+      .post('/api/v1/auth/login')
+      .send({ email, password: 'Password1' });
+    expect(login.status).toBe(200);
+    return extractAuthCookies(login.headers['set-cookie'] as unknown as string[]);
+  };
 
   // Runs first, deliberately, before any other test consumes the shared
   // per-IP login throttle bucket for this app instance.
@@ -78,6 +115,11 @@ describe('CodeStack e2e', () => {
       expect(setCookie.some((c) => c.startsWith('access_token='))).toBe(true);
       expect(setCookie.some((c) => c.startsWith('refresh_token='))).toBe(true);
       expect(setCookie.every((c) => /HttpOnly/i.test(c))).toBe(true);
+
+      // Self-registration lands org-less; every later test in this suite drives
+      // authenticated routes, so give her the tenant now.
+      expect(res.body.user.organizationId ?? null).toBeNull();
+      await joinOrg('alice.e2e@codestack.dev');
     });
 
     it('rejects duplicate registration with the same email', async () => {
@@ -135,13 +177,16 @@ describe('CodeStack e2e', () => {
     beforeAll(() => resetThrottleStorage(ctx));
 
     it('blocks a plain student from creating a problem', async () => {
-      const reg = await request(http).post('/api/v1/auth/register').send({
+      await request(http).post('/api/v1/auth/register').send({
         email: 'bob.e2e@codestack.dev',
         password: 'Password1',
         firstName: 'Bob',
         lastName: 'E2E',
       });
-      const cookie = extractAuthCookies(reg.headers['set-cookie'] as unknown as string[]);
+      // In the tenant, so this 403 comes from RolesGuard — an org-less student
+      // would 403 at the tenant gate instead and pass the assertion for the
+      // wrong reason.
+      const cookie = await joinOrg('bob.e2e@codestack.dev');
 
       const res = await request(http)
         .post('/api/v1/problems')
@@ -151,13 +196,13 @@ describe('CodeStack e2e', () => {
     });
 
     it('allows a student to view another STUDENT profile (by design — only staff are hidden)', async () => {
-      const reg = await request(http).post('/api/v1/auth/register').send({
+      await request(http).post('/api/v1/auth/register').send({
         email: 'dan.e2e@codestack.dev',
         password: 'Password1',
         firstName: 'Dan',
         lastName: 'E2E',
       });
-      const cookie = extractAuthCookies(reg.headers['set-cookie'] as unknown as string[]);
+      const cookie = await joinOrg('dan.e2e@codestack.dev');
 
       const aliceLogin = await request(http)
         .post('/api/v1/auth/login')
@@ -169,13 +214,13 @@ describe('CodeStack e2e', () => {
     });
 
     it('blocks a student from viewing a STAFF profile', async () => {
-      const reg = await request(http).post('/api/v1/auth/register').send({
+      await request(http).post('/api/v1/auth/register').send({
         email: 'erin.e2e@codestack.dev',
         password: 'Password1',
         firstName: 'Erin',
         lastName: 'E2E',
       });
-      const studentCookie = extractAuthCookies(reg.headers['set-cookie'] as unknown as string[]);
+      const studentCookie = await joinOrg('erin.e2e@codestack.dev');
 
       const staffReg = await request(http).post('/api/v1/auth/register').send({
         email: 'staffmember.e2e@codestack.dev',
@@ -184,8 +229,10 @@ describe('CodeStack e2e', () => {
         lastName: 'Member',
       });
       const staffId: string = staffReg.body.user.id;
-      const userRepo = ctx.app.get<Repository<User>>(getRepositoryToken(User));
-      await userRepo.update({ id: staffId }, { role: Role.PROFESSOR });
+      // The promotion has to carry the org with it: chk_users_org_required's CASE
+      // form exempts only 'superadmin' and 'student', so an org-less PROFESSOR
+      // raises 23514.
+      await joinOrg('staffmember.e2e@codestack.dev', Role.PROFESSOR);
 
       const res = await request(http).get(`/api/v1/users/${staffId}`).set('Cookie', studentCookie);
       expect(res.status).toBe(403);
@@ -195,6 +242,7 @@ describe('CodeStack e2e', () => {
   describe('judge flow: submit -> async BullMQ judge -> verdict -> scoring', () => {
     let professorCookie: string;
     let studentCookie: string;
+    let studentId: string;
     let assignmentId: string;
     let assignmentProblemId: string;
     let submissionId: string;
@@ -209,15 +257,10 @@ describe('CodeStack e2e', () => {
       });
       const profId: string = profReg.body.user.id;
 
-      // Self-registration always forces STUDENT — promote directly via the
-      // repository (a normal e2e-setup shortcut) then re-login so the issued
-      // JWT actually carries the updated role claim.
-      const userRepo = ctx.app.get<Repository<User>>(getRepositoryToken(User));
-      await userRepo.update({ id: profId }, { role: Role.PROFESSOR });
-      const profLogin = await request(http)
-        .post('/api/v1/auth/login')
-        .send({ email: 'prof.e2e@codestack.dev', password: 'Password1' });
-      professorCookie = extractAuthCookies(profLogin.headers['set-cookie'] as unknown as string[]);
+      // Self-registration always forces STUDENT and no org — stamp both via the
+      // repository (a normal e2e-setup shortcut) then re-login so the issued JWT
+      // carries the updated role and tenant.
+      professorCookie = await joinOrg('prof.e2e@codestack.dev', Role.PROFESSOR);
 
       const studentReg = await request(http).post('/api/v1/auth/register').send({
         email: 'carol.e2e@codestack.dev',
@@ -225,8 +268,10 @@ describe('CodeStack e2e', () => {
         firstName: 'Carol',
         lastName: 'E2E',
       });
-      studentCookie = extractAuthCookies(studentReg.headers['set-cookie'] as unknown as string[]);
-      const studentId: string = studentReg.body.user.id;
+      studentId = studentReg.body.user.id;
+      // Same tenant as the professor, or the classroom's studentIds picker is a
+      // cross-org reference and assertSameOrg 403s it.
+      studentCookie = await joinOrg('carol.e2e@codestack.dev');
 
       const classroom = await request(http)
         .post('/api/v1/classrooms')
@@ -268,11 +313,19 @@ describe('CodeStack e2e', () => {
         });
       const problemId: string = problem.body.id;
 
-      const ap = await request(http)
-        .post(`/api/v1/assignments/${assignmentId}/problems/import`)
+      // Attach as an ASSIGNMENT ITEM, not via the legacy
+      // `POST /assignments/:id/problems/import`. Both create the
+      // AssignmentProblem, but only this path also writes the `assignment_items`
+      // row — and the gradebook (`loadItems`) and score rollup
+      // (`recomputeAssignmentScore`) are both keyed on items. Imported-only
+      // problems are invisible to scoring entirely; see the note in the PR.
+      const item = await request(http)
+        .post(`/api/v1/assignments/${assignmentId}/items`)
         .set('Cookie', professorCookie)
-        .send({ sourceProblemId: problemId, score: 10, languages: ['python'] });
-      assignmentProblemId = ap.body.id;
+        .send({ kind: 'coding', sourceProblemId: problemId, score: 10, languages: ['python'] });
+      expect(item.status).toBe(201);
+      assignmentProblemId = item.body.assignmentProblemId;
+      expect(assignmentProblemId).toBeTruthy();
     });
 
     it('submit enqueues the job and returns 202 Pending immediately', async () => {
@@ -290,12 +343,16 @@ describe('CodeStack e2e', () => {
       submissionId = res.body.submissionId;
     });
 
-    it('the real BullMQ worker judges it and polling converges to Accepted with per-testcase results', async () => {
+    // Polled as the PROFESSOR, not the student. A student's own ASSIGNMENT
+    // submission is blinded (§9.1) — every verdict-bearing field is coarsened —
+    // so the student's view can never observe convergence at all. Staff is the
+    // only vantage point from which "the worker judged it" is even visible.
+    it('the real BullMQ worker judges it and staff polling converges to Accepted with per-testcase results', async () => {
       let final: Record<string, unknown> | undefined;
       for (let i = 0; i < 50; i++) {
         const res = await request(http)
           .get(`/api/v1/submissions/${submissionId}`)
-          .set('Cookie', studentCookie);
+          .set('Cookie', professorCookie);
         if (res.body.status !== 'Pending' && res.body.status !== 'Running') {
           final = res.body;
           break;
@@ -310,13 +367,74 @@ describe('CodeStack e2e', () => {
       expect((final?.testCaseResults as unknown[]).length).toBe(2);
     });
 
-    it('the award-on-accept scoring event fired: student now has full points', async () => {
+    it("blinds the student's own view of that same finalized assignment submission", async () => {
+      const res = await request(http)
+        .get(`/api/v1/submissions/${submissionId}`)
+        .set('Cookie', studentCookie);
+      expect(res.status).toBe(200);
+      // BLIND_STATUS — "submitted, under review", never the real verdict.
+      expect(res.body.status).toBe('submitted');
+      expect(res.body.passedTestcaseCount).toBe(0);
+      expect(res.body.totalTestcaseCount).toBe(0);
+      expect(res.body.testCaseResults).toBeUndefined();
+    });
+
+    // Read through the PROFESSOR gradebook, which is never reveal-gated. The
+    // student's own /my-score would report finalScore: null regardless, because the
+    // assignment is not GRADE_PUBLISHED (§9.2).
+    const gradebookRow = async (): Promise<ScoreRow> => {
+      const res = await request(http)
+        .get(`/api/v1/grading/assignments/${assignmentId}/students-scores`)
+        .set('Cookie', professorCookie);
+      expect(res.status).toBe(200);
+      const row = (res.body as ScoreRow[]).find((r) => r.userId === studentId);
+      expect(row).toBeDefined();
+      return row as ScoreRow;
+    };
+
+    it('finalizing marks the coding item awaiting review and awards NOTHING', async () => {
+      // Award-on-accept was deliberately removed (§5.3, decision #3): an Accepted
+      // verdict tracks the attempt, pins the representative submission and moves
+      // the item to 'submitted', but scoring is professor-driven, so the points
+      // stay 0 until someone grades.
+      const row = await gradebookRow();
+      expect(row.items[0].gradingStatus).toBe('submitted');
+      expect(row.items[0].score).toBe(0);
+      expect(row.assignmentScore.finalScore).toBe(0);
+      expect(row.assignmentScore.maxScore).toBe(10);
+      // `solved` is NOT "the verdict was Accepted" — it is
+      // `submissionId !== null && score > 0`, so it stays false through an
+      // accepted-but-ungraded item. Pinned here because the name invites the
+      // other reading.
+      expect(row.items[0].solved).toBe(false);
+    });
+
+    it('a professor grading the item rolls the score up to the assignment total', async () => {
+      const graded = await request(http)
+        .patch(`/api/v1/grading/problems/${assignmentProblemId}/students/${studentId}`)
+        .set('Cookie', professorCookie)
+        .send({ score: 10, feedback: 'Correct.' });
+      expect(graded.status).toBe(200);
+
+      const row = await gradebookRow();
+      expect(row.items[0].score).toBe(10);
+      expect(row.items[0].gradingStatus).toBe('graded');
+      expect(row.assignmentScore.finalScore).toBe(10);
+    });
+
+    // KNOWN DEFECT, asserted so it cannot change silently: `my-score` is a
+    // student's own score, but it sits on GradingController, which carries a
+    // class-level @RequiresModule(GRADING) — and MODULE_ACCESS_DEFAULTS marks
+    // GRADING `student: false` ("staff-only gradebook"). So the one grading route
+    // written FOR students is the one students cannot reach. Fixing it is a
+    // module-access decision (either the route leaves this controller or it opts
+    // out of the gate), not an e2e change — see the module/feature-perms epic.
+    it('403s a student on /my-score today, because GRADING is staff-only by default', async () => {
       const res = await request(http)
         .get(`/api/v1/grading/assignments/${assignmentId}/my-score`)
         .set('Cookie', studentCookie);
-      expect(res.status).toBe(200);
-      expect(res.body.assignmentScore.finalScore).toBe(10);
-      expect(res.body.problems[0].solved).toBe(true);
+      expect(res.status).toBe(403);
+      expect(res.body.reason).toBe('module_disabled');
     });
 
     it('a second submission within the same minute is throttled (1/min)', async () => {
@@ -328,13 +446,15 @@ describe('CodeStack e2e', () => {
     });
 
     it('a student cannot view another classroom submission (IDOR check)', async () => {
-      const otherReg = await request(http).post('/api/v1/auth/register').send({
+      await request(http).post('/api/v1/auth/register').send({
         email: 'eve.e2e@codestack.dev',
         password: 'Password1',
         firstName: 'Eve',
         lastName: 'E2E',
       });
-      const otherCookie = extractAuthCookies(otherReg.headers['set-cookie'] as unknown as string[]);
+      // Same tenant on purpose: the 403 must come from classroom membership, not
+      // from the tenant gate.
+      const otherCookie = await joinOrg('eve.e2e@codestack.dev');
       const res = await request(http)
         .get(`/api/v1/submissions/${submissionId}`)
         .set('Cookie', otherCookie);

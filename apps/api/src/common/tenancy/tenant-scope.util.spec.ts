@@ -39,7 +39,9 @@ describe('scopeToOrg', () => {
   it('unions global rows when includeGlobal is set', () => {
     const qb = makeQb();
     scopeToOrg(qb, 'p', actor(), { includeGlobal: true });
-    expect(qb.calls[0].sql).toBe('(p.organizationId = :__scopeActorOrg OR p.organizationId IS NULL)');
+    expect(qb.calls[0].sql).toBe(
+      '(p.organizationId = :__scopeActorOrg OR p.organizationId IS NULL)',
+    );
   });
 
   it('does not filter for a superadmin', () => {

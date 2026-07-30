@@ -14,7 +14,7 @@ import { AssignmentProblem } from '../../modules/assignments/entities/assignment
 import { ProblemTemplate } from '../../modules/assignments/entities/problem-template.entity';
 import { AssignmentStatus } from '../../modules/assignments/enums/assignment-status.enum';
 
-// Kept in step with run-seed.ts — see the note there on Clerk's breach check.
+// Kept in step with run-seed.ts — see the note there.
 const PASSWORD = 'CodeStack#Dev2026!';
 const DAY = 86_400_000;
 
@@ -110,7 +110,15 @@ async function upsertUser(
   const existing = await repo.findOne({ where: { email } });
   if (existing) return existing;
   return repo.save(
-    repo.create({ email, role, firstName, lastName, passwordHash, isActive: true, organizationId: LEGACY_ORG_ID }),
+    repo.create({
+      email,
+      role,
+      firstName,
+      lastName,
+      passwordHash,
+      isActive: true,
+      organizationId: LEGACY_ORG_ID,
+    }),
   );
 }
 
@@ -183,7 +191,12 @@ async function attachProblem(assignment: Assignment, problem: Problem): Promise<
   });
   if (!ap) {
     ap = await apRepo.save(
-      apRepo.create({ assignmentId: assignment.id, problemId: problem.id, score: 10, isImported: true }),
+      apRepo.create({
+        assignmentId: assignment.id,
+        problemId: problem.id,
+        score: 10,
+        isImported: true,
+      }),
     );
   }
 
@@ -209,7 +222,10 @@ async function attachProblem(assignment: Assignment, problem: Problem): Promise<
 
 /** Mark every OTHER open assignment in `classroom` as COMPLETED so the deadline
  *  demo is deterministic. Returns the titles retired. */
-async function retireOtherAssignments(classroom: Classroom, keepTitles: string[]): Promise<string[]> {
+async function retireOtherAssignments(
+  classroom: Classroom,
+  keepTitles: string[],
+): Promise<string[]> {
   const repo = dataSource.getRepository(Assignment);
   const open = await repo.find({
     where: [

@@ -158,7 +158,13 @@ async function validateProblem(raw: unknown): Promise<ProblemReport> {
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, cases.length) }, worker));
   }
 
-  return { slug: cp.slug, title: cp.title, difficulty: cp.difficulty, ok: failures.length === 0, failures };
+  return {
+    slug: cp.slug,
+    title: cp.title,
+    difficulty: cp.difficulty,
+    ok: failures.length === 0,
+    failures,
+  };
 }
 
 async function main(): Promise<void> {
@@ -169,7 +175,9 @@ async function main(): Promise<void> {
   const problems: unknown[] = Array.isArray(rawJson) ? rawJson : rawJson.problems;
   if (!Array.isArray(problems)) throw new Error('input must be an array or { problems: [...] }');
 
-  console.log(`Validating ${problems.length} candidate problem(s) against Piston at ${PISTON_URL}\n`);
+  console.log(
+    `Validating ${problems.length} candidate problem(s) against Piston at ${PISTON_URL}\n`,
+  );
   const reports: ProblemReport[] = [];
   // Validate problems sequentially (each already fans its own cases out); keeps
   // total Piston in-flight bounded and output readable.
@@ -191,7 +199,9 @@ async function main(): Promise<void> {
   }
 
   const passed = reports.filter((r) => r.ok);
-  console.log(`\n==== ${passed.length}/${reports.length} problems PASS all cases in Python + JavaScript ====`);
+  console.log(
+    `\n==== ${passed.length}/${reports.length} problems PASS all cases in Python + JavaScript ====`,
+  );
   const byDiff = passed.reduce<Record<string, number>>((acc, r) => {
     acc[r.difficulty] = (acc[r.difficulty] || 0) + 1;
     return acc;
@@ -199,7 +209,10 @@ async function main(): Promise<void> {
   console.log(`passing by difficulty: ${JSON.stringify(byDiff)}`);
 
   if (outPath) {
-    writeFileSync(outPath, JSON.stringify({ reports, passingSlugs: passed.map((r) => r.slug) }, null, 2));
+    writeFileSync(
+      outPath,
+      JSON.stringify({ reports, passingSlugs: passed.map((r) => r.slug) }, null, 2),
+    );
     console.log(`report written to ${outPath}`);
   }
   process.exit(passed.length === reports.length ? 0 : 1);

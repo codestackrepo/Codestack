@@ -1,11 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
-import { ClerkService } from '../auth/clerk/clerk.service';
 import { Organization } from '../organizations/entities/organization.entity';
 import { OrganizationStatus } from '../organizations/enums/organization.enums';
 import { OrganizationCache } from '../organizations/organization-cache.service';
 import { OrganizationsService } from '../organizations/organizations.service';
-import { UsersService } from '../users/users.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import {
   OrgQuotaUsageDto,
@@ -19,21 +17,16 @@ import { QuotaService, QuotaUsageSummary } from '../quotas/quota.service';
 import { PlatformMetricsService } from './platform-metrics.service';
 
 /**
- * SuperAdmin platform operations (#62, #63). Orchestrates org CRUD across the local
- * tenant root (OrganizationsService), the Clerk Organization mirror (ClerkService),
- * and the status cache (OrganizationCache). The local row is authoritative for FK
- * integrity; Clerk mirroring is best-effort so the platform works with Clerk unset.
+ * SuperAdmin platform operations (#62, #63). Orchestrates org CRUD across the
+ * tenant root (OrganizationsService) and the status cache (OrganizationCache) —
+ * the `organizations` row is the sole authority for a tenant's existence.
  * Cross-org read-side aggregation lives in PlatformMetricsService.
  */
 @Injectable()
 export class PlatformService {
-  private readonly log = new Logger(PlatformService.name);
-
   constructor(
     private readonly orgs: OrganizationsService,
     private readonly orgCache: OrganizationCache,
-    private readonly clerk: ClerkService,
-    private readonly users: UsersService,
     private readonly metrics: PlatformMetricsService,
     private readonly quotas: QuotaService,
   ) {}
@@ -65,7 +58,6 @@ export class PlatformService {
         total: orgs.length,
         active: orgs.filter((o) => o.status === OrganizationStatus.ACTIVE).length,
         suspended: orgs.filter((o) => o.status === OrganizationStatus.SUSPENDED).length,
-        clerkLinked: orgs.filter((o) => Boolean(o.clerkOrgId)).length,
       },
       users: {
         total: sum((c) => c.users) + census.platform.superAdmins,
@@ -142,9 +134,8 @@ export class PlatformService {
       type: dto.type,
       createdById: actor.id,
     });
-    await this.provisionClerkOrg(org, actor);
     await this.orgCache.reload(); // pick up the new (active) org for the status guard
-    return this.orgs.getById(org.id); // re-read so clerkLinked reflects any linkage
+    return org;
   }
 
   update(id: string, dto: UpdateOrganizationDto): Promise<Organization> {
@@ -161,44 +152,5 @@ export class PlatformService {
     const org = await this.orgs.setStatus(id, OrganizationStatus.ACTIVE);
     await this.orgCache.reload();
     return org;
-  }
-
-  /**
-   * Best-effort Clerk Organization creation + linkage. An unlinked org
-   * (clerk_org_id = NULL) is a fully supported state — the app runs with Clerk
-   * off — so this never fails the request. Skipped (with a warning) when Clerk is
-   * unconfigured or the acting SuperAdmin isn't Clerk-linked yet.
-   *
-   * On SUCCESS the organization.created webhook also fires and dedupes by slug, so
-   * linkage is race-safe. On FAILURE of createOrganization no Clerk org exists, so
-   * no webhook fires and clerk_org_id stays NULL until a manual re-provision. It is
-   * NOT auto-healed; `clerkLinked: false` on the org detail/tile is how a SuperAdmin
-   * spots it, and a re-provision endpoint is still a follow-up.
-   */
-  private async provisionClerkOrg(org: Organization, actor: AuthenticatedUser): Promise<void> {
-    if (!this.clerk.isConfigured() || org.clerkOrgId) return;
-
-    const admin = await this.users.findById(actor.id);
-    if (!admin?.clerkUserId) {
-      this.log.warn(
-        `Org ${org.id} created without a Clerk Organization — SuperAdmin ${actor.id} has no clerk_user_id yet`,
-      );
-      return;
-    }
-
-    try {
-      const clerkOrg = await this.clerk.createOrganization({
-        name: org.name,
-        slug: org.slug,
-        createdBy: admin.clerkUserId,
-      });
-      await this.orgs.attachClerkOrgId(org.id, clerkOrg.id);
-    } catch (err) {
-      this.log.error(
-        `Clerk Organization creation failed for org ${org.id} — it stays unlinked ` +
-          `(clerk_org_id NULL) until a manual re-provision: ${(err as Error).message}`,
-      );
-      // Local org remains authoritative + fully usable; no auto-backfill on failure.
-    }
   }
 }

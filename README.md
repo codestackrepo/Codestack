@@ -14,9 +14,11 @@ apps/
   api/    NestJS + TypeScript + PostgreSQL backend  → apps/api/README.md
   web/    React + Vite frontend                     → apps/web/README.md
 docs/
-  PLATFORM-PLAN.md   multi-tenancy / SuperAdmin / Clerk / quotas design
-  REDESIGN.md        frontend information architecture
+  ui-revamp-roadmap.md   frontend information architecture
 ```
+
+Design docs live in the GitHub issues, not in `docs/` — each epic's tracking issue carries its
+locked decisions, build order and invariants.
 
 ---
 
@@ -27,7 +29,6 @@ docs/
 - [Setup](#setup)
 - [Database: migrations](#database-migrations)
 - [Database: seeding](#database-seeding)
-- [Clerk setup (in detail)](#clerk-setup-in-detail)
 - [Scripts](#scripts)
 - [Contributing](#contributing)
 - [Troubleshooting](#troubleshooting)
@@ -43,7 +44,7 @@ docs/
    Browser (React)        │  API  (NestJS, stateless)│
         │                 │                          │
         │ REST /api/v1 ──▶│  guard chain (per req):  │
-        │                 │   1 authn (Clerk | JWT)  │
+        │                 │   1 authn (JWT cookie)   │
         │                 │   2 tenant gate          │
         │                 │   3 RBAC (role rank)     │
         │                 │   4 module access        │
@@ -162,11 +163,11 @@ acceptance net-zero and an org can't oversubscribe by minting invites.
 
 ### Not yet built
 
-Clerk-invitation onboarding and CSV bulk enrolment are designed in `docs/PLATFORM-PLAN.md` but not
-implemented, and no endpoint sets a quota limit yet (the service method exists; the SuperAdmin
-console will call it). The **AI** (notes/PDF → generated problems) and **Stripe billing** modules
-exist in the tree but are deliberately **not registered** in `app.module.ts`, so their endpoints are
-absent at runtime.
+No endpoint sets a quota limit yet (the service method exists; the SuperAdmin console will call
+it). SMTP invite onboarding, bulk CSV/XLSX enrolment and password reset are in flight — see the
+`epic:declerk` tracking issue. The **AI** (notes/PDF → generated problems) and **Stripe billing**
+modules exist in the tree but are deliberately **not registered** in `app.module.ts`, so their
+endpoints are absent at runtime.
 
 ---
 
@@ -180,7 +181,7 @@ absent at runtime.
 | Queue / cache / pub-sub | BullMQ + Redis 7 |
 | Code sandbox | self-hosted [Piston](https://github.com/engineer-man/piston) |
 | Realtime | Socket.IO (`/ws/submissions`) |
-| Auth | **Clerk** (Bearer) *or* legacy JWT httpOnly cookies + argon2 — both at once |
+| Auth | Local email + password: argon2 + JWT in httpOnly cookies (one path, no third party) |
 | API docs | OpenAPI / Swagger at `/api/docs` |
 
 ---
@@ -211,8 +212,8 @@ CORS_ORIGINS=http://localhost:5173     # must match the web dev-server origin
 ```
 
 Config is validated by Joi at boot, so a missing required value fails fast with a named error rather
-than at first use. **Every Clerk key is optional** — with them unset the app runs entirely on JWT
-cookies, so a fresh clone boots without a Clerk account.
+than at first use. The five values above are the only ones a fresh clone needs; everything else in
+`.env.sample` has a working default.
 
 ### 2. Start infrastructure
 
@@ -281,11 +282,6 @@ Demo users are created in the seeded "Legacy University" tenant. The password li
 `apps/api/src/database/seeds/run-seed.ts` (`PASSWORD`), and their emails are printed when the seed
 finishes.
 
-> **Pick a password that Clerk will also accept.** Clerk rejects any password found in a public
-> breach corpus *at sign-in*, so a weak-but-convenient demo password can pass local argon2 login and
-> still be refused by Clerk with "this password has been found as part of a breach". See
-> [Clerk setup](#clerk-setup-in-detail).
-
 SuperAdmin bootstrap:
 
 ```bash
@@ -294,95 +290,13 @@ CODESTACK_SUPERADMIN_PASSWORD='<strong password>' \
   pnpm --filter @codestack/api seed:superadmin
 ```
 
-This is idempotent and safe to re-run: it promotes an existing user in place (keeping their
-password), and when Clerk is configured it also stamps that Clerk user's
-`publicMetadata.role = 'superadmin'`. If the person has no Clerk account yet, **re-run the seed after
-they sign up** — the webhook only promotes a signup that already carries the metadata.
+This is idempotent and safe to re-run: it promotes an existing user in place and keeps their
+password. Omitting `CODESTACK_SUPERADMIN_PASSWORD` creates the row with **no** password hash, which
+cannot sign in at all until a password reset — set one unless you mean that.
 
----
-
-## Clerk setup (in detail)
-
-Auth is **dual-mode**. The API accepts either a Clerk Bearer token *or* the legacy JWT cookie, and
-both work simultaneously — so Clerk can be adopted (or skipped) without a cutover. Skip this whole
-section to develop on cookie auth.
-
-In every case the **local database is authoritative** for `role` and `organizationId`. A Clerk token
-is only proof of identity; the API resolves the local user by `clerk_user_id` and reads permissions
-from the DB, never from token claims. Clerk org membership is therefore optional.
-
-### 1. Create the application
-
-1. Create a Clerk application (a **development** instance is fine locally).
-2. Copy the keys into your env files:
-
-   ```ini
-   # apps/api/.env
-   CLERK_PUBLISHABLE_KEY=pk_test_...
-   CLERK_SECRET_KEY=sk_test_...
-
-   # apps/web/.env  — presence of this switches the frontend into Clerk mode
-   VITE_CLERK_PUBLISHABLE_KEY=pk_test_...
-   ```
-
-3. Restart both apps. The API activates the Clerk Bearer path; the web app renders Clerk's sign-in.
-
-### 2. Instance settings that will bite you
-
-These live in the Clerk dashboard, not in code. Every one below produced a real, confusing failure:
-
-| Setting | Symptom if wrong | What to do |
-|---|---|---|
-| **Email as a sign-in identifier** | `form_param_format_invalid: Identifier is invalid` for a correct email | Keep *Email address* enabled **and** marked "used for sign-in". If only username is, users must sign in with their username instead. |
-| **Compromised-password rejection** | Correct password → "This password has been found as part of a breach", forced reset | Use a password that isn't in a breach corpus. The check runs **at sign-in**, so an imported hash and a Backend-API `verifyPassword` both pass while the UI still refuses. |
-| **Username required** | Every Backend-API `createUser` fails `422 form_data_missing` | Either don't require usernames, or let the import script supply one (it retries with a name derived from the email). |
-| **Email-code MFA** | Password accepted, then `needs_second_factor` with an emailed code | Turn it off for demo tenants, or use real mailboxes. A fake domain can never receive the code, and Clerk's dev bypass code works only for `+clerk_test` addresses. |
-| **Force organization selection** | After sign-in, "Setup your organization" blocks the session | Turn it off — this app never reads org membership from Clerk. Creating an org there makes a Clerk-only org with no local counterpart. |
-
-### 3. Webhook (keeps the local mirror in sync)
-
-Add a webhook endpoint pointing at `POST {API_URL}/api/v1/webhooks/clerk` and subscribe to:
-
-```
-user.created                      user.updated                      user.deleted
-organization.created              organization.updated              organization.deleted
-organizationMembership.created    organizationMembership.updated    organizationMembership.deleted
-organizationInvitation.created    organizationInvitation.accepted   organizationInvitation.revoked
-```
-
-Copy the endpoint's signing secret into `CLERK_WEBHOOK_SIGNING_SECRET`. Handlers are **idempotent and
-order-tolerant** (deliveries are deduped through a `webhook_events` ledger), so a redelivery or an
-out-of-order event is safe.
-
-Locally, Clerk can't reach `localhost` — expose it with a tunnel (`cloudflared tunnel --url
-http://localhost:3000`, ngrok, etc.) and use that hostname in the endpoint URL. Without a tunnel
-everything still works; the local mirror just isn't updated by Clerk-side changes.
-
-### 4. Organization roles (optional)
-
-If you do use Clerk organizations, local roles map to Clerk org roles as
-`admin → org:admin`, `professor → org:professor`, `student → org:member`. **`org:professor` is a
-custom role you must create in the dashboard**, or adding a professor to an org silently fails.
-
-### 5. Importing existing users
-
-To move users who already have local argon2 passwords into Clerk:
-
-```bash
-pnpm --filter @codestack/api import:clerk -- --dry-run   # offline preview, zero Clerk calls
-pnpm --filter @codestack/api import:clerk                # create + link
-pnpm --filter @codestack/api import:clerk -- --limit=50  # staged rollout
-```
-
-It imports the **password digest**, so users keep their existing password — and because a digest is
-imported rather than validated, a password Clerk's strength policy would reject as plaintext still
-migrates. Already-linked users are skipped, and an existing Clerk account for the same email is
-linked rather than duplicated, so the script is re-runnable. Pass `--sync-password` to push the local
-digest onto an account that already exists in Clerk (off by default — it overwrites a live
-credential).
-
-The legacy argon2 login path stays live throughout; the script only adds `clerk_user_id`. Verify
-sign-in for imported users **before** running the gated migration that drops password auth.
+This seed is the **only** way a SUPERADMIN comes into existence. Self-registration, invite
+acceptance and `PATCH /users` all refuse the role, and `chk_users_org_required` refuses a
+`superadmin` row that carries an `organization_id`.
 
 ---
 
@@ -417,11 +331,12 @@ Work is tracked as GitHub issues, one branch and one PR per issue.
    ```bash
    git fetch origin && git checkout -b feat/<issue>-<short-slug> origin/main
    ```
-   `feat/64-module-feature-hierarchy`, `fix/clerk-import-username-sync` — `feat/` or `fix/`, the
+   `feat/64-module-feature-hierarchy`, `fix/105-users-role-escalation` — `feat/` or `fix/`, the
    issue number, then a slug.
-3. **Read the design section the issue points at** in `docs/PLATFORM-PLAN.md` before writing code.
-   Issues cite it (`Plan ref: §5.5`), and the plan also assigns a **single owner per shared file** —
-   if a file belongs to another subsystem, add a new file rather than editing across that boundary.
+3. **Read the issue and its epic's tracking issue before writing code.** The tracking issue carries
+   the locked decisions and the cross-cutting invariants, and it assigns a **single owner per shared
+   file** — if a file belongs to another subsystem, add a new file rather than editing across that
+   boundary.
 4. **Verify before pushing** (see the checklist below).
 5. **Open a PR** whose body says `Closes #<issue>`, states what changed and *why*, and records how
    it was verified. Call out any deliberate deviation from the plan and the reason — reviewers read
@@ -451,8 +366,8 @@ Conventional commits with a scoped area, referencing the issue:
 
 ```
 feat(api/access): org-scoped module/feature hierarchy + FeatureGuard (#64)
-fix(api/seeds): demo password Clerk will actually accept at sign-in
-docs: rewrite README — live URL, system design, setup, Clerk guide
+fix(api/seeds): seed:superadmin silently reset an existing password every re-run
+docs: rewrite README — live URL, system design, setup, contributing
 ```
 
 Scopes follow the code: `api/platform`, `api/auth`, `api/seeds`, `web/auth`, `migrations`, `docs`.
