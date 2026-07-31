@@ -61,7 +61,13 @@ function setup(opts: Opts = {}) {
     }
     if (sql.includes('UPDATE org_invites')) {
       writes.push('resend');
-      return Promise.resolve([{ id: 'inv-r', email: 'p@x.dev', first_name: 'P', last_name: 'I' }]);
+      // The REAL driver shape for UPDATE ... RETURNING: a [rows, rowCount] tuple,
+      // NOT the rows. Mocking the rows directly is what let a wrong read of this
+      // ship — the mock has to lie the same way the driver does.
+      return Promise.resolve([
+        [{ id: 'inv-r', email: 'p@x.dev', first_name: 'P', last_name: 'I' }],
+        1,
+      ]);
     }
     return Promise.resolve([]);
   });

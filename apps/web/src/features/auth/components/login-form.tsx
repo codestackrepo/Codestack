@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -15,9 +15,9 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 
-const FIELD =
-  'h-10 bg-muted/30 pl-9 transition-colors focus-visible:bg-transparent';
-const ICON = 'pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground';
+const FIELD = 'h-10 bg-muted/30 pl-9 transition-colors focus-visible:bg-transparent';
+const ICON =
+  'pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground';
 import { useAuth } from '../context/auth-context';
 import { parseApiError } from '@/lib/api-client';
 
@@ -103,6 +103,14 @@ export function LoginForm({ onSwitch }: { onSwitch: () => void }) {
               </FormItem>
             )}
           />
+          <div className="flex justify-end">
+            <Link
+              to="/forgot-password"
+              className="text-sm font-medium text-muted-foreground hover:text-primary hover:underline"
+            >
+              Forgot password?
+            </Link>
+          </div>
           {formError && <p className="text-sm text-destructive">{formError}</p>}
           <Button type="submit" size="lg" className="w-full" disabled={form.formState.isSubmitting}>
             {form.formState.isSubmitting ? 'Signing in…' : 'Sign in'}

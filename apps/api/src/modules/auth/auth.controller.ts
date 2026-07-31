@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Post, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post, Res, UseGuards } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
@@ -13,7 +13,9 @@ import { AuthService } from './auth.service';
 import { clearAuthCookies, setAuthCookies } from './cookie.util';
 import { SessionContextDto } from './dto/session-context.dto';
 import { LoginDto } from './dto/login.dto';
+import { ForgotPasswordDto, ResetPasswordDto, ResetPreviewDto } from './dto/password-reset.dto';
 import { RegisterDto } from './dto/register.dto';
+import { PasswordResetService } from './password-reset.service';
 import { JwtRefreshGuard } from './guards/jwt-refresh.guard';
 import { SessionContextService } from './session-context.service';
 
@@ -25,6 +27,7 @@ export class AuthController {
   constructor(
     private readonly auth: AuthService,
     private readonly session: SessionContextService,
+    private readonly passwordReset: PasswordResetService,
     config: ConfigService,
   ) {
     this.authCfg = config.getOrThrow<AuthConfig>('auth');
@@ -68,6 +71,53 @@ export class AuthController {
     const tokens = await this.auth.refresh(user);
     setAuthCookies(res, tokens, this.authCfg);
     return { message: 'Token refreshed' };
+  }
+
+  /**
+   * ALWAYS 200, with an identical body, whether or not the address exists.
+   *
+   * `users.email` is globally unique, so any discrimination here — a different
+   * status, a different message, even a materially different latency — is a
+   * definite "this person has an account", i.e. an enumeration oracle against a
+   * public login page. The service decides silently whether to send anything.
+   */
+  @Public()
+  @Post('forgot-password')
+  @HttpCode(200)
+  @Throttle({ minute: { limit: 3, ttl: 60_000 }, hour: { limit: 10, ttl: 3_600_000 } })
+  async forgotPassword(@Body() dto: ForgotPasswordDto): Promise<{ message: string }> {
+    await this.passwordReset.requestReset(dto.email);
+    return {
+      message: 'If an account exists for that address, a password reset link is on its way.',
+    };
+  }
+
+  /**
+   * Never 4xxs, mirroring `GET /invites/:token/preview`. A 4xx would put the raw
+   * token into AllExceptionsFilter's `path` field and thence into the logs.
+   */
+  @Public()
+  @Get('reset/:token/preview')
+  @Throttle({ minute: { limit: 20, ttl: 60_000 }, hour: { limit: 100, ttl: 3_600_000 } })
+  preview(@Param('token') token: string): Promise<ResetPreviewDto> {
+    return this.passwordReset.preview(token);
+  }
+
+  /** Consumes the token, sets the password, and signs the user in. */
+  @Public()
+  @Post('reset-password')
+  @HttpCode(200)
+  @Throttle({ minute: { limit: 5, ttl: 60_000 }, day: { limit: 50, ttl: 86_400_000 } })
+  async resetPassword(
+    @Body() dto: ResetPasswordDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ user: UserResponseDto; message: string }> {
+    const user = await this.passwordReset.resetPassword(dto.token, dto.password);
+    // Landing signed in is the point: the alternative is bouncing someone who has
+    // just proved mailbox access to a login form to retype what they set 2s ago.
+    const tokens = await this.auth.login(user);
+    setAuthCookies(res, tokens, this.authCfg);
+    return { user: UserResponseDto.from(user), message: 'Password updated' };
   }
 
   @Public()

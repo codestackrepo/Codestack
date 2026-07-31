@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
@@ -8,10 +9,13 @@ import { ModuleAccessModule } from '../module-access/module-access.module';
 import { FeatureGuard } from '../module-access/guards/feature.guard';
 import { ModuleAccessGuard } from '../module-access/guards/module-access.guard';
 import { OrganizationsModule } from '../organizations/organizations.module';
+import { MailModule } from '../mail/mail.module';
 import { QuotasModule } from '../quotas/quotas.module';
 import { UsersModule } from '../users/users.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { PasswordResetToken } from './entities/password-reset-token.entity';
+import { PasswordResetService } from './password-reset.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { SessionContextService } from './session-context.service';
 import { JwtRefreshStrategy } from './strategies/jwt-refresh.strategy';
@@ -25,6 +29,8 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     ModuleAccessModule,
     OrganizationsModule,
     QuotasModule,
+    TypeOrmModule.forFeature([PasswordResetToken]),
+    MailModule, // the reset link is mailed, never returned
     PassportModule,
     JwtModule.register({}),
   ],
@@ -32,6 +38,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
   providers: [
     AuthService,
     SessionContextService, // assembles the GET /auth/verify contract (#54)
+    PasswordResetService,
     JwtStrategy,
     JwtRefreshStrategy,
     // Global guard chain (order = execution order): authenticate -> tenant gate ->

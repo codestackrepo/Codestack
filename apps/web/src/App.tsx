@@ -12,6 +12,16 @@ import { AppModuleKey, Role } from '@/types/common';
 const LandingPage = lazy(() =>
   import('@/features/marketing/pages/landing-page').then((m) => ({ default: m.LandingPage })),
 );
+const ForgotPasswordPage = lazy(() =>
+  import('@/features/auth/pages/forgot-password-page').then((m) => ({
+    default: m.ForgotPasswordPage,
+  })),
+);
+const ResetPasswordPage = lazy(() =>
+  import('@/features/auth/pages/reset-password-page').then((m) => ({
+    default: m.ResetPasswordPage,
+  })),
+);
 const AuthPage = lazy(() =>
   import('@/features/auth/pages/auth-page').then((m) => ({ default: m.AuthPage })),
 );
@@ -124,6 +134,10 @@ function App() {
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<AuthPage initialMode="login" />} />
         <Route path="/register" element={<AuthPage initialMode="register" />} />
+        {/* Public recovery — declared with the other public auth routes and well
+            before the path="*" catch-all. */}
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
 
         <Route element={<ProtectedRoute />}>
           <Route path="/home" element={<AppShell />}>
