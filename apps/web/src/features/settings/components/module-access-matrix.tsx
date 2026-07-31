@@ -9,6 +9,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Lock } from 'lucide-react';
 import { CellToggle } from '@/components/shared/cell-toggle';
 import { EmptyState } from '@/components/shared/empty-state';
 import { useAuth } from '@/features/auth/context/auth-context';
@@ -95,28 +96,50 @@ export function ModuleAccessMatrix() {
         </TableRow>
       </TableHeader>
       <TableBody>
-        {data.toggleable.map((moduleKey) => (
-          <TableRow key={moduleKey}>
-            <TableCell className="font-medium">{MODULE_LABEL[moduleKey] ?? moduleKey}</TableCell>
-            {ROLE_COLUMNS.map((col) => {
-              const cell = cellFor(moduleKey, col.role);
-              if (!cell) return <TableCell key={col.role} />;
-              return (
-                <TableCell key={col.role} className="text-center">
-                  <CellToggle
-                    checked={cell.enabled}
-                    // Admin cells are locked-on; disable while any mutation is in flight.
-                    disabled={cell.locked || mutation.isPending}
-                    label={`${MODULE_LABEL[moduleKey] ?? moduleKey} for ${col.label}`}
-                    onChange={(next) =>
-                      mutation.mutate({ moduleKey, role: col.role, enabled: next })
-                    }
-                  />
-                </TableCell>
-              );
-            })}
-          </TableRow>
-        ))}
+        {data.toggleable.map((moduleKey) => {
+          /*
+           * #71 — a module the platform has capped off (`granted: false`) is a hard
+           * false for this whole organization, its admin included, and no override
+           * here can lift it. Render the row locked with the reason rather than as
+           * a toggle that writes a value the resolver ignores.
+           */
+          const isCapped = (data.capped ?? []).includes(moduleKey);
+          return (
+            <TableRow key={moduleKey} className={isCapped ? 'opacity-60' : undefined}>
+              <TableCell className="font-medium">
+                <span className="flex flex-wrap items-center gap-2">
+                  {MODULE_LABEL[moduleKey] ?? moduleKey}
+                  {isCapped && (
+                    <span
+                      className="inline-flex items-center gap-1 text-xs font-normal text-muted-foreground"
+                      title="Switched off for your organization by the platform administrator. This cannot be enabled here."
+                    >
+                      <Lock className="size-3" /> Not included in your plan
+                    </span>
+                  )}
+                </span>
+              </TableCell>
+              {ROLE_COLUMNS.map((col) => {
+                const cell = cellFor(moduleKey, col.role);
+                if (!cell) return <TableCell key={col.role} />;
+                return (
+                  <TableCell key={col.role} className="text-center">
+                    <CellToggle
+                      checked={isCapped ? false : cell.enabled}
+                      // Admin cells are locked-on; a capped module is locked for every
+                      // role; and everything is disabled while a mutation is in flight.
+                      disabled={isCapped || cell.locked || mutation.isPending}
+                      label={`${MODULE_LABEL[moduleKey] ?? moduleKey} for ${col.label}`}
+                      onChange={(next) =>
+                        mutation.mutate({ moduleKey, role: col.role, enabled: next })
+                      }
+                    />
+                  </TableCell>
+                );
+              })}
+            </TableRow>
+          );
+        })}
       </TableBody>
     </Table>
   );

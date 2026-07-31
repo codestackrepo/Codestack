@@ -15,6 +15,7 @@ import request from 'supertest';
 import { DataSource, Repository } from 'typeorm';
 
 import { Role } from '../src/common/enums/role.enum';
+import { ModuleAccessService } from '../src/modules/module-access/module-access.service';
 import { User } from '../src/modules/users/entities/user.entity';
 import {
   createTestApp,
@@ -184,6 +185,57 @@ describe('platform entitlements + quotas (e2e)', () => {
         .set('Cookie', saCookie)
         .send({ key: 'not.a.real.key', role: 'professor', enabled: true });
       expect(res.status).toBe(400);
+    });
+  });
+
+  describe('what the org side sees (#71)', () => {
+    it('/auth/verify carries DERIVED quota fields, not just used+limit', async () => {
+      const res = await request(http).get('/api/v1/auth/verify').set('Cookie', adminCookie);
+      expect(res.status).toBe(200);
+      const seats = res.body.quotas.max_users;
+      // Derived server-side so the null-vs-0 arithmetic exists in one place; the org
+      // console renders these as given rather than recomputing them.
+      expect(seats).toHaveProperty('remaining');
+      expect(seats).toHaveProperty('exceeded');
+      // Unconfigured => unlimited => remaining null, NOT 0.
+      expect(seats.limit).toBeNull();
+      expect(seats.remaining).toBeNull();
+      expect(seats.exceeded).toBe(false);
+    });
+
+    it('reports a capped module so the org matrix can lock the row', async () => {
+      // No cap yet.
+      const before = await request(http).get('/api/v1/module-access').set('Cookie', adminCookie);
+      expect(before.status).toBe(200);
+      expect(before.body.capped).toEqual([]);
+
+      // The platform switches `problems` off for this org entirely.
+      // Table is `org_module_grant` (singular) and the column is `feature_key`.
+      // Delete-then-insert rather than ON CONFLICT, so this does not depend on the
+      // exact shape of the unique index.
+      await ds.query(
+        `DELETE FROM org_module_grant WHERE organization_id = $1 AND feature_key = 'problems'`,
+        [orgA],
+      );
+      await ds.query(
+        `INSERT INTO org_module_grant (organization_id, feature_key, granted)
+           VALUES ($1, 'problems', false)`,
+        [orgA],
+      );
+      await ctx.app.get(ModuleAccessService).invalidate(orgA);
+
+      const after = await request(http).get('/api/v1/module-access').set('Cookie', adminCookie);
+      expect(after.body.capped).toContain('problems');
+
+      // And it really is a hard false for the org's own ADMIN, who is otherwise
+      // immune to overrides — which is why the row must not render as togglable.
+      const adminCell = (after.body.matrix as Cell[]).find(
+        (c) => c.moduleKey === 'problems' && c.role === Role.ADMIN,
+      );
+      expect(adminCell?.enabled).toBe(false);
+
+      await ds.query(`DELETE FROM org_module_grant WHERE organization_id = $1`, [orgA]);
+      await ctx.app.get(ModuleAccessService).invalidate(orgA);
     });
   });
 
