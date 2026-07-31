@@ -266,6 +266,28 @@ export class ModuleAccessService implements OnModuleInit, OnModuleDestroy {
     return rows;
   }
 
+  /**
+   * Keys this org's SuperAdmin GRANT has capped off (#71).
+   *
+   * Distinct from a matrix cell being false. A cell is the org's own preference and
+   * its admin can flip it; `granted: false` is a platform cap the org cannot
+   * override for ANY role, admin included. The org console must therefore render
+   * those rows as locked rather than as togglable-but-off — a toggle there would
+   * write a row that the resolver ignores.
+   *
+   * Not folded into `getMatrix`'s `locked` flag on purpose: that flag means "no
+   * override at THIS layer moves it", and a SuperAdmin editing the same matrix
+   * through the platform console genuinely can move a grant. One flag cannot mean
+   * both things, so the cap is reported separately and each console decides.
+   */
+  async cappedKeys(orgId: string | null): Promise<string[]> {
+    if (!orgId) return [];
+    const layer = await this.orgLayer(orgId);
+    return [...layer.grants.entries()]
+      .filter(([, grant]) => grant.granted === false)
+      .map(([key]) => key);
+  }
+
   // -------------------------------------------------------------------- writes
 
   /**

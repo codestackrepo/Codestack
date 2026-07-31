@@ -18,6 +18,7 @@ import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { parseApiError } from '@/lib/api-client';
 import { AssignmentStatus } from '@/types/assignment';
+import { QuotaHeadroomTiles } from '../components/quota-headroom-tiles';
 
 const STATUS_LABEL: Record<AssignmentStatus, string> = {
   [AssignmentStatus.DRAFT]: 'Draft',
@@ -51,6 +52,13 @@ export function AdminOverviewPage() {
           </Button>
         }
       />
+
+      {/*
+        #71 — capacity first, above the KPI tiles. An admin who is at their seat cap
+        needs to see it before they go looking for the invite button, not after the
+        invite is refused.
+      */}
+      <QuotaHeadroomTiles />
 
       {isLoading && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

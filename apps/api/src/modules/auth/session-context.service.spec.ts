@@ -99,10 +99,17 @@ describe('SessionContextService.build', () => {
     const ctx = await svc.build(actor);
     expect(ctx.features).toEqual({ 'problems.author': false, 'topics.comment': true });
     expect(quotas.getUsageSummary).toHaveBeenCalledWith('org-1');
+    // The session now returns the DERIVED shape (#71), the same one the platform
+    // console reads, so `remaining`/`exceeded` are computed in one place instead of
+    // by every consumer. These three cases are exactly where that arithmetic goes
+    // wrong if it is duplicated:
+    //   capped + headroom -> remaining counts down
+    //   limit null        -> UNLIMITED: remaining null, never 0
+    //   limit 0, used 1   -> BLOCKED and already over: remaining floors at 0
     expect(ctx.quotas).toEqual({
-      max_users: { used: 5, limit: 10 },
-      max_problems: { used: 2, limit: null },
-      max_assignments: { used: 1, limit: 0 },
+      max_users: { used: 5, limit: 10, remaining: 5, exceeded: false },
+      max_problems: { used: 2, limit: null, remaining: null, exceeded: false },
+      max_assignments: { used: 1, limit: 0, remaining: 0, exceeded: true },
     });
   });
 

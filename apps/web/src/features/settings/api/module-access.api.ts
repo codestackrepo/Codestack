@@ -13,6 +13,15 @@ export interface ModuleAccessMatrix {
   toggleable: AppModuleKey[];
   system: AppModuleKey[];
   matrix: MatrixCell[];
+  /**
+   * Keys a platform GRANT has switched off for this organization (#71).
+   *
+   * Different from a cell being false: a cell is this org's own preference and its
+   * admin may flip it, while a capped key is a hard false for every role here —
+   * admin included — that no override can lift. Such a row must render locked, or
+   * the toggle writes a value the resolver ignores.
+   */
+  capped?: string[];
 }
 
 export const moduleAccessApi = {

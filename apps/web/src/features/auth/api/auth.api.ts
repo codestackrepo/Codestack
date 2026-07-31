@@ -26,10 +26,20 @@ export interface SessionContext {
   isValid: boolean;
 }
 
-/** The per-resource shape inside `quotas`. `limit: null` means UNLIMITED. */
+/**
+ * The per-resource shape inside `quotas`, mirroring `QuotaUsageDto`.
+ *
+ * `limit: null` means UNLIMITED and `0` means BLOCKED — never interchangeable.
+ * `remaining` and `exceeded` are DERIVED SERVER-SIDE (#71) and must be rendered as
+ * given: re-deriving them here would put the null-vs-0 arithmetic in a second
+ * place, and `limit ?? 0` is how an uncapped org becomes a blocked one.
+ */
 export interface QuotaSnapshot {
   used: number;
   limit: number | null;
+  /** null when unlimited; floored at 0. */
+  remaining: number | null;
+  exceeded: boolean;
 }
 
 export interface LoginInput {

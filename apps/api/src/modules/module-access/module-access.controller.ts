@@ -38,7 +38,10 @@ export class ModuleAccessController {
   @Get()
   @Roles(Role.ADMIN)
   async matrix(@CurrentUser() actor: AuthenticatedUser) {
-    return this.envelope(await this.access.getMatrix(actor.organizationId));
+    return this.envelope(
+      await this.access.getMatrix(actor.organizationId),
+      await this.access.cappedKeys(actor.organizationId),
+    );
   }
 
   /** Toggle one cell in the actor's layer. Admin+. Returns the refreshed matrix. */
@@ -46,11 +49,16 @@ export class ModuleAccessController {
   @Roles(Role.ADMIN)
   async update(@Body() dto: UpdateModuleAccessDto, @CurrentUser() actor: AuthenticatedUser) {
     await this.access.setCell(dto.moduleKey, dto.role, dto.enabled, actor.organizationId);
-    return this.envelope(await this.access.getMatrix(actor.organizationId));
+    return this.envelope(
+      await this.access.getMatrix(actor.organizationId),
+      await this.access.cappedKeys(actor.organizationId),
+    );
   }
 
-  private envelope(matrix: MatrixCell[]) {
+  private envelope(matrix: MatrixCell[], capped: string[] = []) {
     return {
+      /** Keys a platform grant has switched off — locked for this org (#71). */
+      capped,
       toggleable: TOGGLEABLE_MODULES,
       system: SYSTEM_MODULES,
       features: ALL_FEATURES,

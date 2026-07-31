@@ -5,6 +5,7 @@ import { ModuleAccessService } from '../module-access/module-access.service';
 import { QuotaService } from '../quotas/quota.service';
 import { OrganizationSummaryDto } from '../organizations/dto/organization-summary.dto';
 import { OrganizationsService } from '../organizations/organizations.service';
+import { QuotaUsageDto } from '../platform/dto/platform-organization-detail.dto';
 import { UserResponseDto } from '../users/dto/user-response.dto';
 import { UsersService } from '../users/users.service';
 import { AppModuleKey, SYSTEM_MODULES } from '../module-access/enums/app-module-key.enum';
@@ -82,7 +83,21 @@ export class SessionContextService {
       isUnassigned,
       modules,
       features,
-      quotas,
+      /*
+       * Derived here, not by each consumer (#71). `getUsageSummary` returns
+       * `{used, limit}`; `remaining` and `exceeded` come from
+       * `limit === null ? null : max(0, limit - used)`. That arithmetic is where
+       * null-means-unlimited gets accidentally coalesced to 0, so it lives in one
+       * place — the same `QuotaUsageDto.of` the platform console reads.
+       */
+      quotas: quotas
+        ? (Object.fromEntries(
+            Object.entries(quotas).map(([resource, u]) => [
+              resource,
+              QuotaUsageDto.of(u.used, u.limit),
+            ]),
+          ) as Record<string, QuotaUsageDto>)
+        : null,
       isValid: true,
     };
   }
