@@ -21,6 +21,7 @@ import { OrganizationsModule } from './modules/organizations/organizations.modul
 import { PlatformModule } from './modules/platform/platform.module';
 import { QuotasModule } from './modules/quotas/quotas.module';
 import { ProblemsModule } from './modules/problems/problems.module';
+import { TopicsModule } from './modules/topics/topics.module';
 import { ClassroomsModule } from './modules/classrooms/classrooms.module';
 import { AssignmentsModule } from './modules/assignments/assignments.module';
 import { SubmissionsModule } from './modules/submissions/submissions.module';
@@ -76,6 +77,7 @@ import { DemoModule } from './modules/demo/demo.module';
     ModuleAccessModule,
     QuotasModule,
     ProblemsModule,
+    TopicsModule,
     ClassroomsModule,
     AssignmentsModule,
     SubmissionsModule,

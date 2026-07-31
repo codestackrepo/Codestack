@@ -17,6 +17,12 @@ export enum FeatureKey {
   ASSIGNMENTS_MCQ_CRUD = 'assignments.mcq-crud',
   ASSIGNMENTS_QUIZ_CRUD = 'assignments.quiz-crud',
   TOPICS_COMMENT = 'topics.comment',
+  /**
+   * Locking / editing a topic, resolving a question, deleting someone else's
+   * comment (#76). Separate from `topics.comment` on purpose: an org may want
+   * students discussing without granting professors moderation, or the reverse.
+   */
+  TOPICS_MODERATE = 'topics.moderate',
   GRADING_PUBLISH = 'grading.publish',
   /**
    * RESERVED, and denied to every non-SuperAdmin until #69 registers a `league`

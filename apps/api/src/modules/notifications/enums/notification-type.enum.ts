@@ -27,6 +27,13 @@ export enum NotificationType {
   PROBLEM_FEEDBACK_RECEIVED = 'problem_feedback_received',
   /** Staff resolved the recipient's problem feedback (#75). */
   PROBLEM_FEEDBACK_RESOLVED = 'problem_feedback_resolved',
+  /**
+   * A student asked a question on a topic (#76) — sent to the ASKER's own org
+   * staff, so a question on a global topic never pages another tenant.
+   */
+  TOPIC_DOUBT_RAISED = 'topic_doubt_raised',
+  /** Staff marked the recipient's topic question resolved (#76). */
+  TOPIC_DOUBT_RESOLVED = 'topic_doubt_resolved',
 }
 // NOTE: no migration needed — `notifications.type` is varchar(50) with no CHECK
 // (1784600000000 converted it off the PG enum precisely so new types are
