@@ -81,6 +81,14 @@ const NAV_SECTIONS: NavSection[] = [
         module: AppModuleKey.TOPICS,
         comingSoon: true,
       },
+      {
+        // #77. Staff-only: the inbox is the professor's queue of students waiting.
+        // `@Roles(PROFESSOR)` on the server is minimum-rank, so admin+ also pass.
+        to: '/home/doubts',
+        label: 'Doubts & feedback',
+        icon: Inbox,
+        roles: [Role.PROFESSOR, Role.ADMIN, Role.SUPERADMIN],
+      },
       // Visible to everyone: the backend scopes students to their enrolled,
       // student-visible assignments, so this is how students reach the solve editor.
       {
