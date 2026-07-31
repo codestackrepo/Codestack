@@ -1,10 +1,11 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Job } from 'bullmq';
 import { EmailConfig } from '../../config/configuration';
 import { QUEUE_MAIL } from '../../queue/queue.constants';
 import { MailService } from './mail.service';
+import { hasCredential, redactMailPayload } from './mail-redaction';
 import { AnyMailMessage } from './mail.types';
 
 /**
@@ -53,5 +54,57 @@ export class MailProcessor extends WorkerHost implements OnApplicationBootstrap 
     this.logger.log(`Sending ${template} to ${to} (job ${job.id})`);
     // Intentionally unguarded: a throw is how BullMQ learns to retry.
     await this.mail.deliver(job.data);
+  }
+
+  /*
+   * NOT scrubbed on 'completed', deliberately.
+   *
+   * The two retention windows are not equivalent. After a SUCCESSFUL send the token
+   * is already in the recipient's mailbox, so the queue's copy for
+   * `removeOnComplete: {age: 300}` adds five minutes to an exposure that exists
+   * anyway — a bound this file already documented and accepted. After a FAILED send
+   * the mail never arrived, so Redis holds the ONLY copy, unwatched, for the 24 hours
+   * of `removeOnFail` — and the invite it unlocks is valid for fourteen days. That
+   * asymmetry is the bug; the five minutes is a trade-off.
+   *
+   * It is also load-bearing for the test harness: the raw token exists only in the
+   * mail, so `invites.e2e-spec` and `password-reset.e2e-spec` read it back out of the
+   * completed job. Scrubbing there would leave no way to exercise accept or reset
+   * end-to-end at all. If that window is ever judged unacceptable, the harness needs
+   * a different way to observe the token BEFORE this hook could run.
+   */
+
+  /**
+   * Strip the credential from a job that has FINISHED failing.
+   *
+   * `removeOnFail: {age: 86400}` retains a day of failures for diagnosis, and
+   * `MAIL_JOB_OPTIONS.attempts` is 5 — so this must run only once the last attempt is
+   * spent. BullMQ replays `job.data` on every retry, so scrubbing earlier would make
+   * attempts 2..5 mail the literal string "[redacted]" to the invitee.
+   */
+  @OnWorkerEvent('failed')
+  async onFailed(job: Job<AnyMailMessage> | undefined): Promise<void> {
+    if (!job) return; // BullMQ passes undefined when the job could not be loaded
+    const attempts = job.opts?.attempts ?? 1;
+    if (job.attemptsMade < attempts) return; // more retries to come; keep the URL
+    await this.scrub(job);
+  }
+
+  /**
+   * Never throws. This runs in an event handler, outside the job's own error
+   * handling, and a Redis hiccup while redacting must not become an unhandled
+   * rejection that takes the worker down — the mail itself already succeeded or
+   * already exhausted its retries.
+   */
+  private async scrub(job: Job<AnyMailMessage>): Promise<void> {
+    try {
+      if (!hasCredential(job.data)) return; // most templates carry none
+      await job.updateData(redactMailPayload(job.data));
+    } catch (err) {
+      this.logger.warn(
+        `Could not redact mail job ${job.id}: ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 }

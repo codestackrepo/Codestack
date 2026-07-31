@@ -25,9 +25,14 @@ export const ASSIGNMENT_SWEEP_SCHEDULER_ID = 'assignment-sweep-scheduler';
  *   Five minutes is long enough for a `jobId` to still dedupe a double-clicked
  *   Resend, and short enough that a completed job's params stop being an
  *   interesting thing to read out of Redis.
- * - `removeOnFail: {age: 86400}` keeps a day of failures for diagnosis. This is
- *   exactly why the payload carries `{template, params}` and never the rendered
- *   `html`/`text`: a retained failed job must not hold a live accept URL.
+ * - `removeOnFail: {age: 86400}` keeps a day of failures for diagnosis.
+ *
+ * A retained job must not hold a live accept URL — and until #118 it DID. Dropping
+ * the rendered `html`/`text` from the payload was never enough on its own, because
+ * `params.acceptUrl` is the full link including the raw token. `MailProcessor`
+ * redacts it once a job is finished (delivered, or out of retries); see
+ * `mail-redaction.ts`. These two windows are therefore how long a REDACTED payload
+ * lingers, not a live credential.
  */
 export const MAIL_JOB_OPTIONS = {
   attempts: 5,
