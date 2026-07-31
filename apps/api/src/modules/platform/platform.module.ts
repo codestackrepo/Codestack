@@ -11,7 +11,9 @@ import { QuotasModule } from '../quotas/quotas.module';
 import { UsersModule } from '../users/users.module';
 import { PlatformMetricsService } from './platform-metrics.service';
 import { PlatformOverviewController } from './platform-overview.controller';
+import { ModuleAccessModule } from '../module-access/module-access.module';
 import { PlatformController } from './platform.controller';
+import { PlatformEntitlementsController } from './platform-entitlements.controller';
 import { PlatformUsersController } from './platform-users.controller';
 import { PlatformService } from './platform.service';
 import { PlatformGuard } from './guards/platform.guard';
@@ -33,8 +35,15 @@ import { PlatformGuard } from './guards/platform.guard';
     OrganizationsModule,
     UsersModule,
     QuotasModule,
+    // #70: the SuperAdmin org-scoped entitlement console reads/writes the matrix.
+    ModuleAccessModule,
   ],
-  controllers: [PlatformController, PlatformOverviewController, PlatformUsersController],
+  controllers: [
+    PlatformController,
+    PlatformOverviewController,
+    PlatformUsersController,
+    PlatformEntitlementsController,
+  ],
   providers: [PlatformService, PlatformMetricsService, PlatformGuard],
   exports: [PlatformService],
 })
