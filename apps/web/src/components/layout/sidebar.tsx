@@ -7,23 +7,24 @@ import { useModuleAccess } from '@/features/auth/hooks/use-module-access';
 import { Logo } from '@/components/shared/logo';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
-  LayoutDashboard,
-  GraduationCap,
-  FileCode2,
-  ClipboardList,
-  ClipboardCheck,
-  Terminal,
-  Layers,
-  UserPlus,
-  Users,
-  Inbox,
-  Mail,
-  Upload,
-  UserRoundPlus,
   Building2,
+  ClipboardCheck,
+  ClipboardList,
+  FileCode2,
+  Globe,
+  GraduationCap,
+  Inbox,
+  Layers,
+  LayoutDashboard,
+  LogOut,
+  Mail,
   PanelLeftClose,
   PanelLeftOpen,
-  LogOut,
+  Terminal,
+  Upload,
+  UserPlus,
+  UserRoundPlus,
+  Users,
 } from 'lucide-react';
 
 const COLLAPSE_KEY = 'codestack-sidebar-collapsed';
@@ -188,6 +189,14 @@ const NAV_SECTIONS: NavSection[] = [
         to: '/home/platform/unassigned',
         label: 'Unassigned students',
         icon: UserRoundPlus,
+        roles: [Role.SUPERADMIN],
+      },
+      {
+        // #70. `problems.global` has an EMPTY role ceiling — SuperAdmin only — so
+        // this catalog is not reachable or authorable from any other role.
+        to: '/home/platform/global-problems',
+        label: 'Global problems',
+        icon: Globe,
         roles: [Role.SUPERADMIN],
       },
     ],

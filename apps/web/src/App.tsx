@@ -53,6 +53,11 @@ const PlatformOrgDetailPage = lazy(() =>
     default: m.PlatformOrgDetailPage,
   })),
 );
+const PlatformGlobalProblemsPage = lazy(() =>
+  import('@/features/platform/pages/platform-global-problems-page').then((m) => ({
+    default: m.PlatformGlobalProblemsPage,
+  })),
+);
 const PlatformUnassignedPage = lazy(() =>
   import('@/features/platform/pages/platform-unassigned-page').then((m) => ({
     default: m.PlatformUnassignedPage,
@@ -265,6 +270,7 @@ function App() {
               <Route path="platform/organizations" element={<PlatformOrganizationsPage />} />
               <Route path="platform/organizations/:orgId" element={<PlatformOrgDetailPage />} />
               <Route path="platform/unassigned" element={<PlatformUnassignedPage />} />
+              <Route path="platform/global-problems" element={<PlatformGlobalProblemsPage />} />
             </Route>
           </Route>
 

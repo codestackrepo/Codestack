@@ -1,7 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsEnum, IsOptional, IsString } from 'class-validator';
 import { PaginationQueryDto } from '../../../common/dto/pagination.dto';
-import { Difficulty } from '../enums/problem.enums';
+import { Difficulty, ProblemScope } from '../enums/problem.enums';
 
 export class QueryProblemsDto extends PaginationQueryDto {
   @ApiPropertyOptional({ enum: Difficulty })
@@ -23,4 +23,16 @@ export class QueryProblemsDto extends PaginationQueryDto {
   @IsOptional()
   @IsString()
   search?: string;
+
+  /**
+   * Narrows the catalog to one scope (#70).
+   *
+   * This is a FILTER, never a grant: it is applied AFTER `applyVisibility`, so
+   * `scope=global` shows the platform catalog an actor could already see and
+   * `scope=org` shows only their own org's. It cannot widen what anyone sees.
+   */
+  @ApiPropertyOptional({ enum: ProblemScope })
+  @IsOptional()
+  @IsEnum(ProblemScope)
+  scope?: ProblemScope;
 }

@@ -9,6 +9,11 @@ export interface ProblemsQuery {
   search?: string;
   tag?: string;
   company?: string;
+  /**
+   * Narrows the catalog to one scope (#70). A FILTER, never a grant: the server
+   * applies it after its visibility predicate, so it can only ever narrow.
+   */
+  scope?: 'global' | 'org';
 }
 
 export const problemsApi = {
