@@ -1,6 +1,36 @@
 import { apiClient } from '@/lib/api-client';
 import type { ModuleMap } from '@/types/common';
+import type { OrganizationSummary } from '@/types/organization';
 import type { User } from '@/types/user';
+
+/**
+ * Mirrors `SessionContextDto` (api: auth/dto/session-context.dto.ts) in full.
+ *
+ * `verify` used to discard everything but `{user, modules}`, so the client could
+ * not tell an org-less student from a SuperAdmin, could not name the org in a
+ * heading, and could not read a quota. The whole contract is returned now.
+ */
+export interface SessionContext {
+  user: User;
+  organization: OrganizationSummary | null;
+  isSuperAdmin: boolean;
+  modules: ModuleMap;
+  features: Record<string, boolean>;
+  /**
+   * Per-resource quotas, or null for a SuperAdmin (charged to no tenant). Keys are
+   * SNAKE_CASE — they come straight from the org_quotas resource strings.
+   */
+  quotas: Record<'max_users' | 'max_problems' | 'max_assignments', QuotaSnapshot> | null;
+  /** True for a non-superadmin with no organization — the confined holding state. */
+  isUnassigned: boolean;
+  isValid: boolean;
+}
+
+/** The per-resource shape inside `quotas`. `limit: null` means UNLIMITED. */
+export interface QuotaSnapshot {
+  used: number;
+  limit: number | null;
+}
 
 export interface LoginInput {
   email: string;
@@ -12,7 +42,13 @@ export interface RegisterInput {
   password: string;
   firstName: string;
   lastName: string;
-  /** Professor invite token (from an invite link) — elevates the new account. */
+}
+
+export interface AcceptInviteInput {
+  token: string;
+  password: string;
+  firstName?: string;
+  lastName?: string;
 }
 
 export const authApi = {
@@ -30,10 +66,18 @@ export const authApi = {
     await apiClient.post('/auth/logout');
   },
 
-  async verify(): Promise<{ user: User; modules: ModuleMap }> {
-    const { data } = await apiClient.get<{ user: User; isValid: boolean; modules: ModuleMap }>(
-      '/auth/verify',
-    );
-    return { user: data.user, modules: data.modules };
+  async verify(): Promise<SessionContext> {
+    const { data } = await apiClient.get<SessionContext>('/auth/verify');
+    return data;
+  },
+
+  /**
+   * Public. Mints cookies on success exactly as login and register do, which is
+   * why it goes through AuthContext rather than being called directly — all three
+   * share one session invalidation.
+   */
+  async acceptInvite(input: AcceptInviteInput): Promise<User> {
+    const { data } = await apiClient.post<{ user: User }>('/invites/accept', input);
+    return data.user;
   },
 };

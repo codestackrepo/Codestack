@@ -1,19 +1,22 @@
 import { apiClient } from '@/lib/api-client';
 import type { PaginatedResult, Role } from '@/types/common';
+import type { User } from '@/types/user';
 
 /**
- * Admin user-management row — mirrors the backend `UserResponseDto` (#40).
- * `lastLoginAt`/`createdAt` arrive as ISO strings on the wire (JSON), not Date.
+ * `types/user.ts`'s `User` IS the admin row — both mirror `UserResponseDto`, and
+ * the duplicate declared here drifted from it the moment the DTO gained
+ * `organizationId`. Aliased rather than re-declared so existing imports keep
+ * working while there is only one shape.
  */
-export interface AdminUser {
-  id: string;
-  email: string;
-  firstName: string;
-  lastName: string;
-  role: Role;
-  isActive: boolean;
-  lastLoginAt: string | null;
-  createdAt: string;
+export type AdminUser = User;
+
+/** Filters accepted by `GET /users` (api: users/dto/list-users-query.dto.ts). */
+export interface ListUsersParams {
+  page?: number;
+  limit?: number;
+  role?: Role;
+  isActive?: boolean;
+  q?: string;
 }
 
 /**
@@ -25,11 +28,37 @@ export interface UpdateUserInput {
   isActive?: boolean;
 }
 
+/** Keys with the filter object LAST, so `['admin','users']` clears every permutation. */
+export const adminUserKeys = {
+  all: ['admin', 'users'] as const,
+  lists: () => [...adminUserKeys.all, 'list'] as const,
+  list: (params: ListUsersParams) => [...adminUserKeys.lists(), params] as const,
+  unassigned: (params: { page?: number; q?: string }) =>
+    [...adminUserKeys.all, 'unassigned', params] as const,
+};
+
 export const usersApi = {
-  async list(page = 1, limit = 20): Promise<PaginatedResult<AdminUser>> {
+  async list(params: ListUsersParams = {}): Promise<PaginatedResult<AdminUser>> {
+    const { page = 1, limit = 20, ...filters } = params;
     const { data } = await apiClient.get<PaginatedResult<AdminUser>>('/users', {
-      params: { page, limit },
+      // Undefined filters are dropped by axios, which matters: the global pipe
+      // runs forbidNonWhitelisted, and an explicit `undefined` would serialise.
+      params: { page, limit, ...filters },
     });
+    return data;
+  },
+
+  /** Org-less students awaiting assignment. `@Roles(ADMIN, PROFESSOR)`. */
+  async listUnassigned(params: { page?: number; limit?: number; q?: string } = {}) {
+    const { data } = await apiClient.get<PaginatedResult<AdminUser>>('/users/unassigned', {
+      params: { page: 1, limit: 20, ...params },
+    });
+    return data;
+  },
+
+  /** Places an unassigned student into the ACTOR's org — no org parameter exists. */
+  async assignToMyOrg(id: string): Promise<AdminUser> {
+    const { data } = await apiClient.post<AdminUser>(`/users/${id}/assign-organization`);
     return data;
   },
 

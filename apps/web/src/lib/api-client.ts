@@ -14,8 +14,33 @@ interface RetryableConfig extends InternalAxiosRequestConfig {
   _retried?: boolean;
 }
 
-/** Never intercept 401s from these paths — retrying them would loop forever. */
-const AUTH_BOOTSTRAP_PATHS = ['/auth/login', '/auth/register', '/auth/refresh', '/auth/logout'];
+/**
+ * Never intercept 401s from these paths — retrying them would loop forever.
+ *
+ * The invite entries are the EXACT public paths, not the prefix '/invites/':
+ * matching is `url.includes(p)`, so a prefix would also strip refresh-and-retry
+ * from the AUTHENTICATED row actions `/invites/:id/resend` and `/invites/:id/revoke`,
+ * which legitimately need it.
+ */
+const AUTH_BOOTSTRAP_PATHS = [
+  '/auth/login',
+  '/auth/register',
+  '/auth/refresh',
+  '/auth/logout',
+  '/auth/forgot-password',
+  '/auth/reset-password',
+  '/invites/preview',
+  '/invites/accept',
+];
+
+/** One toast per reason per burst — a page firing six requests should not stack six. */
+const recentToasts = new Set<string>();
+function toastOnce(key: string, message: string): void {
+  if (recentToasts.has(key)) return;
+  recentToasts.add(key);
+  toast.error(message);
+  setTimeout(() => recentToasts.delete(key), 3000);
+}
 
 let refreshPromise: Promise<void> | null = null;
 
@@ -42,13 +67,36 @@ apiClient.interceptors.response.use(
   async (error: AxiosError<ApiErrorBody>) => {
     const config = error.config as RetryableConfig | undefined;
 
-    // A module disabled server-side (§9.7, #31) — independent of the 401 flow.
-    // Covers the race where a module is turned off while the user sits on its
-    // page: toast, then refetch the session so RequireModule re-evaluates and
-    // redirects to /home. No full reload — the guard handles navigation.
-    if (error.response?.status === 403 && error.response.data?.reason === 'module_disabled') {
-      toast.error('This section has been disabled by your administrator.');
-      void queryClient.invalidateQueries({ queryKey: ['auth', 'session'] });
+    if (error.response?.status === 403) {
+      const reason = error.response.data?.reason;
+      // `/auth/verify` is NOT @Public and TenantContextGuard sits at slot 2, so a
+      // tenant-level 403 comes back from verify itself. Invalidating the session
+      // on THAT is an infinite refetch, and the redirect it triggers is a
+      // /login -> verify 403 -> /login bounce. Every branch below is gated on it.
+      const isVerify = config?.url?.includes('/auth/verify') ?? false;
+
+      // A module disabled server-side (§9.7, #31) — independent of the 401 flow.
+      // Covers the race where a module is turned off while the user sits on its
+      // page: toast, then refetch the session so RequireModule re-evaluates and
+      // redirects to /home. No full reload — the guard handles navigation.
+      if (reason === 'module_disabled' && !isVerify) {
+        toastOnce(reason, 'This section has been disabled by your administrator.');
+        void queryClient.invalidateQueries({ queryKey: ['auth', 'session'] });
+        return Promise.reject(error);
+      }
+
+      // The tenant-level rejections. Refetching the session is what moves the user
+      // to /pending or /suspended, since ProtectedRoute reads it.
+      if ((reason === 'no_organization' || reason === 'org_suspended') && !isVerify) {
+        toastOnce(
+          reason,
+          reason === 'org_suspended'
+            ? 'Your organization has been suspended.'
+            : 'You are not yet part of an organization.',
+        );
+        void queryClient.invalidateQueries({ queryKey: ['auth', 'session'] });
+        return Promise.reject(error);
+      }
       return Promise.reject(error);
     }
 

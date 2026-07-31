@@ -16,7 +16,9 @@ import {
 import { Input } from '@/components/ui/input';
 
 const FIELD = 'h-10 bg-muted/30 pl-9 transition-colors focus-visible:bg-transparent';
-const ICON = 'pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground';
+const ICON =
+  'pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground';
+import { passwordSchema } from '../password-schema';
 import { useAuth } from '../context/auth-context';
 import { parseApiError } from '@/lib/api-client';
 
@@ -24,12 +26,7 @@ const registerSchema = z.object({
   firstName: z.string().min(1, 'First name is required').max(150),
   lastName: z.string().min(1, 'Last name is required').max(150),
   email: z.string().email('Enter a valid email address'),
-  password: z
-    .string()
-    .min(8, 'At least 8 characters')
-    .regex(/[A-Z]/, 'Must contain an uppercase letter')
-    .regex(/[a-z]/, 'Must contain a lowercase letter')
-    .regex(/[0-9]/, 'Must contain a number'),
+  password: passwordSchema,
 });
 
 type RegisterFormValues = z.infer<typeof registerSchema>;
@@ -69,7 +66,9 @@ export function RegisterForm({ onSwitch }: { onSwitch: () => void }) {
     <div className="space-y-6">
       <div className="space-y-1.5">
         <h1 className="font-heading text-2xl font-bold tracking-tight">Create your account</h1>
-        <p className="text-sm text-muted-foreground">Start solving problems on CodeStack.</p>
+        <p className="text-sm text-muted-foreground">
+          Create a student account. Your school will add you to their organization.
+        </p>
       </div>
 
       <Form {...form}>
