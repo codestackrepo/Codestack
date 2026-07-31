@@ -218,14 +218,37 @@ describe('ModuleAccessService — feature resolution', () => {
     expect(await service.isEnabled(FeatureKey.PROBLEMS_GLOBAL, Role.SUPERADMIN, null)).toBe(true);
   });
 
-  it('an unregistered module prefix fails CLOSED (league.host until #69)', async () => {
+  /*
+   * #69 registered the `league` module, and that CHANGED this answer for an ADMIN.
+   *
+   * Before, `league.host` failed closed for everyone because `featureModule` returned
+   * undefined for an unregistered prefix. Now the prefix resolves, and
+   * `resolveFeature` short-circuits `role === ADMIN` to true BEFORE it reads
+   * FEATURE_DEFAULTS — so an org admin holds `league.host` even though its default is
+   * off. Admin immunity outranks every layer except a platform GRANT.
+   *
+   * That is inert today: no route carries `@RequiresFeature(LEAGUE_HOST)`, so nothing
+   * is reachable through it. It is recorded here because #78 will build on this key
+   * and must not assume it is universally denied.
+   */
+  it('league.host stays closed for professor and student after #69', async () => {
     const { service } = makeService();
     await service.reload();
-    for (const role of [Role.ADMIN, Role.PROFESSOR, Role.STUDENT]) {
+    for (const role of [Role.PROFESSOR, Role.STUDENT]) {
       expect(await service.isEnabled(FeatureKey.LEAGUE_HOST, role, ORG)).toBe(false);
     }
-    // ...but SuperAdmin still bypasses at layer 0.
+    // Admin immunity, not an entitlement decision — see the comment above.
+    expect(await service.isEnabled(FeatureKey.LEAGUE_HOST, Role.ADMIN, ORG)).toBe(true);
+    // SuperAdmin bypasses at layer 0.
     expect(await service.isEnabled(FeatureKey.LEAGUE_HOST, Role.SUPERADMIN, null)).toBe(true);
+  });
+
+  it('the reserved league MODULE stays off for professor and student', async () => {
+    const { service } = makeService();
+    await service.reload();
+    for (const role of [Role.PROFESSOR, Role.STUDENT]) {
+      expect(await service.isEnabled(AppModuleKey.LEAGUE, role, ORG)).toBe(false);
+    }
   });
 
   it('student-facing features have no ceiling and default on', async () => {

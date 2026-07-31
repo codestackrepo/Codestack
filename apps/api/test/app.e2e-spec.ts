@@ -96,6 +96,7 @@ describe('CodeStack e2e', () => {
 
   describe('auth flow', () => {
     it('rejects registration with a weak password', async () => {
+      resetThrottleStorage(ctx);
       const res = await request(http).post('/api/v1/auth/register').send({
         email: 'weak@codestack.dev',
         password: 'weak',
@@ -106,6 +107,7 @@ describe('CodeStack e2e', () => {
     });
 
     it('registers a user, sets httpOnly auth cookies, and never returns the password', async () => {
+      resetThrottleStorage(ctx);
       const res = await request(http).post('/api/v1/auth/register').send({
         email: 'alice.e2e@codestack.dev',
         password: 'Password1',
@@ -129,6 +131,7 @@ describe('CodeStack e2e', () => {
     });
 
     it('rejects duplicate registration with the same email', async () => {
+      resetThrottleStorage(ctx);
       const res = await request(http).post('/api/v1/auth/register').send({
         email: 'alice.e2e@codestack.dev',
         password: 'Password1',
@@ -202,6 +205,7 @@ describe('CodeStack e2e', () => {
     });
 
     it('allows a student to view another STUDENT profile (by design — only staff are hidden)', async () => {
+      resetThrottleStorage(ctx);
       await request(http).post('/api/v1/auth/register').send({
         email: 'dan.e2e@codestack.dev',
         password: 'Password1',
@@ -220,6 +224,7 @@ describe('CodeStack e2e', () => {
     });
 
     it('blocks a student from viewing a STAFF profile', async () => {
+      resetThrottleStorage(ctx);
       await request(http).post('/api/v1/auth/register').send({
         email: 'erin.e2e@codestack.dev',
         password: 'Password1',
@@ -228,6 +233,7 @@ describe('CodeStack e2e', () => {
       });
       const studentCookie = await joinOrg('erin.e2e@codestack.dev');
 
+      resetThrottleStorage(ctx);
       const staffReg = await request(http).post('/api/v1/auth/register').send({
         email: 'staffmember.e2e@codestack.dev',
         password: 'Password1',
@@ -268,6 +274,7 @@ describe('CodeStack e2e', () => {
       // carries the updated role and tenant.
       professorCookie = await joinOrg('prof.e2e@codestack.dev', Role.PROFESSOR);
 
+      resetThrottleStorage(ctx);
       const studentReg = await request(http).post('/api/v1/auth/register').send({
         email: 'carol.e2e@codestack.dev',
         password: 'Password1',
