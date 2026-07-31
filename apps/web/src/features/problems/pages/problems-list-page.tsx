@@ -2,11 +2,14 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
+import { useAuth } from '@/features/auth/context/auth-context';
+import { ProblemScope } from '@/types/problem';
 import { problemsApi } from '../api/problems.api';
 import { EmptyState } from '@/components/shared/empty-state';
 import { PageHeader } from '@/components/shared/page-header';
 import { Pagination } from '@/components/shared/pagination';
 import { DifficultyBadge } from '@/components/shared/difficulty-badge';
+import { ScopeBadge } from '@/components/shared/scope-badge';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -39,10 +42,18 @@ const FILTERS: { label: string; value: Difficulty | 'all' }[] = [
 const ANY = '__any__';
 
 export function ProblemsListPage() {
+  const { user } = useAuth();
+  const organizationId = user?.organizationId ?? null;
   const [search, setSearch] = useState('');
   const [difficulty, setDifficulty] = useState<Difficulty | 'all'>('all');
   const [tag, setTag] = useState<string>(ANY);
   const [company, setCompany] = useState<string>(ANY);
+  /**
+   * #74. `all` sends no `scope` param at all, so the server's visibility predicate
+   * decides — which is the point: this is a FILTER over what the actor can already
+   * see, never a request for more.
+   */
+  const [scope, setScope] = useState<ProblemScope | 'all'>('all');
   const [page, setPage] = useState(1);
 
   // Any filter change resets to page 1 so results start from the top.
@@ -55,12 +66,21 @@ export function ProblemsListPage() {
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ['problems', 'list', { difficulty, tag, company, search, page }],
+    // `scope` and the actor's org are part of the key: without them a SuperAdmin
+    // switching scopes, or two orgs on one browser profile, would read each other's
+    // cached page.
+    queryKey: [
+      'problems',
+      'list',
+      organizationId,
+      { difficulty, tag, company, search, scope, page },
+    ],
     queryFn: () =>
       problemsApi.list({
         difficulty: difficulty === 'all' ? undefined : difficulty,
         tag: tag === ANY ? undefined : tag,
         company: company === ANY ? undefined : company,
+        scope: scope === 'all' ? undefined : scope,
         search: search.trim() || undefined,
         page,
         limit: 20,
@@ -71,7 +91,12 @@ export function ProblemsListPage() {
   const problems = data?.data ?? [];
   const meta = data?.meta;
   const offset = ((meta?.page ?? 1) - 1) * (meta?.limit ?? 20);
-  const hasFilters = difficulty !== 'all' || tag !== ANY || company !== ANY || search.trim() !== '';
+  const hasFilters =
+    difficulty !== 'all' ||
+    tag !== ANY ||
+    company !== ANY ||
+    scope !== 'all' ||
+    search.trim() !== '';
 
   return (
     <div className="space-y-6">
@@ -95,6 +120,43 @@ export function ProblemsListPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/*
+            Segmented rather than another <Select>: there are exactly three mutually
+            exclusive states and they are worth seeing at a glance, because "why can
+            I not find that problem" is usually this control.
+          */}
+          <div
+            role="group"
+            aria-label="Problem scope"
+            className="inline-flex overflow-hidden rounded-md border border-border"
+          >
+            {(
+              [
+                ['all', 'All'],
+                [ProblemScope.GLOBAL, 'Global'],
+                [ProblemScope.ORG, 'My org'],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={scope === value}
+                onClick={() => {
+                  setScope(value);
+                  resetPage();
+                }}
+                className={cn(
+                  'px-3 py-1.5 text-sm transition-colors',
+                  scope === value
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:bg-muted',
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
           <Select
             value={tag}
             onValueChange={(v) => {
@@ -196,12 +258,17 @@ export function ProblemsListPage() {
                     {offset + i + 1}
                   </TableCell>
                   <TableCell>
-                    <Link
-                      to={`/home/problems/${problem.id}`}
-                      className="font-medium transition-colors group-hover:text-primary hover:underline"
-                    >
-                      {problem.title}
-                    </Link>
+                    <span className="flex flex-wrap items-center gap-2">
+                      <Link
+                        to={`/home/problems/${problem.id}`}
+                        className="font-medium transition-colors group-hover:text-primary hover:underline"
+                      >
+                        {problem.title}
+                      </Link>
+                      {/* Only global is badged — inside an org catalog almost
+                          everything is org-owned, so marking that would be noise. */}
+                      <ScopeBadge scope={problem.scope} />
+                    </span>
                   </TableCell>
                   <TableCell>
                     <DifficultyBadge difficulty={problem.difficulty} />

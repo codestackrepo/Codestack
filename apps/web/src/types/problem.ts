@@ -32,6 +32,20 @@ export interface TestCase {
   orderIndex: number;
 }
 
+/**
+ * Mirrors `ProblemScope` in
+ * `apps/api/src/modules/problems/enums/problem.enums.ts`.
+ *
+ * `global` is the platform catalog (`organization_id IS NULL`), visible to every
+ * tenant and authorable only by a SuperAdmin — `problems.global` has an empty role
+ * ceiling. `org` is owned by one tenant.
+ */
+export const ProblemScope = {
+  GLOBAL: 'global',
+  ORG: 'org',
+} as const;
+export type ProblemScope = (typeof ProblemScope)[keyof typeof ProblemScope];
+
 export interface Problem {
   id: string;
   title: string;
@@ -39,6 +53,7 @@ export interface Problem {
   difficulty: Difficulty;
   source: ProblemSource;
   visibility: ProblemVisibility;
+  scope: ProblemScope;
   tags: string[];
   companies: string[];
   isJudgeReady: boolean;

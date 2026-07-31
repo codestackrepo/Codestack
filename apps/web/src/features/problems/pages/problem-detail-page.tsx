@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DifficultyBadge } from '@/components/shared/difficulty-badge';
+import { ScopeBadge } from '@/components/shared/scope-badge';
 import { MarkdownView } from '@/components/shared/markdown-view';
 
 export function ProblemDetailPage() {
@@ -41,6 +42,9 @@ export function ProblemDetailPage() {
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="font-heading text-2xl font-bold tracking-tight">{problem.title}</h1>
           <DifficultyBadge difficulty={problem.difficulty} />
+          {/* #74 — a reader needs to know whether a problem is platform-wide before
+              they judge its wording or report an issue with it. */}
+          <ScopeBadge scope={problem.scope} />
           {problem.isJudgeReady && (
             <Badge className="gap-1 bg-success hover:bg-success">
               <CheckCircle2 className="size-3" /> Judge-ready

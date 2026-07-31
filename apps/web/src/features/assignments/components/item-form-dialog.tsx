@@ -3,7 +3,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Plus, Trash2 } from 'lucide-react';
 import { assignmentsApi } from '../api/assignments.api';
+import { ScopeBadge } from '@/components/shared/scope-badge';
 import { problemsApi } from '@/features/problems/api/problems.api';
+import { ProblemScope } from '@/types/problem';
 import { parseApiError } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import {
@@ -78,6 +80,12 @@ export function ItemFormDialog({
   const [allowMultiple, setAllowMultiple] = useState(false);
   const [options, setOptions] = useState<McqOptionInput[]>(emptyOptions());
   const [sourceProblemId, setSourceProblemId] = useState<string | null>(null);
+  /**
+   * #74. Staff building an assignment usually want their own org's problems, but the
+   * platform catalog is equally importable — this makes the choice explicit instead
+   * of leaving them to scroll a mixed list.
+   */
+  const [pickerScope, setPickerScope] = useState<ProblemScope | 'all'>('all');
   const [languages, setLanguages] = useState<Language[]>(ALL_LANGUAGES);
   const [search, setSearch] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -107,8 +115,13 @@ export function ItemFormDialog({
   }, [open, item, kind]);
 
   const { data: problems, isLoading: problemsLoading } = useQuery({
-    queryKey: ['problems', 'picker', search],
-    queryFn: () => problemsApi.list({ search: search || undefined, limit: 20 }),
+    queryKey: ['problems', 'picker', pickerScope, search],
+    queryFn: () =>
+      problemsApi.list({
+        search: search || undefined,
+        scope: pickerScope === 'all' ? undefined : pickerScope,
+        limit: 20,
+      }),
     enabled: open && isCodingCreate,
   });
 
@@ -238,6 +251,35 @@ export function ItemFormDialog({
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
+              {/* Global / My-org toggle (#74). Narrows an already-visible list. */}
+              <div
+                role="group"
+                aria-label="Problem scope"
+                className="inline-flex overflow-hidden rounded-md border border-border"
+              >
+                {(
+                  [
+                    ['all', 'All'],
+                    [ProblemScope.GLOBAL, 'Global'],
+                    [ProblemScope.ORG, 'My org'],
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={pickerScope === value}
+                    onClick={() => setPickerScope(value)}
+                    className={cn(
+                      'px-2.5 py-1 text-xs transition-colors',
+                      pickerScope === value
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-muted-foreground hover:bg-muted',
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
               <div className="max-h-52 space-y-1 overflow-y-auto rounded-lg border border-border p-1">
                 {problemsLoading ? (
                   <Skeleton className="h-24 w-full" />
@@ -254,7 +296,12 @@ export function ItemFormDialog({
                         sourceProblemId === p.id && 'bg-brand/10 ring-1 ring-brand',
                       )}
                     >
-                      <span className="truncate">{p.title}</span>
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span className="truncate">{p.title}</span>
+                        {/* showOrg: this list deliberately MIXES scopes, so the
+                            org case is informative here rather than noise. */}
+                        <ScopeBadge scope={p.scope} showOrg />
+                      </span>
                       <span className="ml-2 shrink-0 text-xs text-muted-foreground capitalize">
                         {p.difficulty}
                       </span>

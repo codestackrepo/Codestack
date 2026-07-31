@@ -1,6 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Language } from '../../../common/enums/language.enum';
-import { Difficulty, ProblemSource, ProblemVisibility, TestCaseType } from '../enums/problem.enums';
+import {
+  Difficulty,
+  ProblemScope,
+  ProblemSource,
+  ProblemVisibility,
+  TestCaseType,
+} from '../enums/problem.enums';
 import { Problem } from '../entities/problem.entity';
 import { TestCase } from '../entities/test-case.entity';
 
@@ -31,6 +37,13 @@ export class ProblemResponseDto {
   @ApiProperty({ enum: Difficulty }) difficulty!: Difficulty;
   @ApiProperty({ enum: ProblemSource }) source!: ProblemSource;
   @ApiProperty({ enum: ProblemVisibility }) visibility!: ProblemVisibility;
+  /**
+   * `global` = the platform catalog (organization_id IS NULL); `org` = owned by one
+   * tenant. Projected so the catalog can badge a problem as global (#74) — the
+   * organization id itself is deliberately NOT projected, since a reader either
+   * owns the problem or is seeing a global one, and neither case needs a tenant id.
+   */
+  @ApiProperty({ enum: ProblemScope }) scope!: ProblemScope;
   @ApiProperty({ type: [String] }) tags!: string[];
   @ApiProperty({ type: [String] }) companies!: string[];
   @ApiProperty({ description: 'True when drivers/tests can be judged (has io_spec)' })
@@ -47,6 +60,7 @@ export class ProblemResponseDto {
       difficulty: problem.difficulty,
       source: problem.source,
       visibility: problem.visibility,
+      scope: problem.scope,
       tags: (problem.tags ?? []).map((t) => t.name),
       companies: (problem.companies ?? []).map((c) => c.name),
       isJudgeReady: !!problem.ioSpec && !!problem.functionName,
