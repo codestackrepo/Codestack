@@ -21,6 +21,7 @@ export const FEATURE_ROLE_CEILING: Partial<Record<FeatureKey, Role[]>> = {
   [FeatureKey.ASSIGNMENTS_AUTHOR]: [Role.ADMIN, Role.PROFESSOR],
   [FeatureKey.ASSIGNMENTS_MCQ_CRUD]: [Role.ADMIN, Role.PROFESSOR],
   [FeatureKey.ASSIGNMENTS_QUIZ_CRUD]: [Role.ADMIN, Role.PROFESSOR],
+  [FeatureKey.TOPICS_MODERATE]: [Role.ADMIN, Role.PROFESSOR],
   [FeatureKey.GRADING_PUBLISH]: [Role.ADMIN, Role.PROFESSOR],
   [FeatureKey.LEAGUE_HOST]: [Role.ADMIN, Role.PROFESSOR],
   // No ceiling — students are the intended audience:

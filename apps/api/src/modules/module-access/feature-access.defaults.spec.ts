@@ -38,6 +38,7 @@ describe('FEATURE_ROLE_CEILING', () => {
       FeatureKey.ASSIGNMENTS_AUTHOR,
       FeatureKey.ASSIGNMENTS_MCQ_CRUD,
       FeatureKey.ASSIGNMENTS_QUIZ_CRUD,
+      FeatureKey.TOPICS_MODERATE,
       FeatureKey.GRADING_PUBLISH,
       FeatureKey.LEAGUE_HOST,
     ];
