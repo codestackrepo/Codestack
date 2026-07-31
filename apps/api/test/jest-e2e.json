@@ -1,13 +1,27 @@
 {
-  "moduleFileExtensions": ["js", "json", "ts"],
+  "moduleFileExtensions": [
+    "js",
+    "json",
+    "ts"
+  ],
   "rootDir": ".",
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
-  "setupFiles": ["<rootDir>/utils/jest.setup.ts"],
+  "setupFiles": [
+    "<rootDir>/utils/jest.setup.ts"
+  ],
   "transform": {
-    "^.+\\.(t|j)s$": ["ts-jest", { "tsconfig": "<rootDir>/../tsconfig.json" }]
+    "^.+\\.(t|j)s$": [
+      "ts-jest",
+      {
+        "tsconfig": "<rootDir>/../tsconfig.json"
+      }
+    ]
   },
   "moduleNameMapper": {
     "^@/(.*)$": "<rootDir>/../src/$1"
-  }
+  },
+  "globalSetup": "<rootDir>/utils/global-setup.ts",
+  "globalTeardown": "<rootDir>/utils/global-teardown.ts",
+  "maxWorkers": 4
 }
