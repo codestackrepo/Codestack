@@ -16,6 +16,8 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '../../common/enums/role.enum';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
 import { AppModuleKey } from '../module-access/enums/app-module-key.enum';
+import { FeatureKey } from '../module-access/enums/feature-key.enum';
+import { RequiresFeature } from '../module-access/decorators/requires-feature.decorator';
 import { RequiresModule } from '../module-access/decorators/requires-module.decorator';
 import { CreateProblemDto } from './dto/create-problem.dto';
 import {
@@ -37,6 +39,7 @@ export class ProblemsController {
 
   @Post()
   @Roles(Role.ADMIN, Role.PROFESSOR, Role.SUPERADMIN)
+  @RequiresFeature(FeatureKey.PROBLEMS_AUTHOR)
   async create(
     @Body() dto: CreateProblemDto,
     @CurrentUser() actor: AuthenticatedUser,
@@ -68,6 +71,7 @@ export class ProblemsController {
 
   @Patch(':id')
   @Roles(Role.ADMIN, Role.PROFESSOR)
+  @RequiresFeature(FeatureKey.PROBLEMS_AUTHOR)
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateProblemDto,
@@ -78,6 +82,7 @@ export class ProblemsController {
 
   @Delete(':id')
   @Roles(Role.ADMIN, Role.PROFESSOR)
+  @RequiresFeature(FeatureKey.PROBLEMS_AUTHOR)
   @HttpCode(204)
   async remove(
     @Param('id', ParseUUIDPipe) id: string,
@@ -108,6 +113,7 @@ export class ProblemsController {
 
   @Post(':id/test-cases')
   @Roles(Role.ADMIN, Role.PROFESSOR)
+  @RequiresFeature(FeatureKey.PROBLEMS_AUTHOR)
   async addTestCase(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: TestCaseInputDto,
@@ -118,6 +124,7 @@ export class ProblemsController {
 
   @Post(':id/clone')
   @Roles(Role.ADMIN, Role.PROFESSOR)
+  @RequiresFeature(FeatureKey.PROBLEMS_AUTHOR)
   async clone(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() actor: AuthenticatedUser,
