@@ -9,8 +9,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
+import { CellToggle } from '@/components/shared/cell-toggle';
 import { EmptyState } from '@/components/shared/empty-state';
-import { cn } from '@/lib/utils';
 import { parseApiError } from '@/lib/api-client';
 import { AppModuleKey, Role } from '@/types/common';
 import { moduleAccessApi, type MatrixCell } from '../api/module-access.api';
@@ -71,10 +71,7 @@ export function ModuleAccessMatrix() {
   if (isLoading) return <Skeleton className="h-64 w-full rounded-lg" />;
   if (isError || !data) {
     return (
-      <EmptyState
-        title="Couldn't load module access"
-        description={parseApiError(error).message}
-      />
+      <EmptyState title="Couldn't load module access" description={parseApiError(error).message} />
     );
   }
 
@@ -118,41 +115,5 @@ export function ModuleAccessMatrix() {
         ))}
       </TableBody>
     </Table>
-  );
-}
-
-function CellToggle({
-  checked,
-  disabled,
-  label,
-  onChange,
-}: {
-  checked: boolean;
-  disabled?: boolean;
-  label: string;
-  onChange: (next: boolean) => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      disabled={disabled}
-      onClick={() => onChange(!checked)}
-      className={cn(
-        'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors',
-        'focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
-        checked ? 'bg-brand' : 'bg-muted-foreground/30',
-        disabled && 'cursor-not-allowed opacity-60',
-      )}
-    >
-      <span
-        className={cn(
-          'inline-block size-4 transform rounded-full bg-white shadow transition-transform',
-          checked ? 'translate-x-4' : 'translate-x-0.5',
-        )}
-      />
-    </button>
   );
 }

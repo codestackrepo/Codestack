@@ -122,6 +122,9 @@ export class ProblemsService {
 
     if (query.difficulty)
       qb.andWhere('p.difficulty = :difficulty', { difficulty: query.difficulty });
+    // AFTER applyVisibility on purpose — a scope filter narrows what is already
+    // visible and must never be able to widen it.
+    if (query.scope) qb.andWhere('p.scope = :scope', { scope: query.scope });
     if (query.search) qb.andWhere('p.title ILIKE :search', { search: `%${query.search}%` });
     if (query.tag) {
       qb.andWhere(

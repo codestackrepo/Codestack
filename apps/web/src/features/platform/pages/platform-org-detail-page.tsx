@@ -17,12 +17,15 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { parseApiError } from '@/lib/api-client';
 import { formatDate } from '@/lib/utils';
 import { OrganizationStatus, type QuotaUsage } from '@/types/organization';
 import type { User } from '@/types/user';
 import { platformApi, platformKeys } from '../api/platform.api';
 import { InviteStaffDialog } from '../components/invite-staff-dialog';
+import { OrgAccessMatrix } from '../components/org-access-matrix';
+import { OrgQuotaForm } from '../components/org-quota-form';
 
 /** One tenant: census, quota usage, members, and the suspend switch. */
 export function PlatformOrgDetailPage() {
@@ -30,7 +33,12 @@ export function PlatformOrgDetailPage() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
 
-  const { data: org, isLoading, isError, error } = useQuery({
+  const {
+    data: org,
+    isLoading,
+    isError,
+    error,
+  } = useQuery({
     queryKey: platformKeys.organization(orgId),
     queryFn: () => platformApi.getOrganization(orgId),
     enabled: !!orgId,
@@ -57,7 +65,10 @@ export function PlatformOrgDetailPage() {
   if (isLoading) return <Skeleton className="h-96 w-full rounded-lg" />;
   if (isError || !org) {
     return (
-      <EmptyState title="Couldn't load this organization" description={parseApiError(error).message} />
+      <EmptyState
+        title="Couldn't load this organization"
+        description={parseApiError(error).message}
+      />
     );
   }
 
@@ -118,10 +129,38 @@ export function PlatformOrgDetailPage() {
         </div>
       </section>
 
+      {/*
+        #70 — entitlement and quota administration, as tabs on this page rather than a
+        parallel console. #108 established this page, its route and `platformKeys`;
+        adding tabs keeps one place where an organization is administered.
+      */}
+      <section className="space-y-3">
+        <h2 className="font-heading text-lg font-semibold">Administration</h2>
+        <Tabs defaultValue="modules">
+          <TabsList>
+            <TabsTrigger value="modules">Modules</TabsTrigger>
+            <TabsTrigger value="features">Features</TabsTrigger>
+            <TabsTrigger value="quotas">Quotas</TabsTrigger>
+          </TabsList>
+          <TabsContent value="modules" className="pt-4">
+            <OrgAccessMatrix orgId={org.id} kind="modules" />
+          </TabsContent>
+          <TabsContent value="features" className="pt-4">
+            <OrgAccessMatrix orgId={org.id} kind="features" />
+          </TabsContent>
+          <TabsContent value="quotas" className="pt-4">
+            <OrgQuotaForm orgId={org.id} />
+          </TabsContent>
+        </Tabs>
+      </section>
+
       <section className="space-y-3">
         <h2 className="font-heading text-lg font-semibold">Members</h2>
         {!users || users.data.length === 0 ? (
-          <EmptyState title="No members yet" description="Invite an administrator to get started." />
+          <EmptyState
+            title="No members yet"
+            description="Invite an administrator to get started."
+          />
         ) : (
           <div className="rounded-lg border border-border">
             <Table density="compact">

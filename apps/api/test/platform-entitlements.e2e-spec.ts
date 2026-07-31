@@ -257,6 +257,45 @@ describe('platform entitlements + quotas (e2e)', () => {
       expect(res.body.usage.max_users.limit).toBe(25);
     });
 
+    it('narrows the catalog by scope WITHOUT widening what is visible', async () => {
+      // Two problems: one global (SuperAdmin), one owned by org B.
+      const g = await request(http).post('/api/v1/problems').set('Cookie', saCookie).send({
+        title: 'PE Global Problem',
+        body: 'x',
+        difficulty: 'easy',
+        scope: 'global',
+        visibility: 'shared',
+      });
+      expect(g.status).toBe(201);
+
+      const bProf = await cast('pe-b-prof@codestack.dev', Role.PROFESSOR, orgB);
+      const o = await request(http).post('/api/v1/problems').set('Cookie', bProf).send({
+        title: 'PE Org B Problem',
+        body: 'x',
+        difficulty: 'easy',
+        visibility: 'shared',
+      });
+      expect(o.status).toBe(201);
+
+      // scope=global as the SuperAdmin: the global catalog only.
+      const globals = await request(http)
+        .get('/api/v1/problems?scope=global&limit=100')
+        .set('Cookie', saCookie);
+      const titles: string[] = globals.body.data.map((p: { title: string }) => p.title);
+      expect(titles).toContain('PE Global Problem');
+      expect(titles).not.toContain('PE Org B Problem');
+
+      // The decisive one: scope is a FILTER, not a grant. Org A's admin asking for
+      // scope=org must still not see org B's problem — the visibility predicate runs
+      // first and the filter can only narrow what it left.
+      const asA = await request(http)
+        .get('/api/v1/problems?scope=org&limit=100')
+        .set('Cookie', adminCookie);
+      const aTitles: string[] = asA.body.data.map((p: { title: string }) => p.title);
+      expect(aTitles).not.toContain('PE Org B Problem');
+      expect(aTitles).not.toContain('PE Global Problem'); // filtered out by scope=org
+    });
+
     it('reports exceeded when a limit is lowered below current usage', async () => {
       // orgA has one member (the admin), so a limit of 0 is already exceeded.
       const res = await setQuota(orgA, 'max_users', 0);

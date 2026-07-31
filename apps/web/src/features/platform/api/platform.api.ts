@@ -6,6 +6,7 @@ import type {
   PlatformOrganizationDetail,
 } from '@/types/organization';
 import type { Invite } from '@/types/invite';
+import type { AccessKey, OrgMatrix, OrgQuotas, QuotaResource } from '@/types/entitlement';
 import type { User } from '@/types/user';
 
 export interface CreateOrganizationInput {
@@ -92,14 +93,56 @@ export const platformApi = {
   },
 
   /** Places an unassigned student into ANY org, optionally above student rank. */
-  async assignUser(
-    userId: string,
-    input: { organizationId: string; role?: Role },
-  ): Promise<User> {
+  async assignUser(userId: string, input: { organizationId: string; role?: Role }): Promise<User> {
     const { data } = await apiClient.post<User>(
       `/platform/users/${userId}/assign-organization`,
       input,
     );
+    return data;
+  },
+
+  // ---- #70: per-org entitlement + quota administration ----
+
+  async getOrgMatrix(orgId: string): Promise<OrgMatrix> {
+    const { data } = await apiClient.get<OrgMatrix>(
+      `/platform/organizations/${orgId}/module-access`,
+    );
+    return data;
+  },
+
+  /** Returns the REFRESHED matrix, so the caller renders the server's answer. */
+  async setOrgMatrixCell(
+    orgId: string,
+    key: AccessKey,
+    role: Role,
+    enabled: boolean,
+  ): Promise<OrgMatrix> {
+    const { data } = await apiClient.patch<OrgMatrix>(
+      `/platform/organizations/${orgId}/module-access`,
+      { key, role, enabled },
+    );
+    return data;
+  },
+
+  async getOrgQuotas(orgId: string): Promise<OrgQuotas> {
+    const { data } = await apiClient.get<OrgQuotas>(`/platform/organizations/${orgId}/quotas`);
+    return data;
+  },
+
+  /**
+   * `limitValue` is `number | null` and is ALWAYS sent. `null` means UNLIMITED, `0`
+   * means BLOCKED, and they are not interchangeable — the server rejects an absent
+   * field rather than guessing which was meant, so never omit it.
+   */
+  async setOrgQuota(
+    orgId: string,
+    resource: QuotaResource,
+    limitValue: number | null,
+  ): Promise<OrgQuotas> {
+    const { data } = await apiClient.patch<OrgQuotas>(`/platform/organizations/${orgId}/quotas`, {
+      resource,
+      limitValue,
+    });
     return data;
   },
 };
@@ -117,4 +160,6 @@ export const platformKeys = {
   orgInvites: (id: string, params: object) =>
     [...platformKeys.organization(id), 'invites', params] as const,
   unassigned: (params: object = {}) => [...platformKeys.all, 'unassigned', params] as const,
+  orgMatrix: (id: string) => [...platformKeys.organization(id), 'module-access'] as const,
+  orgQuotas: (id: string) => [...platformKeys.organization(id), 'quotas'] as const,
 };
