@@ -141,7 +141,17 @@ const GradingPage = lazy(() =>
   import('@/features/grading/pages/grading-page').then((m) => ({ default: m.GradingPage })),
 );
 const TopicsPage = lazy(() =>
-  import('@/features/topics/pages/topics-page').then((m) => ({ default: m.TopicsPage })),
+  import('@/features/engagement/pages/topics-page').then((m) => ({ default: m.TopicsPage })),
+);
+const TopicDetailPage = lazy(() =>
+  import('@/features/engagement/pages/topic-detail-page').then((m) => ({
+    default: m.TopicDetailPage,
+  })),
+);
+const DoubtsInboxPage = lazy(() =>
+  import('@/features/engagement/pages/doubts-inbox-page').then((m) => ({
+    default: m.DoubtsInboxPage,
+  })),
 );
 const RequestAccessPage = lazy(() =>
   import('@/features/onboarding/pages/request-access-page').then((m) => ({
@@ -239,6 +249,8 @@ function App() {
             </Route>
             <Route element={<RequireModule module={AppModuleKey.TOPICS} />}>
               <Route path="topics" element={<TopicsPage />} />
+              <Route path="topics/:topicId" element={<TopicDetailPage />} />
+              <Route path="doubts" element={<DoubtsInboxPage />} />
             </Route>
 
             {/* Staff-only gradebook, additionally module-gated */}

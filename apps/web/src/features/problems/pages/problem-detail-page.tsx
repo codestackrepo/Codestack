@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DifficultyBadge } from '@/components/shared/difficulty-badge';
 import { ScopeBadge } from '@/components/shared/scope-badge';
+import { ProblemFeedbackThread } from '@/features/engagement/components/problem-feedback-thread';
 import { MarkdownView } from '@/components/shared/markdown-view';
 
 export function ProblemDetailPage() {
@@ -117,6 +118,10 @@ export function ProblemDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* #77 — the feedback thread over #75's backend. A student sees only their own
+          items here; staff see everything their org raised on this problem. */}
+      <ProblemFeedbackThread problemId={problem.id} />
     </div>
   );
 }

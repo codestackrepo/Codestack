@@ -33,21 +33,33 @@ describe('admin surface (e2e)', () => {
   let studentId: string;
   let studentCookie: string;
 
+  /*
+   * Both helpers ASSERT their responses. Neither used to, and that is how this suite
+   * produced a misleading failure in a full-suite run: a register that came back 429
+   * left no user row, `stamp`'s `update` matched nothing (TypeORM `update` does not
+   * throw on no-match), the login returned no cookie, and the failure finally
+   * surfaced several tests later as a bare 404 with no `reason` — pointing at
+   * assign-organization rather than at the missing fixture. Same shape as the flake
+   * fixed in app.e2e-spec.ts (#120).
+   */
   const register = async (email: string): Promise<string> => {
     resetThrottleStorage(ctx);
     const res = await request(http)
       .post('/api/v1/auth/register')
       .send({ email, password: 'Password1', firstName: 'Test', lastName: 'User' });
+    expect(res.status).toBe(201);
     return res.body.user.id as string;
   };
 
   const stamp = async (email: string, role: Role, org: string | null): Promise<string> => {
     const repo = ctx.app.get<Repository<User>>(getRepositoryToken(User));
-    await repo.update({ email }, { organizationId: org, role });
+    const stamped = await repo.update({ email }, { organizationId: org, role });
+    expect(stamped.affected).toBe(1); // 0 means the caller never registered this address
     resetThrottleStorage(ctx);
     const login = await request(http)
       .post('/api/v1/auth/login')
       .send({ email, password: 'Password1' });
+    expect(login.status).toBe(200);
     return extractAuthCookies(login.headers['set-cookie'] as unknown as string[]);
   };
 
