@@ -11,6 +11,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { CellToggle } from '@/components/shared/cell-toggle';
 import { EmptyState } from '@/components/shared/empty-state';
+import { useAuth } from '@/features/auth/context/auth-context';
 import { parseApiError } from '@/lib/api-client';
 import { AppModuleKey, Role } from '@/types/common';
 import { moduleAccessApi, type MatrixCell } from '../api/module-access.api';
@@ -41,10 +42,13 @@ const ROLE_COLUMNS: { role: Role; label: string }[] = [
  * refreshed so their nav stays consistent.
  */
 export function ModuleAccessMatrix() {
+  const { organization } = useAuth();
+  const organizationId = organization?.id ?? null;
   const queryClient = useQueryClient();
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['module-access', 'matrix'],
+    // Org in the key (#72): this matrix is per-organization admin data.
+    queryKey: ['module-access', 'matrix', organizationId],
     queryFn: () => moduleAccessApi.getMatrix(),
   });
 

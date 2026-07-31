@@ -75,3 +75,19 @@ export function RequireModule({ module }: { module: AppModuleKey }) {
   if (!canAccess(module)) return <Navigate to="/home" replace />;
   return <Outlet />;
 }
+
+/**
+ * The feature twin of RequireModule (#72). Cosmetic only — `FeatureGuard` (#64) is
+ * the real enforcement, and #65 annotated the routes it applies to.
+ *
+ * Note this does NOT let admin through the way RequireModule does. A feature carries
+ * a non-overridable role ceiling (`problems.global` is SuperAdmin-only even for an
+ * admin), so an admin bypass here would render controls that 403 on use.
+ */
+export function RequireFeature({ feature }: { feature: string }) {
+  const { user } = useAuth();
+  const { canAccessFeature } = useModuleAccess();
+  if (!user) return null;
+  if (!canAccessFeature(feature)) return <Navigate to="/home" replace />;
+  return <Outlet />;
+}
