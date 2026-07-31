@@ -367,4 +367,86 @@ describe('bulk roster onboarding (e2e)', () => {
       expect(res.body.canCommit).toBe(true);
     });
   });
+
+  /**
+   * `resendPending` — the branch a merged bug lived in.
+   *
+   * `manager.query('UPDATE ... RETURNING ...')` hands back a `[rows, rowCount]`
+   * TUPLE through the raw pg driver, not the rows. The original code iterated the
+   * tuple as if it were rows, so every resend silently rotated the hash in the
+   * database and then mailed NOBODY — the invitee was left holding a link that no
+   * longer worked, with no error anywhere. The unit spec passed because its mock
+   * returned a bare array, i.e. it encoded the assumption instead of the contract.
+   *
+   * So the assertions here are deliberately on OBSERVABLE state: the row's hash
+   * changed, `send_count` advanced, and the returned count matches. Nothing is
+   * taken on the response's word alone.
+   */
+  describe('resendPending rotates tokens on the existing rows', () => {
+    const E1 = 'bulk-resend-1@codestack.dev';
+    const E2 = 'bulk-resend-2@codestack.dev';
+
+    const inviteRow = async (email: string) => {
+      const [row] = (await ds.query(
+        `SELECT id, token_hash, send_count FROM org_invites
+          WHERE organization_id = $1 AND lower(email) = $2`,
+        [orgA, email],
+      )) as { id: string; token_hash: string; send_count: number }[];
+      return row;
+    };
+
+    beforeAll(async () => {
+      await ds.query(`UPDATE org_quotas SET limit_value = NULL WHERE organization_id = $1`, [orgA]);
+      const first = await upload(csv(`email,name\n${E1},R One\n${E2},R Two\n`));
+      expect(first.status).toBe(200); // preview carries @HttpCode(200)
+      const commit = await request(http)
+        .post('/api/v1/invites/bulk/commit')
+        .set('Cookie', adminCookie)
+        .send({ stagingKey: first.body.stagingKey });
+      expect(commit.status).toBe(201);
+      expect(commit.body.invited).toBe(2);
+    });
+
+    it('skips already-pending rows by default, charging no seat', async () => {
+      const before = await pendingCount();
+      const preview = await upload(csv(`email,name\n${E1},R One\n${E2},R Two\n`));
+      expect(preview.status).toBe(200);
+      expect(preview.body.summary.willInvite).toBe(0);
+      expect(preview.body.summary.seatsRequired).toBe(0);
+
+      const commit = await request(http)
+        .post('/api/v1/invites/bulk/commit')
+        .set('Cookie', adminCookie)
+        .send({ stagingKey: preview.body.stagingKey });
+      expect(commit.status).toBe(201);
+      expect(commit.body.invited).toBe(0);
+      expect(await pendingCount()).toBe(before); // no second row, no extra seat
+    });
+
+    it('with resendPending, UPDATEs each row in place — new hash, bumped count', async () => {
+      const beforeRows: Record<string, Awaited<ReturnType<typeof inviteRow>>> = {
+        [E1]: await inviteRow(E1),
+        [E2]: await inviteRow(E2),
+      };
+      const beforeCount = await pendingCount();
+
+      const preview = await upload(csv(`email,name\n${E1},R One\n${E2},R Two\n`));
+      const commit = await request(http)
+        .post('/api/v1/invites/bulk/commit')
+        .set('Cookie', adminCookie)
+        .send({ stagingKey: preview.body.stagingKey, resendPending: true });
+      expect(commit.status).toBe(201);
+
+      for (const email of [E1, E2]) {
+        const after = await inviteRow(email);
+        // Same row — an INSERT here would have violated the partial unique index
+        // and double-charged a seat.
+        expect(after.id).toBe(beforeRows[email].id);
+        expect(after.token_hash).toMatch(/^[0-9a-f]{64}$/);
+        expect(after.token_hash).not.toBe(beforeRows[email].token_hash);
+        expect(after.send_count).toBe(beforeRows[email].send_count + 1);
+      }
+      expect(await pendingCount()).toBe(beforeCount);
+    });
+  });
 });

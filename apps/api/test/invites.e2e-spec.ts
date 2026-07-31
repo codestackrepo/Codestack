@@ -7,6 +7,8 @@
  * proof of the payload contract: the queued job carries `{template, params}` and
  * never a rendered `html`/`text` body.
  */
+import { createHash } from 'node:crypto';
+
 import { getQueueToken } from '@nestjs/bullmq';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Queue } from 'bullmq';
@@ -349,6 +351,121 @@ describe('invites (e2e)', () => {
       await request(http).post('/api/v1/invites/accept').send({ token, password: 'Password1' });
       // invite pending->accepted is -1, the new user row is +1.
       expect(await seats()).toBe(before + 1);
+    });
+  });
+
+  /**
+   * Resend token rotation — section E of #109's click-through ("resend, then open
+   * the OLD link -> invalid; the new one works").
+   *
+   * This path had no e2e coverage at all, and it is the one where the sibling bulk
+   * implementation shipped a real bug: `UPDATE ... RETURNING` through the raw
+   * driver returns a `[rows, rowCount]` TUPLE, so iterating the result as rows
+   * silently yields nothing. A unit mock returning a bare array passes anyway,
+   * which is precisely why the assertion below reads the DB and the live queue
+   * rather than a mock.
+   */
+  describe('resend rotates the token', () => {
+    const EMAIL = 'resend@codestack.dev';
+    let inviteId: string;
+    let firstToken: string;
+
+    /** Empties the queue so `lastQueuedMail` cannot pick up a neighbouring job. */
+    const drainMail = async (): Promise<void> => {
+      const queue = ctx.app.get<Queue>(getQueueToken('mail'));
+      await queue.obliterate({ force: true });
+    };
+
+    /** Stands in for "two minutes passed" — RESEND_COOLDOWN_MS is 120s. */
+    const backdate = async (): Promise<void> => {
+      await ds.query(
+        `UPDATE org_invites SET last_sent_at = now() - interval '5 minutes' WHERE id = $1`,
+        [inviteId],
+      );
+    };
+
+    beforeAll(async () => {
+      await drainMail();
+      resetThrottleStorage(ctx);
+      const res = await request(http)
+        .post('/api/v1/invites')
+        .set('Cookie', adminCookie)
+        .send({ email: EMAIL, role: 'student' });
+      expect(res.status).toBe(201);
+      inviteId = res.body.id as string;
+      firstToken = tokenFromMail(await lastQueuedMail());
+    });
+
+    it('429s a resend inside the per-invite cooldown', async () => {
+      // Minting sets `lastSentAt`, so the cooldown is already running. This is a
+      // per-INVITE limit the global throttler cannot express, so it needs its own
+      // pin — resetThrottleStorage does not clear it.
+      resetThrottleStorage(ctx);
+      const res = await request(http)
+        .post(`/api/v1/invites/${inviteId}/resend`)
+        .set('Cookie', adminCookie)
+        .send({});
+      expect(res.status).toBe(429);
+      expect(res.body.reason).toBe('invite_resend_cooldown');
+    });
+
+    it('re-mints a DIFFERENT token and bumps sendCount', async () => {
+      await backdate();
+      await drainMail();
+      resetThrottleStorage(ctx);
+
+      const res = await request(http)
+        .post(`/api/v1/invites/${inviteId}/resend`)
+        .set('Cookie', adminCookie)
+        .send({});
+      expect(res.status).toBe(200);
+      expect(res.body.sendCount).toBe(2);
+      // The response must still never carry the token itself.
+      expect(res.body.token).toBeUndefined();
+
+      const secondToken = tokenFromMail(await lastQueuedMail());
+      expect(secondToken).not.toBe(firstToken);
+
+      // The stored hash is the NEW token's, so the old plaintext is unrecoverable.
+      const [row] = (await ds.query(`SELECT token_hash FROM org_invites WHERE id = $1`, [
+        inviteId,
+      ])) as { token_hash: string }[];
+      expect(row.token_hash).toMatch(/^[0-9a-f]{64}$/);
+      expect(row.token_hash).not.toBe(createHash('sha256').update(firstToken).digest('hex'));
+      expect(row.token_hash).toBe(createHash('sha256').update(secondToken).digest('hex'));
+    });
+
+    it('the OLD link is dead and reveals nothing', async () => {
+      const res = await request(http).get(`/api/v1/invites/${firstToken}/preview`);
+      // 200, not a 4xx: a 4xx would put the raw token into the exception filter's
+      // `path` field and from there into the log.
+      expect(res.status).toBe(200);
+      expect(res.body.valid).toBe(false);
+      expect(res.body.email).toBeNull();
+      expect(res.body.organizationName).toBeNull();
+    });
+
+    it('accepting with the OLD token fails, and the NEW one still works', async () => {
+      const secondToken = tokenFromMail(await lastQueuedMail());
+
+      resetThrottleStorage(ctx);
+      const stale = await request(http)
+        .post('/api/v1/invites/accept')
+        .send({ token: firstToken, password: 'Password1' });
+      // 404 invite_not_found, not a "revoked"/"expired" 403: rotation replaced the
+      // hash, so the old token names no row at all. That is also the most opaque
+      // answer available — the holder of a superseded link learns nothing.
+      expect(stale.status).toBe(404);
+      expect(stale.body.reason).toBe('invite_not_found');
+      expect(await ds.query(`SELECT 1 FROM users WHERE email = $1`, [EMAIL])).toHaveLength(0);
+
+      resetThrottleStorage(ctx);
+      const ok = await request(http)
+        .post('/api/v1/invites/accept')
+        .send({ token: secondToken, password: 'Password1' });
+      expect(ok.status).toBe(200); // @HttpCode(200) on the public accept route
+      expect(ok.body.user.email).toBe(EMAIL);
+      expect(ok.body.user.organizationId).toBe(orgId);
     });
   });
 });
