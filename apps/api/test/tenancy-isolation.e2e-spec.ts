@@ -284,8 +284,15 @@ describe('tenancy isolation + escalation (e2e)', () => {
         .post('/api/v1/invites')
         .set('Cookie', bAdmin)
         .send({ email: 'ti-invited-prof@codestack.dev', role: 'professor' });
-      expect(res.status).toBe(403);
-      expect(res.body.reason).toBe('role_not_invitable');
+      // Asserted as one object so a failure prints the BODY alongside the status.
+      // This assertion was seen to fail once with a bare 404 in a full-suite run
+      // and never reproduced in isolation or in two subsequent full runs; the only
+      // 404 on this path is `OrganizationsService.getById` missing the actor's org.
+      // A status-only assertion told us nothing about which it was.
+      expect({ status: res.status, reason: res.body?.reason }).toEqual({
+        status: 403,
+        reason: 'role_not_invitable',
+      });
     });
 
     it('the DB refuses an org-carrying superadmin outright (chk_users_org_required)', async () => {
