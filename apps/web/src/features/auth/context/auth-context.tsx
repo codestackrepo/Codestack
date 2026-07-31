@@ -17,6 +17,12 @@ interface AuthContextValue {
   organization: OrganizationSummary | null;
   /** Effective per-role module map from `/auth/verify`; null while the session loads. */
   modules: ModuleMap | null;
+  /**
+   * Feature × role entitlements resolved for THIS user (#72). Already on
+   * `/auth/verify` — `SessionContextService` builds it from `effectiveFeatureMap`,
+   * so it is the same 8-layer answer `FeatureGuard` gives, not a client guess.
+   */
+  features: Record<string, boolean> | null;
   /** Per-resource quotas; null for a SuperAdmin. `limit: null` means UNLIMITED. */
   quotas: Record<'max_users' | 'max_problems' | 'max_assignments', QuotaSnapshot> | null;
   /** True for a non-superadmin with no organization — routed to /pending. */
@@ -77,7 +83,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logoutMutation = useMutation({
     mutationFn: authApi.logout, // clears the httpOnly cookies server-side
-    onSuccess: () => queryClient.setQueryData(SESSION_QUERY_KEY, null),
+    onSuccess: () => {
+      /*
+       * CLEAR THE WHOLE CACHE, not just the session (#72).
+       *
+       * This previously only nulled the session key, which left every other cached
+       * response in place: `['assignments','list']`, `['classrooms','list','all']`,
+       * `['problems','list',...]`, the module-access matrix, and so on. Sign out,
+       * sign in as somebody from a DIFFERENT organization on the same browser
+       * profile, and React Query serves the previous tenant's rows from cache until
+       * each refetch lands — visible data belonging to an org the new user is not in.
+       *
+       * Scoping keys by org (below, and in the problems list) narrows that, but it
+       * cannot fix it on its own: any key without an org in it still collides. The
+       * identity changed, so nothing cached under the old one is valid.
+       *
+       * clear() BEFORE seeding null, or the seed is wiped by the clear and
+       * ProtectedRoute sees "loading" instead of "signed out".
+       */
+      queryClient.clear();
+      queryClient.setQueryData(SESSION_QUERY_KEY, null);
+    },
   });
 
   const value = useMemo<AuthContextValue>(
@@ -85,6 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user: sessionQuery.data?.user ?? null,
       organization: sessionQuery.data?.organization ?? null,
       modules: sessionQuery.data?.modules ?? null,
+      features: sessionQuery.data?.features ?? null,
       quotas: sessionQuery.data?.quotas ?? null,
       isUnassigned: sessionQuery.data?.isUnassigned ?? false,
       isLoading: sessionQuery.isLoading,

@@ -85,6 +85,18 @@ apiClient.interceptors.response.use(
         return Promise.reject(error);
       }
 
+      // A FEATURE denied by the 8-layer resolver (#64/#65). The reason string is
+      // `entitlement_required`, NOT `feature_disabled` — FeatureGuard throws
+      // `{ reason: 'entitlement_required', feature }`, and `feature` is null on the
+      // fail-closed branch, so nothing may assume it is present.
+      if (reason === 'entitlement_required' && !isVerify) {
+        toastOnce(reason, 'Your organization does not have access to this capability.');
+        // Same reasoning as module_disabled: refetch so RequireFeature re-evaluates
+        // rather than leaving the user on a page whose controls all fail.
+        void queryClient.invalidateQueries({ queryKey: ['auth', 'session'] });
+        return Promise.reject(error);
+      }
+
       // The tenant-level rejections. Refetching the session is what moves the user
       // to /pending or /suspended, since ProtectedRoute reads it.
       if ((reason === 'no_organization' || reason === 'org_suspended') && !isVerify) {
@@ -99,6 +111,16 @@ apiClient.interceptors.response.use(
       }
       return Promise.reject(error);
     }
+
+    // 409 quota_exceeded is deliberately NOT handled here.
+    //
+    // A global toast would be actively worse than nothing: the body carries
+    // `limit`, `current`, `attempted` and `wouldBe`, and those numbers are the whole
+    // answer to "why was I blocked and what do I do". The create call-sites render
+    // them (bulk invite has done so since #106), so this passes the error through
+    // untouched rather than replacing a precise explanation with a vague one.
+    //
+    // Listed explicitly so nobody adds a handler here later thinking it was missed.
 
     const isAuthBootstrap = AUTH_BOOTSTRAP_PATHS.some((p) => config?.url?.includes(p));
 

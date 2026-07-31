@@ -11,7 +11,7 @@ import { AppModuleKey, Role, atLeast } from '@/types/common';
  * server-side (#31).
  */
 export function useModuleAccess() {
-  const { user, modules } = useAuth();
+  const { user, modules, features } = useAuth();
 
   const canAccess = (key: AppModuleKey): boolean => {
     if (!user) return false;
@@ -20,5 +20,23 @@ export function useModuleAccess() {
     return modules[key] ?? true;
   };
 
-  return { modules, canAccess };
+  /**
+   * The feature twin of `canAccess` (#72), and it does NOT short-circuit staff.
+   *
+   * `canAccess` lets admin+ through because a MODULE is a section of the app an
+   * admin administers. A FEATURE is a capability, and the resolver applies a
+   * non-overridable role ceiling to it — `problems.global` is SuperAdmin-only even
+   * for an admin. Copying the admin bypass here would show controls that 403 the
+   * moment they are used, which is worse than not showing them.
+   *
+   * A not-yet-loaded map fails OPEN, matching `canAccess`: the server is the real
+   * enforcement, and failing closed would blank the UI on every cold load.
+   */
+  const canAccessFeature = (key: string): boolean => {
+    if (!user) return false;
+    if (!features) return true;
+    return features[key] ?? true; // unknown key -> visible; the guard still decides
+  };
+
+  return { modules, features, canAccess, canAccessFeature };
 }
