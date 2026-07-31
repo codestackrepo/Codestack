@@ -16,6 +16,7 @@ import request from 'supertest';
 import { DataSource, Repository } from 'typeorm';
 
 import { Role } from '../src/common/enums/role.enum';
+import { JOB_SEND_MAIL } from '../src/queue/queue.constants';
 import { User } from '../src/modules/users/entities/user.entity';
 import {
   createTestApp,
@@ -352,6 +353,65 @@ describe('invites (e2e)', () => {
       await request(http).post('/api/v1/invites/accept').send({ token, password: 'Password1' });
       // invite pending->accepted is -1, the new user row is +1.
       expect(await seats()).toBe(before + 1);
+    });
+  });
+
+  /**
+   * #118 — a FAILED delivery must not leave a live invite link in Redis.
+   *
+   * `MAIL_JOB_OPTIONS` retains failed jobs for 24h for diagnosis while an invite
+   * token stays valid for 14 days, and `params.acceptUrl` is the full link. The
+   * comment on those options claimed a retained job "must not hold a live accept
+   * URL"; it did. This drives a real job to terminal failure and reads the payload
+   * back out of the queue.
+   */
+  describe('a failed mail job is redacted (#118)', () => {
+    it('keeps the diagnostic fields and drops the accept URL', async () => {
+      const queue = ctx.app.get<Queue>(getQueueToken('mail'));
+      await queue.obliterate({ force: true });
+
+      // attempts:1 so one failure is terminal — the production 5 would take minutes
+      // of backoff to exhaust, and the hook only fires on the LAST attempt.
+      const job = await queue.add(
+        JOB_SEND_MAIL,
+        {
+          to: 'redact-me@codestack.dev',
+          // An unknown template makes `renderMail` throw, which is how this drives a
+          // REAL terminal failure. With EMAIL_ENABLED=false a well-formed job simply
+          // completes — `deliver` returns before touching SMTP — so a valid payload
+          // could never exercise the failed path at all.
+          template: 'not_a_real_template',
+          params: {
+            orgName: 'Redaction Org',
+            firstName: 'R',
+            lastName: 'M',
+            inviterName: null,
+            acceptUrl: 'http://localhost:5173/invite/TOKEN_THAT_MUST_NOT_PERSIST',
+            expiresInDays: 14,
+          },
+        } as never,
+        { attempts: 1, removeOnFail: { age: 86_400 } },
+      );
+
+      // Wait for the worker to run it and fail (the template renders, but delivery
+      // has nowhere to go in the test app).
+      const deadline = Date.now() + 20_000;
+      let state = await job.getState();
+      while (state !== 'failed' && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 200));
+        state = await job.getState();
+      }
+
+      // If it did not fail, the assertion below would pass vacuously on a missing
+      // job — so require the terminal state explicitly.
+      expect(state).toBe('failed');
+
+      const stored = await queue.getJob(job.id as string);
+      const raw = JSON.stringify(stored?.data ?? {});
+      expect(raw).not.toContain('TOKEN_THAT_MUST_NOT_PERSIST');
+      // Diagnosis survives: you can still see who it was for and which template.
+      expect(raw).toContain('redact-me@codestack.dev');
+      expect(raw).toContain('Redaction Org');
     });
   });
 
