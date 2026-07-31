@@ -27,6 +27,7 @@ locked decisions, build order and invariants.
 - [System design](#system-design)
 - [Tech stack](#tech-stack)
 - [Setup](#setup)
+- [Transactional mail](#transactional-mail)
 - [Database: migrations](#database-migrations)
 - [Database: seeding](#database-seeding)
 - [Scripts](#scripts)
@@ -239,6 +240,70 @@ pnpm --filter @codestack/api seed          # optional demo data
 pnpm dev:api    # API  → http://localhost:3000/api/v1  (docs at /api/docs)
 pnpm dev:web    # web  → http://localhost:5173
 ```
+
+---
+
+## Transactional mail
+
+Invites, invite reminders, org-assignment notices and password resets are queued to BullMQ
+(`QUEUE_MAIL`) and delivered by `MailProcessor`. Delivery sits behind a provider seam, chosen with
+`EMAIL_PROVIDER`.
+
+> **Naming.** "Resend" is overloaded in this repo. `EMAIL_PROVIDER=resend` and `ResendMailTransport`
+> mean **Resend the email provider** (resend.com). `POST /invites/:id/resend`, `resendPending` and
+> `InviteResendCooldownException` mean **re-sending an invite** and have nothing to do with it. Don't
+> let a grep conflate the two.
+
+### Local development — mailpit (the default)
+
+```bash
+docker compose up -d mailpit     # SMTP sink on :1025, web UI on http://localhost:8025
+```
+
+Then set `EMAIL_ENABLED=true` in `apps/api/.env`. The `.env.sample` defaults already point at
+mailpit, so no credentials and no outbound network access are needed — every message lands in the
+web UI, invite links included.
+
+With `EMAIL_ENABLED=false` (the default) nothing is sent and no provider is constructed at all: the
+mailer logs the rendered text body instead, and **only outside production**, so a deployment that
+forgets the flag never writes invite tokens to its log. A disabled mailer never needs a credential.
+
+### Production — Resend over its HTTP API
+
+```dotenv
+EMAIL_ENABLED=true
+EMAIL_PROVIDER=resend
+RESEND_API_KEY=<a sending-only key>
+DEFAULT_FROM_EMAIL=no-reply@<a domain you have verified in Resend>
+EMAIL_RATE_MAX=<see below — required for this provider>
+```
+
+Four things that will each bite once:
+
+- **The from-address must be on a domain verified in Resend, or every send answers 403.** Verifying
+  means adding Resend's DNS records to a zone **you** control, so a platform-provided host (a
+  `*.up.railway.app` subdomain, for instance) can never be verified. `onboarding@resend.dev` works
+  without verification but delivers only to the Resend account owner's own address — a smoke test,
+  not an invite path.
+- **`EMAIL_RATE_MAX` has no default for this provider** and Joi requires it. The 20/s that suits
+  mailpit and a real SMTP relay is far above a typical Resend account limit, and inheriting it
+  silently is what produces a 429 storm on the first bulk roster import. Resend's real
+  `POST /emails` limit is not the one its read endpoints report, so `ResendMailTransport` logs the
+  observed limit once on the first successful send; set this to at most half of it. The BullMQ
+  limiter is **Redis-global** — the cap across every worker pod, not per pod — and any other Resend
+  API traffic shares the same account budget.
+- **Use a sending-only API key.** A full-access key can create and revoke domains and other keys,
+  which delivery never needs. The key must never reach a log: the transport builds every message
+  from the response alone and scrubs anything key-shaped out of provider-supplied text, and
+  `pnpm check:invariants` pins the three files allowed to read it.
+- **Failures are classified.** `429`, `408` and `5xx` throw, so BullMQ retries on its backoff.
+  `422` (invalid recipient), `403` (unverified domain) and other `4xx` are *terminal*: the job is
+  logged at error level, its credential is scrubbed, and it completes without burning the remaining
+  attempts — retrying an unverified domain five times over eight minutes changes nothing.
+
+If the HTTP API ever has to be abandoned, Resend also speaks SMTP and that needs no code change:
+`EMAIL_PROVIDER=smtp`, `EMAIL_HOST=smtp.resend.com`, `EMAIL_PORT=465`, `EMAIL_USER=resend`,
+`EMAIL_PASSWORD=<the api key>`.
 
 ---
 

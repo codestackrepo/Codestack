@@ -3,10 +3,11 @@ import { Queue } from 'bullmq';
 import { MAIL_JOB_OPTIONS } from '../../queue/queue.constants';
 import { MailService } from './mail.service';
 import { AnyMailMessage, MailTemplate } from './mail.types';
-import * as transport from './mail.transport';
+import { MailTransport } from './mail.transport';
 
-jest.mock('./mail.transport', () => ({ createMailTransport: jest.fn() }));
-const createMailTransport = transport.createMailTransport as jest.Mock;
+// No `jest.mock` of the transport module any more: since #118 the provider is
+// injected, so a fake instance IS the seam. That is the point of the seam — the
+// service can be tested without knowing which provider exists.
 
 const MESSAGE: AnyMailMessage = {
   to: 'ada@example.com',
@@ -28,6 +29,8 @@ function setup(
   const queue = { add } as unknown as Queue;
   const email = {
     enabled: over.emailEnabled ?? false,
+    provider: 'smtp' as const,
+    resendApiKey: '',
     host: 'smtp.example.com',
     port: 587,
     user: '',
@@ -51,7 +54,11 @@ function setup(
     getOrThrow: jest.fn((key: string) => (key === 'email' ? email : app)),
   } as unknown as ConfigService;
 
-  return { svc: new MailService(queue, config), add };
+  const send = jest.fn().mockResolvedValue(undefined);
+  const close = jest.fn();
+  const transport = { send, close } as unknown as MailTransport;
+
+  return { svc: new MailService(queue, transport, config), add, send, close };
 }
 
 describe('MailService.webUrl', () => {
@@ -110,13 +117,11 @@ describe('MailService.enqueue', () => {
 
 describe('MailService.deliver', () => {
   it('sends through the transport with a rendered subject, html and text', async () => {
-    const sendMail = jest.fn().mockResolvedValue(undefined);
-    createMailTransport.mockReturnValue({ sendMail, close: jest.fn() });
-    const { svc } = setup({ emailEnabled: true });
+    const { svc, send } = setup({ emailEnabled: true });
 
     await svc.deliver(MESSAGE);
 
-    const sent = sendMail.mock.calls[0][0] as Record<string, string>;
+    const sent = send.mock.calls[0][0] as Record<string, string>;
     expect(sent.to).toBe('ada@example.com');
     expect(sent.from).toBe('no-reply@codestack.dev');
     expect(sent.subject).toContain('Acme University');
@@ -127,28 +132,33 @@ describe('MailService.deliver', () => {
   // BullMQ decides to retry from the thrown error, so swallowing one here turns a
   // transient SMTP failure into permanent silent non-delivery.
   it('THROWS on send failure so BullMQ retries', async () => {
-    const sendMail = jest.fn().mockRejectedValue(new Error('550 mailbox unavailable'));
-    createMailTransport.mockReturnValue({ sendMail, close: jest.fn() });
-    const { svc } = setup({ emailEnabled: true });
+    const { svc, send } = setup({ emailEnabled: true });
+    send.mockRejectedValue(new Error('550 mailbox unavailable'));
     await expect(svc.deliver(MESSAGE)).rejects.toThrow('550 mailbox unavailable');
   });
 
-  it('reuses one pooled transport across sends', async () => {
-    createMailTransport.mockClear();
-    const sendMail = jest.fn().mockResolvedValue(undefined);
-    createMailTransport.mockReturnValue({ sendMail, close: jest.fn() });
-    const { svc } = setup({ emailEnabled: true });
-    await svc.deliver(MESSAGE);
-    await svc.deliver(MESSAGE);
-    expect(createMailTransport).toHaveBeenCalledTimes(1);
+  // The processor reads `MailDeliveryError.terminal` to decide retry vs complete,
+  // so `deliver` must not catch, wrap, or otherwise flatten what the provider threw.
+  it('propagates the provider error object unchanged', async () => {
+    const { svc, send } = setup({ emailEnabled: true });
+    const original = Object.assign(new Error('unverified domain'), { terminal: true });
+    send.mockRejectedValue(original);
+    await expect(svc.deliver(MESSAGE)).rejects.toBe(original);
+  });
+
+  // A send Resend accepted but whose response was lost must be collapsed by the
+  // provider on the retry, not mailed twice.
+  it('forwards the caller-supplied send metadata to the transport', async () => {
+    const { svc, send } = setup({ emailEnabled: true });
+    await svc.deliver(MESSAGE, { idempotencyKey: 'mail-job-7' });
+    expect(send.mock.calls[0][1]).toEqual({ idempotencyKey: 'mail-job-7' });
   });
 
   describe('disabled mode', () => {
-    it('builds no transport and sends nothing', async () => {
-      createMailTransport.mockClear();
-      const { svc } = setup({ emailEnabled: false });
+    it('sends nothing at all', async () => {
+      const { svc, send } = setup({ emailEnabled: false });
       await svc.deliver(MESSAGE);
-      expect(createMailTransport).not.toHaveBeenCalled();
+      expect(send).not.toHaveBeenCalled();
     });
 
     it('logs the text body outside production, so links are reachable in dev', async () => {

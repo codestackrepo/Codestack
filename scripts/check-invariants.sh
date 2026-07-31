@@ -81,6 +81,27 @@ gate "@AllowsUnassigned application sites (allowlist = 5)" 5 \
 gate "no quota LIMIT coalesced to zero" 0 \
   grep -rnE "(limit|Limit|max[A-Z][A-Za-z]*)[^;]*\?\? *0" apps/api/src/modules/quotas
 
+# --- Resend API key containment (#118) ------------------------------------
+# There is NO log-redaction layer in this app: nestjs-pino is a dependency but
+# LoggerModule is registered nowhere, so `EMAIL_PASSWORD` is protected only by never
+# being interpolated into a log line. `RESEND_API_KEY` inherits exactly that
+# discipline, which means the discipline has to be checkable.
+#
+# Three reads, and they are the only three that can exist without widening the
+# key's blast radius: the config factory that loads it, and the two lines in
+# `ResendMailTransport` that check it is present and store it. Anything else — a
+# service reaching for the key, a controller passing it around, a second transport
+# — needs the review this gate forces. Specs are excluded: their fixtures use a
+# fake `re_TESTKEY...` value on purpose, and `resend-mail.transport.spec.ts` is
+# where the "no key in any thrown error or log call" assertion lives.
+gate "RESEND_API_KEY read only by config + Resend transport" 3 \
+  grep -rn --include=*.ts --exclude=*.spec.ts "resendApiKey" "$API"
+
+# The raw env var itself has exactly one reader — the config factory. A second one
+# would be a path that bypasses the containment above.
+gate "process.env.RESEND_API_KEY has one reader" 1 \
+  grep -rn --include=*.ts "process.env.RESEND_API_KEY" "$API"
+
 # --- web has no TS enums (erasableSyntaxOnly) -----------------------------
 # tsconfig sets erasableSyntaxOnly, so a TS `enum` fails the build too — this
 # catches it at review time rather than in CI.

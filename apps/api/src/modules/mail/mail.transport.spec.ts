@@ -1,6 +1,11 @@
 import * as nodemailer from 'nodemailer';
 import { EmailConfig } from '../../config/configuration';
-import { createMailTransport } from './mail.transport';
+import {
+  createMailTransport,
+  DisabledMailTransport,
+  MailDeliveryError,
+  SmtpMailTransport,
+} from './mail.transport';
 
 jest.mock('nodemailer', () => ({ createTransport: jest.fn().mockReturnValue({}) }));
 
@@ -76,5 +81,99 @@ describe('createMailTransport', () => {
     const o = optionsFor(cfg());
     expect(o.tls).toEqual({ minVersion: 'TLSv1.2' });
     expect(o.pool).toBe(true);
+  });
+});
+
+const OUTBOUND = {
+  from: 'no-reply@codestack.dev',
+  to: 'ada@example.com',
+  subject: 'Subject',
+  html: '<p>Body</p>',
+  text: 'Body',
+};
+
+describe('SmtpMailTransport', () => {
+  beforeEach(() => createTransport.mockClear());
+
+  it('hands the rendered mail straight to nodemailer', async () => {
+    const sendMail = jest.fn().mockResolvedValue(undefined);
+    createTransport.mockReturnValue({ sendMail, close: jest.fn() });
+
+    await new SmtpMailTransport(cfg()).send(OUTBOUND);
+
+    expect(sendMail).toHaveBeenCalledWith(OUTBOUND);
+  });
+
+  // The pool is the dominant cost saving for a bulk roster burst: one TCP+TLS
+  // handshake instead of one per message.
+  it('builds the pool once and reuses it across sends', async () => {
+    const sendMail = jest.fn().mockResolvedValue(undefined);
+    createTransport.mockReturnValue({ sendMail, close: jest.fn() });
+    const t = new SmtpMailTransport(cfg());
+
+    await t.send(OUTBOUND);
+    await t.send(OUTBOUND);
+
+    expect(createTransport).toHaveBeenCalledTimes(1);
+    expect(sendMail).toHaveBeenCalledTimes(2);
+  });
+
+  // The DI factory constructs this at module init, including in the API process
+  // which may never send anything. Nothing should be built until it is needed.
+  it('builds nothing at construction time', () => {
+    new SmtpMailTransport(cfg());
+    expect(createTransport).not.toHaveBeenCalled();
+  });
+
+  // Otherwise a worker shutdown waits on open sockets and outlives its grace period.
+  it('closes the pool, and closing before any send is harmless', () => {
+    const close = jest.fn();
+    createTransport.mockReturnValue({ sendMail: jest.fn(), close });
+
+    const never = new SmtpMailTransport(cfg());
+    expect(() => never.close()).not.toThrow();
+    expect(close).not.toHaveBeenCalled();
+  });
+
+  // Deliberately NOT classified: pre-#118 behaviour is that every SMTP failure is
+  // retryable, and a relay's permanent-vs-transient replies are not reliably
+  // distinguishable. Only Resend's HTTP API earns a terminal signal.
+  it('leaves SMTP errors unclassified so they stay retryable', async () => {
+    const boom = new Error('550 mailbox unavailable');
+    createTransport.mockReturnValue({
+      sendMail: jest.fn().mockRejectedValue(boom),
+      close: jest.fn(),
+    });
+
+    const thrown = await new SmtpMailTransport(cfg()).send(OUTBOUND).catch((e: unknown) => e);
+
+    expect(thrown).toBe(boom);
+    expect(thrown).not.toBeInstanceOf(MailDeliveryError);
+  });
+});
+
+describe('DisabledMailTransport', () => {
+  // Unreachable in practice — `deliver()` returns before touching the transport when
+  // the mailer is off. It exists so DI never resolves the token to null, and it
+  // throws rather than silently resolving: getting here means the `enabled`
+  // short-circuit was bypassed, which is a bug, not a mail to quietly drop.
+  it('rejects rather than silently swallowing a send', async () => {
+    await expect(new DisabledMailTransport().send()).rejects.toThrow(/disabled/i);
+  });
+
+  // Counter-intuitive on purpose. A terminal error makes the processor scrub the
+  // payload and COMPLETE the job — reaching this branch would then destroy the mail
+  // outright, with no token left in Redis to recover or diagnose from. Retryable
+  // instead parks it in the failed set with five error lines pointing at the bug.
+  it('is retryable, so a bug that reaches it cannot silently destroy the mail', async () => {
+    const err = (await new DisabledMailTransport()
+      .send()
+      .catch((e: unknown) => e)) as MailDeliveryError;
+    expect(err).toBeInstanceOf(MailDeliveryError);
+    expect(err.terminal).toBe(false);
+  });
+
+  it('closes without error, having opened nothing', () => {
+    expect(() => new DisabledMailTransport().close()).not.toThrow();
   });
 });

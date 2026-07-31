@@ -98,6 +98,16 @@ export const throttleConfig = registerAs('throttle', () => ({
  */
 export const emailConfig = registerAs('email', () => ({
   enabled: bool(process.env.EMAIL_ENABLED, false),
+  // Which provider actually delivers (#118). `smtp` is the default so local
+  // development keeps working against mailpit with no credentials and no network
+  // egress — a change that forced every developer to hold a real API key just to
+  // see an invite link would be worked around rather than used.
+  provider: (process.env.EMAIL_PROVIDER ?? 'smtp') as 'smtp' | 'resend',
+  // SECRET. Never interpolated into a log line, an error message or a thrown
+  // exception — see `resend-mail.transport.ts`, which builds every message from
+  // the response alone, and the `check-invariants` gate that pins the set of
+  // files allowed to read this field.
+  resendApiKey: process.env.RESEND_API_KEY ?? '',
   host: process.env.EMAIL_HOST ?? '',
   port: num(process.env.EMAIL_PORT, 587),
   user: process.env.EMAIL_USER ?? '',
@@ -111,6 +121,15 @@ export const emailConfig = registerAs('email', () => ({
   // exactly what an SMTP provider's rate cap needs — a per-pod cap would be
   // multiplied by the pod count.
   workerConcurrency: num(process.env.EMAIL_WORKER_CONCURRENCY, 4),
+  // These two are NOT what configures the limiter, and that is not an oversight.
+  // BullMQ reads `limiter` once, when the Worker is constructed — before any
+  // ConfigService exists — so `mail.processor.ts` reads the same two env vars
+  // directly at class-decoration time. These fields are the CROSS-CHECK: the
+  // processor compares them against the values it actually baked in and logs
+  // loudly if they differ, which is what turns "the env var reached the worker"
+  // from an assumption into something observable at boot. Deleting them would
+  // remove that check; using them to configure anything would resurrect the bug
+  // where the config said 5 and the worker ran at 20.
   rateMax: num(process.env.EMAIL_RATE_MAX, 20),
   rateDurationMs: num(process.env.EMAIL_RATE_DURATION_MS, 1000),
 }));
