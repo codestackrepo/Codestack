@@ -53,6 +53,19 @@ export const assignmentsApi = {
     return data;
   },
 
+  /**
+   * Hard delete (#46). `DELETE /assignments/:id` has existed since the module
+   * shipped; only this method was missing, so there was no way to reach it.
+   *
+   * `assignment_problems` and `assignment_attempts` both declare
+   * `onDelete: 'CASCADE'`, so student attempts and submissions for this assignment
+   * go with it. That is why the caller must confirm first — nothing here is
+   * recoverable.
+   */
+  async delete(id: string): Promise<void> {
+    await apiClient.delete(`/assignments/${id}`);
+  },
+
   // ---- Mixed items: staff builder (#22, backend #20) ----
 
   async items(assignmentId: string): Promise<AssignmentItemStaff[]> {

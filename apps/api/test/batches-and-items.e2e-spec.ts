@@ -35,12 +35,14 @@ interface Registered {
 describe('batches + targeting + items (e2e)', () => {
   let ctx: TestAppContext;
   let http: import('http').Server;
+  let ds: import('typeorm').DataSource;
   let orgId: string;
 
   beforeAll(async () => {
     ctx = await createTestApp();
     http = ctx.app.getHttpServer();
-    orgId = await createTestOrg(getDataSource(ctx));
+    ds = getDataSource(ctx);
+    orgId = await createTestOrg(ds);
   });
 
   afterAll(async () => {
@@ -288,6 +290,66 @@ describe('batches + targeting + items (e2e)', () => {
         res.body.items as Array<{ itemId: string; options?: Array<Record<string, unknown>> }>
       ).find((i) => i.itemId === mcqItemId);
       expect(item?.options?.every((o) => !('isCorrect' in o))).toBe(true);
+    });
+
+    it('exposes SAMPLE cases and the statement, and never a HIDDEN case (#46)', async () => {
+      // This suite's fixture has no coding item, so build one here. Without it the
+      // test would find nothing to assert on and pass vacuously — which is worse
+      // than no test, because it reads as coverage.
+      const problem = await request(http).post('/api/v1/problems').set('Cookie', prof.cookie).send({
+        title: 'Take Drilldown Problem',
+        body: 'Add two numbers and print the sum.',
+        difficulty: 'easy',
+        visibility: 'shared',
+      });
+      expect(problem.status).toBe(201);
+
+      await ds.query(
+        `INSERT INTO test_cases (problem_id, input_data, expected_output, explanation, type, order_index, is_active)
+           VALUES ($1,'2 3','5','two plus three','sample',0,true),
+                  ($1,'SECRET_HIDDEN_INPUT','SECRET_HIDDEN_OUTPUT','','hidden',1,true)`,
+        [problem.body.id],
+      );
+
+      const created = await request(http)
+        .post(`/api/v1/assignments/${assignmentId}/items`)
+        .set('Cookie', prof.cookie)
+        .send({
+          kind: 'coding',
+          sourceProblemId: problem.body.id,
+          score: 10,
+          languages: ['python'],
+        });
+      expect(created.status).toBe(201);
+
+      const res = await request(http)
+        .get(`/api/v1/assignments/${assignmentId}/take`)
+        .set('Cookie', student.cookie);
+      expect(res.status).toBe(200);
+
+      const item = (
+        res.body.items as Array<{
+          kind: string;
+          statement?: string;
+          languages?: string[];
+          sampleTestCases?: { inputData: string; expectedOutput: string }[];
+        }>
+      ).find((i) => i.kind === 'coding');
+      // Fail loudly if the coding item is absent rather than skipping the assertions.
+      expect(item).toBeDefined();
+
+      expect(item?.statement).toContain('Add two numbers');
+      expect(item?.languages).toContain('python');
+      expect(item?.sampleTestCases).toHaveLength(1);
+      expect(item?.sampleTestCases?.[0].inputData).toBe('2 3');
+
+      // The load-bearing half. Asserted on the RAW payload so it holds however the
+      // DTO is reshaped later: a hidden case must never reach a student, or the
+      // problem can be solved by printing the expected output.
+      const raw = JSON.stringify(res.body);
+      expect(raw).toContain('two plus three');
+      expect(raw).not.toContain('SECRET_HIDDEN_INPUT');
+      expect(raw).not.toContain('SECRET_HIDDEN_OUTPUT');
     });
 
     it('saving an MCQ response returns no score/correctness to the student', async () => {
