@@ -1,7 +1,14 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
+import { FeatureKey } from '../module-access/enums/feature-key.enum';
+import { ModuleAccessService } from '../module-access/module-access.service';
 import { AssignmentsService } from './assignments.service';
 import { syncCodingPoints } from './coding-points.util';
 import {
@@ -14,6 +21,15 @@ import { AssignmentProblem } from './entities/assignment-problem.entity';
 import { McqOption } from './entities/mcq-option.entity';
 import { AssignmentItemGradingMode } from './enums/assignment-item-grading-mode.enum';
 import { AssignmentItemKind } from './enums/assignment-item-kind.enum';
+
+/**
+ * Per-kind entitlement (#65). CODING is absent on purpose: it has no dedicated
+ * feature key and is covered by `assignments.author` on the route.
+ */
+const KIND_FEATURE: Partial<Record<AssignmentItemKind, FeatureKey>> = {
+  [AssignmentItemKind.MCQ]: FeatureKey.ASSIGNMENTS_MCQ_CRUD,
+  [AssignmentItemKind.QUIZ]: FeatureKey.ASSIGNMENTS_QUIZ_CRUD,
+};
 
 /**
  * Staff authoring of mixed assignment items (coding | mcq | quiz). Coding items
@@ -35,7 +51,37 @@ export class AssignmentItemsService {
     private readonly assignmentProblems: Repository<AssignmentProblem>,
     private readonly assignmentsService: AssignmentsService,
     private readonly dataSource: DataSource,
+    private readonly access: ModuleAccessService,
   ) {}
+
+  /**
+   * Enforces `assignments.mcq-crud` / `assignments.quiz-crud` (#65).
+   *
+   * These two feature keys are the reason this check is here and not on the
+   * controller. `@RequiresFeature` reads route metadata, but the item kind is a
+   * BODY field — `CreateAssignmentItemDto.kind`, discriminated in this service —
+   * so one route (`POST /assignments/:id/items`) authors coding, mcq AND quiz
+   * items depending on the payload. A route-level decorator cannot tell them
+   * apart, and annotating the route with either key would gate all three kinds
+   * behind whichever one was chosen.
+   *
+   * `assignments.author` is already enforced on the route by the guard, so this is
+   * strictly the narrower per-kind gate on top of it.
+   *
+   * Deliberately NOT applied to the `PUT items/:itemId/mcq|quiz` routes: those save
+   * a STUDENT's answer, and both keys have a `[ADMIN, PROFESSOR]` role ceiling, so
+   * gating them would 403 every student mid-attempt.
+   */
+  private async assertKindAllowed(
+    kind: AssignmentItemKind,
+    actor: AuthenticatedUser,
+  ): Promise<void> {
+    const feature = KIND_FEATURE[kind];
+    if (!feature) return; // CODING is covered by assignments.author alone
+    if (!(await this.access.isEnabled(feature, actor.role, actor.organizationId))) {
+      throw new ForbiddenException({ reason: 'entitlement_required', feature });
+    }
+  }
 
   async listItems(assignmentId: string, actor: AuthenticatedUser): Promise<AssignmentItem[]> {
     await this.assignmentsService.assertCanManageById(assignmentId, actor);
@@ -52,6 +98,7 @@ export class AssignmentItemsService {
     actor: AuthenticatedUser,
   ): Promise<AssignmentItem> {
     await this.assignmentsService.assertCanManageById(assignmentId, actor);
+    await this.assertKindAllowed(dto.kind, actor);
     const orderIndex = dto.orderIndex ?? (await this.nextOrderIndex(assignmentId));
 
     if (dto.kind === AssignmentItemKind.CODING) {
@@ -98,6 +145,9 @@ export class AssignmentItemsService {
   ): Promise<AssignmentItem> {
     const item = await this.getItemOrThrow(itemId);
     await this.assignmentsService.assertCanManageById(item.assignmentId, actor);
+    // The STORED kind, not a dto field — update carries no `kind`, and an item's
+    // kind is immutable after creation.
+    await this.assertKindAllowed(item.kind, actor);
 
     if (dto.prompt !== undefined) item.prompt = dto.prompt;
     if (dto.orderIndex !== undefined) item.orderIndex = dto.orderIndex;

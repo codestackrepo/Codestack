@@ -10,7 +10,11 @@ describe('AssignmentItemsService', () => {
   let mcqOptions: { delete: jest.Mock; save: jest.Mock; create: jest.Mock };
   let assignmentProblems: { update: jest.Mock };
   let assignmentsService: { assertCanManageById: jest.Mock };
-  let dataSource: { manager: { query: jest.Mock; transaction: jest.Mock } };
+  let dataSource: {
+    manager: { query: jest.Mock; transaction: jest.Mock };
+    transaction: jest.Mock;
+  };
+  let access: { isEnabled: jest.Mock };
   let service: AssignmentItemsService;
 
   const actor: AuthenticatedUser = {
@@ -38,13 +42,29 @@ describe('AssignmentItemsService', () => {
     // transaction() runs its callback with a manager that shares the same query
     // mock, so assertions on dataSource.manager.query still see the calls.
     const transaction = jest.fn(async (cb: (m: unknown) => unknown) => cb({ query }));
-    dataSource = { manager: { query, transaction } };
+    // `transaction` also has to exist on dataSource itself, not only on .manager:
+    // the MCQ create path calls `this.dataSource.transaction(...)`. Every existing
+    // case threw in validation before reaching it, so the gap was invisible.
+    const txRepos: Record<string, unknown> = {
+      AssignmentItem: items,
+      McqOption: mcqOptions,
+    };
+    const entityTx = jest.fn(async (cb: (m: unknown) => unknown) =>
+      cb({ query, getRepository: (e: { name: string }) => txRepos[e.name] ?? items }),
+    );
+    dataSource = { manager: { query, transaction }, transaction: entityTx };
+    // Entitled by default so the existing cases exercise authoring, not the gate.
+    // Returns a real boolean, matching ModuleAccessService.isEnabled's contract —
+    // a mock resolving `undefined` would make every kind look DENIED and turn the
+    // gate's own tests green for the wrong reason.
+    access = { isEnabled: jest.fn().mockResolvedValue(true) };
     service = new AssignmentItemsService(
       items as never,
       mcqOptions as never,
       assignmentProblems as never,
       assignmentsService as never,
       dataSource as never,
+      access as never,
     );
   });
 
@@ -116,5 +136,101 @@ describe('AssignmentItemsService', () => {
         actor,
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  /**
+   * #65 — `assignments.mcq-crud` / `.quiz-crud` are enforced HERE and not by
+   * `@RequiresFeature`, because item kind is a body field: one route authors
+   * coding, mcq and quiz depending on `dto.kind`, so route metadata cannot tell
+   * them apart. These pin that the right key is consulted per kind.
+   */
+  describe('per-kind entitlement (#65)', () => {
+    beforeEach(() => {
+      // createItem ends by re-reading the row it just wrote; without this the
+      // trailing getItemOrThrow throws and masks what these tests assert.
+      items.findOne.mockResolvedValue({
+        id: 'i-1',
+        assignmentId: 'a-1',
+        kind: AssignmentItemKind.MCQ,
+        maxPoints: 0,
+        prompt: '',
+        allowMultiple: false,
+        options: [],
+      });
+    });
+
+    const mcqDto = {
+      kind: AssignmentItemKind.MCQ,
+      orderIndex: 0,
+      options: [
+        { text: 'a', isCorrect: true },
+        { text: 'b', isCorrect: false },
+      ],
+    };
+
+    it('consults assignments.mcq-crud for an MCQ create', async () => {
+      await service.createItem('a-1', mcqDto as never, actor);
+      expect(access.isEnabled).toHaveBeenCalledWith(
+        'assignments.mcq-crud',
+        actor.role,
+        actor.organizationId,
+      );
+    });
+
+    it('consults assignments.quiz-crud for a QUIZ create', async () => {
+      await service.createItem(
+        'a-1',
+        { kind: AssignmentItemKind.QUIZ, orderIndex: 0, prompt: 'why' } as never,
+        actor,
+      );
+      expect(access.isEnabled).toHaveBeenCalledWith(
+        'assignments.quiz-crud',
+        actor.role,
+        actor.organizationId,
+      );
+    });
+
+    it('403s entitlement_required when the kind feature is off, before writing', async () => {
+      access.isEnabled.mockResolvedValue(false);
+      await expect(service.createItem('a-1', mcqDto as never, actor)).rejects.toMatchObject({
+        response: { reason: 'entitlement_required', feature: 'assignments.mcq-crud' },
+      });
+      // The gate must precede the write, or a denied request still mutates.
+      expect(items.save).not.toHaveBeenCalled();
+      expect(mcqOptions.save).not.toHaveBeenCalled();
+    });
+
+    it('does NOT gate a CODING item on an mcq/quiz key', async () => {
+      // CODING has no dedicated feature key; it is covered by assignments.author
+      // on the route. Gating it on either crud key would disable coding authoring
+      // for an org that only turned mcq off.
+      access.isEnabled.mockResolvedValue(false);
+      assignmentsService.assertCanManageById.mockResolvedValue({ id: 'a-1' });
+      await service
+        .createItem(
+          'a-1',
+          { kind: AssignmentItemKind.CODING, orderIndex: 0, sourceProblemId: 'p-1' } as never,
+          actor,
+        )
+        .catch(() => undefined); // the coding path needs more fixture than this test provides
+      expect(access.isEnabled).not.toHaveBeenCalled();
+    });
+
+    it('reads the STORED kind on update, since update carries no kind', async () => {
+      items.findOne.mockResolvedValue({
+        id: 'i-1',
+        assignmentId: 'a-1',
+        kind: AssignmentItemKind.QUIZ,
+        maxPoints: 0,
+        prompt: '',
+        allowMultiple: false,
+      });
+      await service.updateItem('i-1', { prompt: 'edited' } as never, actor).catch(() => undefined);
+      expect(access.isEnabled).toHaveBeenCalledWith(
+        'assignments.quiz-crud',
+        actor.role,
+        actor.organizationId,
+      );
+    });
   });
 });

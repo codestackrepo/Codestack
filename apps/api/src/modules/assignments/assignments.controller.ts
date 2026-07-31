@@ -16,6 +16,8 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '../../common/enums/role.enum';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
 import { AppModuleKey } from '../module-access/enums/app-module-key.enum';
+import { FeatureKey } from '../module-access/enums/feature-key.enum';
+import { RequiresFeature } from '../module-access/decorators/requires-feature.decorator';
 import { RequiresModule } from '../module-access/decorators/requires-module.decorator';
 import { AssignmentsService } from './assignments.service';
 import {
@@ -41,6 +43,7 @@ export class AssignmentsController {
 
   @Post()
   @Roles(Role.ADMIN, Role.PROFESSOR)
+  @RequiresFeature(FeatureKey.ASSIGNMENTS_AUTHOR)
   async create(@Body() dto: CreateAssignmentDto, @CurrentUser() actor: AuthenticatedUser) {
     return AssignmentResponseDto.from(await this.assignments.create(dto, actor));
   }
@@ -71,6 +74,7 @@ export class AssignmentsController {
 
   @Patch('problems/:apId')
   @Roles(Role.ADMIN, Role.PROFESSOR)
+  @RequiresFeature(FeatureKey.ASSIGNMENTS_AUTHOR)
   async editProblem(
     @Param('apId', ParseUUIDPipe) apId: string,
     @Body() dto: EditAssignmentProblemDto,
@@ -83,6 +87,7 @@ export class AssignmentsController {
 
   @Delete('problems/:apId')
   @Roles(Role.ADMIN, Role.PROFESSOR)
+  @RequiresFeature(FeatureKey.ASSIGNMENTS_AUTHOR)
   @HttpCode(204)
   async deleteProblem(
     @Param('apId', ParseUUIDPipe) apId: string,
@@ -100,6 +105,7 @@ export class AssignmentsController {
 
   @Patch(':id')
   @Roles(Role.ADMIN, Role.PROFESSOR)
+  @RequiresFeature(FeatureKey.ASSIGNMENTS_AUTHOR)
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateAssignmentDto,
@@ -110,6 +116,7 @@ export class AssignmentsController {
 
   @Delete(':id')
   @Roles(Role.ADMIN, Role.PROFESSOR)
+  @RequiresFeature(FeatureKey.ASSIGNMENTS_AUTHOR)
   @HttpCode(204)
   async remove(
     @Param('id', ParseUUIDPipe) id: string,
@@ -120,6 +127,7 @@ export class AssignmentsController {
 
   @Post(':id/publish')
   @Roles(Role.ADMIN, Role.PROFESSOR)
+  @RequiresFeature(FeatureKey.ASSIGNMENTS_AUTHOR)
   @HttpCode(200)
   async publish(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() actor: AuthenticatedUser) {
     return AssignmentResponseDto.from(await this.assignments.publish(id, actor));
@@ -127,6 +135,7 @@ export class AssignmentsController {
 
   @Post(':id/complete')
   @Roles(Role.ADMIN, Role.PROFESSOR)
+  @RequiresFeature(FeatureKey.ASSIGNMENTS_AUTHOR)
   @HttpCode(200)
   async complete(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() actor: AuthenticatedUser) {
     return AssignmentResponseDto.from(await this.assignments.complete(id, actor));
@@ -134,6 +143,7 @@ export class AssignmentsController {
 
   @Post(':id/publish-grades')
   @Roles(Role.ADMIN, Role.PROFESSOR)
+  @RequiresFeature(FeatureKey.GRADING_PUBLISH)
   @HttpCode(200)
   async publishGrades(
     @Param('id', ParseUUIDPipe) id: string,
@@ -150,6 +160,7 @@ export class AssignmentsController {
 
   @Post(':id/problems/import')
   @Roles(Role.ADMIN, Role.PROFESSOR)
+  @RequiresFeature(FeatureKey.ASSIGNMENTS_AUTHOR)
   async importProblem(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ImportProblemDto,
@@ -160,6 +171,7 @@ export class AssignmentsController {
 
   @Post(':id/problems/clone')
   @Roles(Role.ADMIN, Role.PROFESSOR)
+  @RequiresFeature(FeatureKey.ASSIGNMENTS_AUTHOR)
   async cloneProblem(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: CloneProblemDto,

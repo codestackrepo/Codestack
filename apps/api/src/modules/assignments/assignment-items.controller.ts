@@ -16,6 +16,8 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '../../common/enums/role.enum';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
 import { AppModuleKey } from '../module-access/enums/app-module-key.enum';
+import { FeatureKey } from '../module-access/enums/feature-key.enum';
+import { RequiresFeature } from '../module-access/decorators/requires-feature.decorator';
 import { RequiresModule } from '../module-access/decorators/requires-module.decorator';
 import { AssignmentItemsService } from './assignment-items.service';
 import { AssignmentTakingService, TakePayload } from './assignment-taking.service';
@@ -47,6 +49,7 @@ export class AssignmentItemsController {
 
   @Patch('items/:itemId')
   @Roles(Role.ADMIN, Role.PROFESSOR)
+  @RequiresFeature(FeatureKey.ASSIGNMENTS_AUTHOR)
   async updateItem(
     @Param('itemId', ParseUUIDPipe) itemId: string,
     @Body() dto: UpdateAssignmentItemDto,
@@ -57,6 +60,7 @@ export class AssignmentItemsController {
 
   @Delete('items/:itemId')
   @Roles(Role.ADMIN, Role.PROFESSOR)
+  @RequiresFeature(FeatureKey.ASSIGNMENTS_AUTHOR)
   @HttpCode(204)
   async deleteItem(
     @Param('itemId', ParseUUIDPipe) itemId: string,
@@ -87,6 +91,7 @@ export class AssignmentItemsController {
 
   @Get(':id/items')
   @Roles(Role.ADMIN, Role.PROFESSOR)
+  @RequiresFeature(FeatureKey.ASSIGNMENTS_AUTHOR)
   async listItems(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() actor: AuthenticatedUser,
@@ -97,6 +102,7 @@ export class AssignmentItemsController {
 
   @Post(':id/items')
   @Roles(Role.ADMIN, Role.PROFESSOR)
+  @RequiresFeature(FeatureKey.ASSIGNMENTS_AUTHOR)
   async createItem(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: CreateAssignmentItemDto,
@@ -107,6 +113,7 @@ export class AssignmentItemsController {
 
   @Post(':id/items/reorder')
   @Roles(Role.ADMIN, Role.PROFESSOR)
+  @RequiresFeature(FeatureKey.ASSIGNMENTS_AUTHOR)
   @HttpCode(200)
   async reorder(
     @Param('id', ParseUUIDPipe) id: string,
