@@ -277,6 +277,12 @@ describe('platform entitlements + quotas (e2e)', () => {
       });
       expect(o.status).toBe(201);
 
+      // #74 needs `scope` on the response to badge a row as global; without it the
+      // client would have to infer scope from the absence of an org id it also
+      // cannot see.
+      expect(g.body.scope).toBe('global');
+      expect(o.body.scope).toBe('org');
+
       // scope=global as the SuperAdmin: the global catalog only.
       const globals = await request(http)
         .get('/api/v1/problems?scope=global&limit=100')
