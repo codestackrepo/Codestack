@@ -18,6 +18,15 @@ export enum NotificationType {
   ACCESS_RESTORED = 'access_restored',
   /** The recipient was placed into an organization, leaving the holding state. */
   ORGANIZATION_ASSIGNED = 'organization_assigned',
+  /**
+   * A student raised a DOUBT on a problem — sent to the author's own org staff
+   * (#75). Issues and suggestions deliberately do not fan out; they sit in the
+   * inbox, because paging every professor for a typo report is how staff learn to
+   * ignore notifications.
+   */
+  PROBLEM_FEEDBACK_RECEIVED = 'problem_feedback_received',
+  /** Staff resolved the recipient's problem feedback (#75). */
+  PROBLEM_FEEDBACK_RESOLVED = 'problem_feedback_resolved',
 }
 // NOTE: no migration needed — `notifications.type` is varchar(50) with no CHECK
 // (1784600000000 converted it off the PG enum precisely so new types are

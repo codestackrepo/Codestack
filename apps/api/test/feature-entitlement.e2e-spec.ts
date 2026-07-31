@@ -103,21 +103,22 @@ describe('feature entitlement on annotated routes (e2e)', () => {
     await destroyTestApp(ctx);
   });
 
+  // `body`, not `description` — CreateProblemDto names it `body`. The original
+  // payload here was invalid, so the "inert by default" case was passing on a 400
+  // rather than on a real create, and would have kept passing if the route were
+  // deleted. Now it asserts 201.
   const createProblem = (title: string) =>
     request(http).post('/api/v1/problems').set('Cookie', profCookie).send({
       title,
-      description: 'x',
+      body: 'Solve it.',
       difficulty: 'easy',
-      timeLimitMs: 1000,
-      memoryLimitBytes: 256_000_000,
+      visibility: 'shared',
     });
 
   describe('problems.author on POST /problems', () => {
     it('is INERT by default — an unconfigured org authors as before', async () => {
       const res = await createProblem('fe-default-ok');
-      // Anything but a 403 proves the annotation did not deny; the exact success
-      // code belongs to the problems suite, not here.
-      expect(res.status).not.toBe(403);
+      expect(res.status).toBe(201);
     });
 
     it('403s entitlement_required once the feature is off for this role+org', async () => {
@@ -139,7 +140,7 @@ describe('feature entitlement on annotated routes (e2e)', () => {
     it('authoring works again the moment the override is removed', async () => {
       await clearFeature('problems.author', Role.PROFESSOR);
       const res = await createProblem('fe-restored');
-      expect(res.status).not.toBe(403);
+      expect(res.status).toBe(201);
     });
   });
 
