@@ -33,6 +33,7 @@ import { DropProfessorInvites1785540000000 } from '../../src/database/migrations
 import { AddPasswordResetTokens1785550000000 } from '../../src/database/migrations/1785550000000-AddPasswordResetTokens';
 import { AddProblemFeedback1785560000000 } from '../../src/database/migrations/1785560000000-AddProblemFeedback';
 import { AddTopics1785570000000 } from '../../src/database/migrations/1785570000000-AddTopics';
+import { ReserveLeagueContext1785580000000 } from '../../src/database/migrations/1785580000000-ReserveLeagueContext';
 
 /**
  * EVERY migration, in timeline order — this IS the e2e schema.
@@ -85,4 +86,5 @@ export const ALL_MIGRATIONS = [
   AddPasswordResetTokens1785550000000,
   AddProblemFeedback1785560000000,
   AddTopics1785570000000,
+  ReserveLeagueContext1785580000000,
 ];

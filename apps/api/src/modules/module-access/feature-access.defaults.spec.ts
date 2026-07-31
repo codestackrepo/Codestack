@@ -4,16 +4,13 @@ import { ALL_FEATURES, FeatureKey, featureModule, isFeatureKey } from './enums/f
 import { FEATURE_ROLE_CEILING, withinRoleCeiling } from './feature-access.defaults';
 
 describe('FeatureKey namespace', () => {
-  it('every key is dotted, and the prefix is a real module except the reserved one', () => {
+  it('every key is dotted and its prefix is a real module', () => {
+    // No exception any more: #69 registered `league`, so LEAGUE_HOST now resolves to
+    // a module like every other key. Its reservation is enforced by the module and
+    // feature DEFAULTS being off rather than by the prefix dangling.
     for (const key of ALL_FEATURES) {
       expect(key).toContain('.');
-      const owning = featureModule(key);
-      if (key === FeatureKey.LEAGUE_HOST) {
-        // Reserved until #69 registers the module — resolves to nothing on purpose.
-        expect(owning).toBeUndefined();
-      } else {
-        expect(Object.values(AppModuleKey)).toContain(owning);
-      }
+      expect(Object.values(AppModuleKey)).toContain(featureModule(key));
     }
   });
 

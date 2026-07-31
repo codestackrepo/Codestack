@@ -48,6 +48,7 @@ describe('invites (e2e)', () => {
     ds = getDataSource(ctx);
     orgId = await createTestOrg(ds);
 
+    resetThrottleStorage(ctx);
     await request(http).post('/api/v1/auth/register').send({
       email: 'inv-admin@codestack.dev',
       password: 'Password1',

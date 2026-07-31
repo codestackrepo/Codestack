@@ -36,7 +36,9 @@ export class Submission extends BaseEntity {
 
   // Discriminates the submission target (practice vs assignment). Default
   // 'assignment' preserves legacy behavior (migration 5, issue #25).
-  @Column({ type: 'enum', enum: SubmissionContext, default: SubmissionContext.ASSIGNMENT })
+  // varchar + CHECK since #69 (migration 1785580000000), not a native enum — the
+  // house rule, so a future context value is an ordinary reversible migration.
+  @Column({ type: 'varchar', length: 20, default: SubmissionContext.ASSIGNMENT })
   context!: SubmissionContext;
 
   @ManyToOne(() => AssignmentProblem, { onDelete: 'CASCADE', nullable: true })

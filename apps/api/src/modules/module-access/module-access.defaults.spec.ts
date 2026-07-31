@@ -22,8 +22,12 @@ describe('MODULE_ACCESS_DEFAULTS', () => {
 
   it('defaults grading OFF for students and every other toggleable ON', () => {
     expect(MODULE_ACCESS_DEFAULTS[AppModuleKey.GRADING][Role.STUDENT]).toBe(false);
+    // LEAGUE joins GRADING as a deliberate exception: it is RESERVED by #69 and off
+    // for professor and student until the league actually ships.
+    expect(MODULE_ACCESS_DEFAULTS[AppModuleKey.LEAGUE][Role.STUDENT]).toBe(false);
+    expect(MODULE_ACCESS_DEFAULTS[AppModuleKey.LEAGUE][Role.PROFESSOR]).toBe(false);
     for (const key of TOGGLEABLE_MODULES) {
-      if (key === AppModuleKey.GRADING) continue;
+      if (key === AppModuleKey.GRADING || key === AppModuleKey.LEAGUE) continue;
       expect(MODULE_ACCESS_DEFAULTS[key][Role.STUDENT]).toBe(true);
     }
   });

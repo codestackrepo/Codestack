@@ -73,6 +73,7 @@ describe('password reset (e2e)', () => {
     ds = getDataSource(ctx);
     orgA = await createTestOrg(ds);
 
+    resetThrottleStorage(ctx);
     await request(http)
       .post('/api/v1/auth/register')
       .send({ email: EMAIL, password: 'Password1', firstName: 'PR', lastName: 'User' });

@@ -11,6 +11,13 @@ export enum AppModuleKey {
   PLAYGROUND = 'playground',
   GRADING = 'grading',
   TOPICS = 'topics',
+  /**
+   * RESERVED by #69. Default OFF for every role, so the matrices can pre-toggle it
+   * before the league exists. `FeatureKey.LEAGUE_HOST` hangs off this prefix, and
+   * `featureModule` returning undefined for an unregistered prefix is what kept that
+   * feature a hard false until now.
+   */
+  LEAGUE = 'league',
   // SYSTEM — always-on, never in the matrix
   DASHBOARD = 'dashboard',
   PROFILE = 'profile',
@@ -25,6 +32,7 @@ export const TOGGLEABLE_MODULES: AppModuleKey[] = [
   AppModuleKey.PLAYGROUND,
   AppModuleKey.GRADING,
   AppModuleKey.TOPICS,
+  AppModuleKey.LEAGUE,
 ];
 
 /** Never gated — dashboard/profile/settings are structural and always enabled. */
