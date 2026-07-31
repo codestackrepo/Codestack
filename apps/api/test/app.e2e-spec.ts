@@ -55,7 +55,13 @@ describe('CodeStack e2e', () => {
    */
   const joinOrg = async (email: string, role?: Role): Promise<string> => {
     const userRepo = ctx.app.get<Repository<User>>(getRepositoryToken(User));
-    await userRepo.update({ email }, { organizationId: orgId, ...(role ? { role } : {}) });
+    const stamped = await userRepo.update(
+      { email },
+      { organizationId: orgId, ...(role ? { role } : {}) },
+    );
+    // 0 rows means the caller never registered this address — say so here rather
+    // than letting the login below fail with an unrelated-looking 401.
+    expect(stamped.affected).toBe(1);
     resetThrottleStorage(ctx);
     const login = await request(http)
       .post('/api/v1/auth/login')
@@ -446,12 +452,23 @@ describe('CodeStack e2e', () => {
     });
 
     it('a student cannot view another classroom submission (IDOR check)', async () => {
-      await request(http).post('/api/v1/auth/register').send({
+      // resetThrottleStorage BEFORE the register, and assert it landed.
+      //
+      // `/auth/register` is throttled 5/min, and the test directly above this one
+      // deliberately drives a 429 — so this describe runs at the throttle boundary.
+      // A throttled register here used to fail silently: no user row, then
+      // `joinOrg`'s `userRepo.update` matched 0 rows without complaint (TypeORM
+      // `update` does not throw), and the suite failed several lines later on a
+      // login 401 that pointed nowhere near the cause. That was a real flake in the
+      // full-suite run.
+      resetThrottleStorage(ctx);
+      const registered = await request(http).post('/api/v1/auth/register').send({
         email: 'eve.e2e@codestack.dev',
         password: 'Password1',
         firstName: 'Eve',
         lastName: 'E2E',
       });
+      expect(registered.status).toBe(201);
       // Same tenant on purpose: the 403 must come from classroom membership, not
       // from the tenant gate.
       const otherCookie = await joinOrg('eve.e2e@codestack.dev');
