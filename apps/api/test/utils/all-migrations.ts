@@ -31,6 +31,7 @@ import { RelaxUsersOrgRequired1785520000000 } from '../../src/database/migration
 import { ReshapeOrgInvites1785530000000 } from '../../src/database/migrations/1785530000000-ReshapeOrgInvites';
 import { DropProfessorInvites1785540000000 } from '../../src/database/migrations/1785540000000-DropProfessorInvites';
 import { AddPasswordResetTokens1785550000000 } from '../../src/database/migrations/1785550000000-AddPasswordResetTokens';
+import { AddProblemFeedback1785560000000 } from '../../src/database/migrations/1785560000000-AddProblemFeedback';
 
 /**
  * EVERY migration, in timeline order — this IS the e2e schema.
@@ -81,4 +82,5 @@ export const ALL_MIGRATIONS = [
   ReshapeOrgInvites1785530000000,
   DropProfessorInvites1785540000000,
   AddPasswordResetTokens1785550000000,
+  AddProblemFeedback1785560000000,
 ];
