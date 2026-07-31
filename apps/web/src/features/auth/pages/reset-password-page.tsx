@@ -17,26 +17,10 @@ import {
 import { Input } from '@/components/ui/input';
 import { parseApiError } from '@/lib/api-client';
 import { AuthLayout } from '../components/auth-layout';
+import { passwordConfirmSchema } from '../password-schema';
 import { passwordResetApi, type ResetTokenStatus } from '../api/password-reset.api';
 
-/**
- * Mirrors RegisterForm's rule. A weaker one here would make the reset path the
- * cheapest way to plant a guessable password on an account whose mailbox was
- * briefly accessible.
- */
-const schema = z
-  .object({
-    password: z
-      .string()
-      .min(8, 'At least 8 characters')
-      .regex(/[A-Za-z]/, 'Must contain a letter')
-      .regex(/[0-9]/, 'Must contain a number'),
-    confirm: z.string(),
-  })
-  .refine((v) => v.password === v.confirm, {
-    message: 'Passwords do not match',
-    path: ['confirm'],
-  });
+const schema = passwordConfirmSchema;
 
 const DEAD_COPY: Record<Exclude<ResetTokenStatus, 'valid'>, { title: string; body: string }> = {
   expired: {

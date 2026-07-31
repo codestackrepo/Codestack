@@ -17,6 +17,10 @@ import {
   UserPlus,
   Users,
   Inbox,
+  Mail,
+  Upload,
+  UserRoundPlus,
+  Building2,
   PanelLeftClose,
   PanelLeftOpen,
   LogOut,
@@ -34,8 +38,17 @@ interface NavItem {
   to: string;
   label: string;
   icon: typeof LayoutDashboard;
-  /** Restrict to these roles. Omitted = visible to everyone. Admin always sees all. */
+  /** Restrict to these roles. Omitted = visible to everyone. Rank-aware. */
   roles?: Role[];
+  /**
+   * Hide from these roles outright, overriding rank.
+   *
+   * `roles` is rank-aware, so `[PROFESSOR]` also matches a SUPERADMIN — and the
+   * org console is meaningless for them (`scopeToOrg` no-ops, and their
+   * `organization` is null). This is the sidebar half of `RequireRole`'s
+   * `exclude`; the route gate is the half that actually enforces it.
+   */
+  excludeRoles?: Role[];
   /** Hide when this toggleable module is disabled for the user's role. Admin always sees all. */
   module?: AppModuleKey;
   /** Renders a muted "Soon" badge; the item still navigates (to a placeholder page). */
@@ -75,7 +88,12 @@ const NAV_SECTIONS: NavSection[] = [
         icon: ClipboardList,
         module: AppModuleKey.ASSIGNMENTS,
       },
-      { to: '/home/playground', label: 'Playground', icon: Terminal, module: AppModuleKey.PLAYGROUND },
+      {
+        to: '/home/playground',
+        label: 'Playground',
+        icon: Terminal,
+        module: AppModuleKey.PLAYGROUND,
+      },
     ],
   },
   {
@@ -104,11 +122,74 @@ const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
-    heading: 'Admin',
+    // Renamed from "Admin": half of it is now a professor's job too, so naming it
+    // after the tenant rather than after one role stops reading as a lie.
+    heading: 'Organization',
     items: [
-      { to: '/home/admin', label: 'Overview', icon: LayoutDashboard, roles: [Role.ADMIN], end: true },
-      { to: '/home/admin/users', label: 'Users', icon: Users, roles: [Role.ADMIN] },
-      { to: '/home/admin/requests', label: 'Access requests', icon: Inbox, roles: [Role.ADMIN] },
+      {
+        to: '/home/admin',
+        label: 'Overview',
+        icon: LayoutDashboard,
+        roles: [Role.ADMIN],
+        excludeRoles: [Role.SUPERADMIN],
+        end: true,
+      },
+      // People / Invites / Bulk / Unassigned are PROFESSOR-and-up (rank-aware, so
+      // an admin inherits them) — the write boundary stays server-side.
+      {
+        to: '/home/admin/users',
+        label: 'People',
+        icon: Users,
+        roles: [Role.PROFESSOR],
+        excludeRoles: [Role.SUPERADMIN],
+      },
+      {
+        to: '/home/admin/invites',
+        label: 'Invites',
+        icon: Mail,
+        roles: [Role.PROFESSOR],
+        excludeRoles: [Role.SUPERADMIN],
+      },
+      {
+        to: '/home/admin/bulk-invite',
+        label: 'Bulk import',
+        icon: Upload,
+        roles: [Role.PROFESSOR],
+        excludeRoles: [Role.SUPERADMIN],
+      },
+      {
+        to: '/home/admin/unassigned',
+        label: 'Unassigned students',
+        icon: UserRoundPlus,
+        roles: [Role.PROFESSOR],
+        excludeRoles: [Role.SUPERADMIN],
+      },
+      {
+        to: '/home/admin/requests',
+        label: 'Access requests',
+        icon: Inbox,
+        roles: [Role.ADMIN],
+        excludeRoles: [Role.SUPERADMIN],
+      },
+    ],
+  },
+  {
+    // SUPERADMIN is rank 3, so `roles: [SUPERADMIN]` is exactly superadmin-only —
+    // nothing outranks it.
+    heading: 'Platform',
+    items: [
+      {
+        to: '/home/platform/organizations',
+        label: 'Organizations',
+        icon: Building2,
+        roles: [Role.SUPERADMIN],
+      },
+      {
+        to: '/home/platform/unassigned',
+        label: 'Unassigned students',
+        icon: UserRoundPlus,
+        roles: [Role.SUPERADMIN],
+      },
     ],
   },
 ];
@@ -142,6 +223,7 @@ export function Sidebar({ className, onNavigate, allowCollapse = true }: Sidebar
   };
 
   const canSee = (item: NavItem) =>
+    (!item.excludeRoles || !user || !item.excludeRoles.includes(user.role)) &&
     (!item.roles || !user || item.roles.some((r) => atLeast(user.role, r))) &&
     (!item.module || canAccess(item.module));
 
@@ -152,8 +234,7 @@ export function Sidebar({ className, onNavigate, allowCollapse = true }: Sidebar
 
   // Collapse only applies to the desktop rail; the mobile drawer is always full.
   const isCollapsed = allowCollapse && collapsed;
-  const initials =
-    `${user?.firstName?.[0] ?? ''}${user?.lastName?.[0] ?? ''}`.toUpperCase() || 'U';
+  const initials = `${user?.firstName?.[0] ?? ''}${user?.lastName?.[0] ?? ''}`.toUpperCase() || 'U';
 
   return (
     <aside

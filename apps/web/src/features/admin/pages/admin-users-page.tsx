@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { usersApi, type AdminUser, type UpdateUserInput } from '../api/users.api';
+import { adminUserKeys, usersApi, type AdminUser, type UpdateUserInput } from '../api/users.api';
+import { UserFiltersBar, type UserFilters } from '../components/user-filters-bar';
+import { AccessToggleDialog } from '@/components/shared/access-toggle-dialog';
 import { PageHeader } from '@/components/shared/page-header';
 import { EmptyState } from '@/components/shared/empty-state';
 import { Pagination } from '@/components/shared/pagination';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -36,7 +37,8 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { parseApiError } from '@/lib/api-client';
-import { Role } from '@/types/common';
+import { Role, atLeast } from '@/types/common';
+import { formatDate } from '@/lib/utils';
 import { useAuth } from '@/features/auth/context/auth-context';
 
 const ROLE_OPTIONS: { value: Role; label: string }[] = [
@@ -44,15 +46,6 @@ const ROLE_OPTIONS: { value: Role; label: string }[] = [
   { value: Role.PROFESSOR, label: 'Professor' },
   { value: Role.STUDENT, label: 'Student' },
 ];
-
-function formatDate(iso: string | null): string {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
-}
 
 /**
  * Admin user management (`/home/admin/users`, #40). Paginated table over
@@ -62,20 +55,33 @@ function formatDate(iso: string | null): string {
  */
 export function AdminUsersPage() {
   const queryClient = useQueryClient();
-  const { user: me } = useAuth();
+  const { user: me, organization } = useAuth();
   const [page, setPage] = useState(1);
+  const [filters, setFilters] = useState<UserFilters>({});
 
+  const params = { page, ...filters };
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['admin', 'users', page],
-    queryFn: () => usersApi.list(page),
+    // Factory key with the filter object last, so the prefix ['admin','users']
+    // used by every mutation below still clears each filtered permutation.
+    queryKey: adminUserKeys.list(params),
+    queryFn: () => usersApi.list(params),
     placeholderData: keepPreviousData,
   });
+
+  // Only an ADMIN may change a role or delete. `remove()` is a HARD delete, and
+  // assertCanModify permits PROFESSOR -> STUDENT — this change is what first puts
+  // a route to it in a professor's sidebar, so the control has to be gated here
+  // too rather than relying on nobody finding the page.
+  const canAdminister = !!me && atLeast(me.role, Role.ADMIN);
 
   const updateMutation = useMutation({
     mutationFn: ({ id, input }: { id: string; input: UpdateUserInput }) =>
       usersApi.update(id, input),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+      void queryClient.invalidateQueries({ queryKey: adminUserKeys.all });
+      // An access change alters what the TARGET can do, and if the actor changed
+      // their own org's seat usage the session's quota block is now stale.
+      void queryClient.invalidateQueries({ queryKey: ['auth', 'session'] });
       toast.success('User updated');
     },
     onError: (e) => toast.error(parseApiError(e).message),
@@ -84,7 +90,7 @@ export function AdminUsersPage() {
   const removeMutation = useMutation({
     mutationFn: (id: string) => usersApi.remove(id),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+      void queryClient.invalidateQueries({ queryKey: adminUserKeys.all });
       toast.success('User deleted');
     },
     onError: (e) => toast.error(parseApiError(e).message),
@@ -96,8 +102,18 @@ export function AdminUsersPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="User management"
-        description="Change roles, activate or deactivate accounts, and remove users."
+        title="People"
+        description={
+          organization ? `Everyone in ${organization.name}` : 'Everyone in your organization'
+        }
+      />
+
+      <UserFiltersBar
+        filters={filters}
+        onChange={(next) => {
+          setFilters(next);
+          setPage(1); // a filtered page 4 reads as "no results", not "no page 4"
+        }}
       />
 
       {isLoading && !data ? (
@@ -115,6 +131,7 @@ export function AdminUsersPage() {
                 <TableHead>Email</TableHead>
                 <TableHead className="w-36">Role</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Last login</TableHead>
                 <TableHead>Joined</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -132,7 +149,7 @@ export function AdminUsersPage() {
                     <TableCell>
                       <Select
                         value={u.role}
-                        disabled={isSelf || busy}
+                        disabled={isSelf || busy || !canAdminister}
                         onValueChange={(role) =>
                           updateMutation.mutate({ id: u.id, input: { role: role as Role } })
                         }
@@ -150,19 +167,17 @@ export function AdminUsersPage() {
                       </Select>
                     </TableCell>
                     <TableCell>
-                      <button
-                        type="button"
+                      <AccessToggleDialog
+                        email={u.email}
+                        isActive={u.isActive}
                         disabled={isSelf || busy}
-                        onClick={() =>
+                        onConfirm={() =>
                           updateMutation.mutate({ id: u.id, input: { isActive: !u.isActive } })
                         }
-                        className="disabled:cursor-not-allowed disabled:opacity-60"
-                        title={isSelf ? 'You cannot change your own status' : 'Toggle active'}
-                      >
-                        <Badge variant={u.isActive ? 'secondary' : 'outline'}>
-                          {u.isActive ? 'Active' : 'Inactive'}
-                        </Badge>
-                      </button>
+                      />
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {formatDate(u.lastLoginAt)}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {formatDate(u.createdAt)}
@@ -173,7 +188,7 @@ export function AdminUsersPage() {
                           <Button
                             variant="destructive"
                             size="icon-sm"
-                            disabled={isSelf || busy}
+                            disabled={isSelf || busy || !canAdminister}
                             aria-label={`Delete ${u.email}`}
                           >
                             <Trash2 className="size-4" />

@@ -2,7 +2,12 @@ import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { AppShell } from '@/components/layout/app-shell';
-import { ProtectedRoute, RequireModule, RequireRole } from '@/components/layout/protected-route';
+import {
+  ProtectedRoute,
+  RequireModule,
+  RequireRole,
+  RequireSuperAdmin,
+} from '@/components/layout/protected-route';
 import { AppModuleKey, Role } from '@/types/common';
 
 // Route-level code-splitting: each page is its own async chunk so the initial
@@ -11,6 +16,47 @@ import { AppModuleKey, Role } from '@/types/common';
 // Named exports are adapted to the default-export shape React.lazy expects.
 const LandingPage = lazy(() =>
   import('@/features/marketing/pages/landing-page').then((m) => ({ default: m.LandingPage })),
+);
+const InviteAcceptPage = lazy(() =>
+  import('@/features/invites/pages/invite-accept-page').then((m) => ({
+    default: m.InviteAcceptPage,
+  })),
+);
+const PendingAssignmentPage = lazy(() =>
+  import('@/features/onboarding/pages/pending-assignment-page').then((m) => ({
+    default: m.PendingAssignmentPage,
+  })),
+);
+const SuspendedPage = lazy(() =>
+  import('@/features/onboarding/pages/suspended-page').then((m) => ({ default: m.SuspendedPage })),
+);
+const OrgInvitesPage = lazy(() =>
+  import('@/features/admin/pages/org-invites-page').then((m) => ({ default: m.OrgInvitesPage })),
+);
+const OrgUnassignedPage = lazy(() =>
+  import('@/features/admin/pages/org-unassigned-page').then((m) => ({
+    default: m.OrgUnassignedPage,
+  })),
+);
+const BulkInvitePage = lazy(() =>
+  import('@/features/bulk-invite/pages/bulk-invite-page').then((m) => ({
+    default: m.BulkInvitePage,
+  })),
+);
+const PlatformOrganizationsPage = lazy(() =>
+  import('@/features/platform/pages/platform-organizations-page').then((m) => ({
+    default: m.PlatformOrganizationsPage,
+  })),
+);
+const PlatformOrgDetailPage = lazy(() =>
+  import('@/features/platform/pages/platform-org-detail-page').then((m) => ({
+    default: m.PlatformOrgDetailPage,
+  })),
+);
+const PlatformUnassignedPage = lazy(() =>
+  import('@/features/platform/pages/platform-unassigned-page').then((m) => ({
+    default: m.PlatformUnassignedPage,
+  })),
 );
 const ForgotPasswordPage = lazy(() =>
   import('@/features/auth/pages/forgot-password-page').then((m) => ({
@@ -136,10 +182,18 @@ function App() {
         <Route path="/register" element={<AuthPage initialMode="register" />} />
         {/* Public recovery — declared with the other public auth routes and well
             before the path="*" catch-all. */}
+        <Route path="/invite/:token" element={<InviteAcceptPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
 
         <Route element={<ProtectedRoute />}>
+          {/* Inside ProtectedRoute (they need a session) but OUTSIDE AppShell:
+              AppShell's navbar links to /home/profile and /home/settings, which
+              ProtectedRoute would bounce straight back here — a nav where every
+              item is a no-op. Each page composes its own minimal top bar. */}
+          <Route path="/pending" element={<PendingAssignmentPage />} />
+          <Route path="/suspended" element={<SuspendedPage />} />
+
           <Route path="/home" element={<AppShell />}>
             <Route index element={<Navigate to="dashboard" replace />} />
 
@@ -189,11 +243,28 @@ function App() {
               </Route>
             </Route>
 
-            {/* Admin-only overview, user management, and professor onboarding (#40) */}
-            <Route element={<RequireRole roles={[Role.ADMIN]} />}>
-              <Route path="admin" element={<AdminOverviewPage />} />
+            {/* Org console. `exclude` is load-bearing, not cosmetic: RequireRole is
+                rank-aware, so roles={[PROFESSOR]} admits a SUPERADMIN — and
+                scopeToOrg no-ops for them, so they would get a CROSS-ORG list
+                under an "Everyone in {organization.name}" heading where
+                `organization` is null. Hiding the sidebar link does not gate the
+                route. */}
+            <Route element={<RequireRole roles={[Role.PROFESSOR]} exclude={[Role.SUPERADMIN]} />}>
               <Route path="admin/users" element={<AdminUsersPage />} />
+              <Route path="admin/invites" element={<OrgInvitesPage />} />
+              <Route path="admin/bulk-invite" element={<BulkInvitePage />} />
+              <Route path="admin/unassigned" element={<OrgUnassignedPage />} />
+            </Route>
+            <Route element={<RequireRole roles={[Role.ADMIN]} exclude={[Role.SUPERADMIN]} />}>
+              <Route path="admin" element={<AdminOverviewPage />} />
               <Route path="admin/requests" element={<AdminRequestsPage />} />
+            </Route>
+
+            {/* Platform console — greenfield. RequireSuperAdmin fails CLOSED. */}
+            <Route element={<RequireSuperAdmin />}>
+              <Route path="platform/organizations" element={<PlatformOrganizationsPage />} />
+              <Route path="platform/organizations/:orgId" element={<PlatformOrgDetailPage />} />
+              <Route path="platform/unassigned" element={<PlatformUnassignedPage />} />
             </Route>
           </Route>
 
