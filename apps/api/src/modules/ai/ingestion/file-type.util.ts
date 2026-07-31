@@ -1,4 +1,5 @@
 import { extname } from 'path';
+import { isZip } from '../../../common/files/magic-bytes.util';
 import { GenerationSourceType } from '../enums/ai.enums';
 
 export class UnsupportedFileTypeError extends Error {
@@ -20,20 +21,18 @@ export function detectSourceType(buffer: Buffer, filename: string): GenerationSo
     return GenerationSourceType.PDF;
   }
 
-  const isZip =
-    buffer.length >= 4 &&
-    buffer[0] === 0x50 &&
-    buffer[1] === 0x4b &&
-    (buffer[2] === 0x03 || buffer[2] === 0x05 || buffer[2] === 0x07);
+  // Shared with the roster upload guard (#106) — one predicate, so a fix to
+  // either path fixes both.
+  const zip = isZip(buffer);
   const ext = extname(filename).toLowerCase();
 
-  if (isZip && ext === '.docx') {
+  if (zip && ext === '.docx') {
     return GenerationSourceType.DOCX;
   }
-  if (!isZip && ext === '.md') {
+  if (!zip && ext === '.md') {
     return GenerationSourceType.MD;
   }
-  if (!isZip && (ext === '.txt' || ext === '')) {
+  if (!zip && (ext === '.txt' || ext === '')) {
     return GenerationSourceType.TXT;
   }
   throw new UnsupportedFileTypeError(filename);
