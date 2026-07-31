@@ -173,6 +173,13 @@ export interface AssignmentTakeItem {
   title?: string;
   difficulty?: string;
   languages?: Language[];
+  /** The problem statement, so requirements are visible without opening the editor. */
+  statement?: string;
+  /**
+   * SAMPLE cases only — the server filters to `type === 'sample' && isActive`.
+   * Hidden cases belong to the judge and never reach a student.
+   */
+  sampleTestCases?: { inputData: string; expectedOutput: string; explanation: string }[];
   myResponse?: MyItemResponse;
 }
 

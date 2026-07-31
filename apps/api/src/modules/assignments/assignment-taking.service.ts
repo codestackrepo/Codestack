@@ -52,7 +52,12 @@ export class AssignmentTakingService {
     const assignment = await this.assignmentsService.findOne(assignmentId, actor);
     const items = await this.items.find({
       where: { assignmentId },
-      relations: { options: true, assignmentProblem: { problem: true, languageTemplates: true } },
+      // `testCases` is loaded so the take page can show SAMPLE cases (#46). The DTO
+      // filters to SAMPLE + isActive — hidden cases must never reach a student.
+      relations: {
+        options: true,
+        assignmentProblem: { problem: { testCases: true }, languageTemplates: true },
+      },
       order: { orderIndex: 'ASC' },
     });
 

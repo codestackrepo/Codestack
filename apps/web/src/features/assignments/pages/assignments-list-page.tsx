@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CalendarRange,
   ChevronDown,
@@ -9,8 +9,10 @@ import {
   Eye,
   Hammer,
   Lock,
+  Pencil,
   PlayCircle,
   Plus,
+  Trash2,
 } from 'lucide-react';
 import { assignmentsApi } from '../api/assignments.api';
 import { useAuth } from '@/features/auth/context/auth-context';
@@ -21,7 +23,20 @@ import { Pagination } from '@/components/shared/pagination';
 import { DifficultyBadge } from '@/components/shared/difficulty-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
+import { toast } from 'sonner';
+import { parseApiError } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
 import { Role, STAFF_ROLES } from '@/types/common';
 import { AssignmentStatus } from '@/types/assignment';
@@ -128,6 +143,7 @@ export function AssignmentsListPage() {
                   <AssignmentProblemsPanel
                     assignmentId={assignment.id}
                     status={assignment.status}
+                    title={assignment.title}
                   />
                 )}
               </div>
@@ -144,9 +160,12 @@ export function AssignmentsListPage() {
 function AssignmentProblemsPanel({
   assignmentId,
   status,
+  title,
 }: {
   assignmentId: string;
   status: AssignmentStatus;
+  /** Named in the delete confirmation — a destructive dialog must say WHAT it deletes. */
+  title: string;
 }) {
   const { user } = useAuth();
   const isStaff = !!user && STAFF_ROLES.includes(user.role);
@@ -176,6 +195,19 @@ function AssignmentProblemsPanel({
             </Link>
           </Button>
         )}
+        {/*
+          #46 — the edit route and form already existed; nothing in the UI reached
+          them, so staff had no way to change Opens/Closes. Staff-only, matching the
+          server's @Roles(ADMIN, PROFESSOR) on PATCH and DELETE.
+        */}
+        {isStaff && (
+          <Button asChild size="sm" variant="outline">
+            <Link to={`/home/assignments/${assignmentId}/edit`}>
+              <Pencil className="size-4" /> Edit
+            </Link>
+          </Button>
+        )}
+        {isStaff && <DeleteAssignmentButton assignmentId={assignmentId} title={title} />}
         {!isStaff && isActive && (
           <Button asChild size="sm" className="bg-brand text-brand-foreground hover:bg-brand/90">
             <Link to={`/home/assignments/${assignmentId}/take`}>
@@ -243,5 +275,63 @@ function AssignmentProblemsPanel({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Delete an assignment (#46), behind a confirmation.
+ *
+ * `assignment_problems` and `assignment_attempts` cascade, so this destroys every
+ * student attempt and submission for the assignment. The dialog says so explicitly
+ * rather than asking a generic "are you sure" — the cascade is the part a professor
+ * would not otherwise expect, and it is not recoverable.
+ */
+function DeleteAssignmentButton({ assignmentId, title }: { assignmentId: string; title: string }) {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+
+  const remove = useMutation({
+    mutationFn: () => assignmentsApi.delete(assignmentId),
+    onSuccess: () => {
+      setOpen(false);
+      void queryClient.invalidateQueries({ queryKey: ['assignments', 'list'] });
+      // The dashboard deadline strip reads its own key.
+      void queryClient.invalidateQueries({ queryKey: ['assignments', 'deadlines'] });
+      toast.success('Assignment deleted');
+    },
+    onError: (e) => toast.error(parseApiError(e).message),
+  });
+
+  return (
+    <AlertDialog open={open} onOpenChange={setOpen}>
+      <AlertDialogTrigger asChild>
+        <Button size="sm" variant="outline" className="text-destructive hover:text-destructive">
+          <Trash2 className="size-4" /> Delete
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete “{title}”?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This also deletes every student attempt and submission for this assignment. It cannot be
+            undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={remove.isPending}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            disabled={remove.isPending}
+            onClick={(e) => {
+              // Keep the dialog open while the request is in flight so the error
+              // toast is not the only trace of a failure.
+              e.preventDefault();
+              remove.mutate();
+            }}
+          >
+            {remove.isPending ? 'Deleting…' : 'Delete'}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }

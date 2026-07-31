@@ -377,21 +377,69 @@ function TakeItemCard({
       {header}
 
       {item.kind === AssignmentItemKind.CODING && (
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="truncate font-medium">{item.title}</p>
-            {item.difficulty && (
-              <div className="mt-1">
-                <DifficultyBadge difficulty={item.difficulty as Difficulty} />
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate font-medium">{item.title}</p>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                {item.difficulty && <DifficultyBadge difficulty={item.difficulty as Difficulty} />}
+                {/* #46 — which languages are allowed is part of "what do I build". */}
+                {(item.languages ?? []).map((lang) => (
+                  <Badge key={lang} variant="outline" className="text-xs">
+                    {lang}
+                  </Badge>
+                ))}
               </div>
+            </div>
+            {item.assignmentProblemId && (
+              <Button
+                asChild
+                size="sm"
+                className="bg-brand text-brand-foreground hover:bg-brand/90"
+              >
+                <Link to={`/solve/${item.assignmentProblemId}`}>
+                  <Code2 className="size-4" /> Open editor
+                </Link>
+              </Button>
             )}
           </div>
-          {item.assignmentProblemId && (
-            <Button asChild size="sm" className="bg-brand text-brand-foreground hover:bg-brand/90">
-              <Link to={`/solve/${item.assignmentProblemId}`}>
-                <Code2 className="size-4" /> Open editor
-              </Link>
-            </Button>
+
+          {/*
+            #46 — the requirements, inline and collapsed by default.
+            Collapsed because a take page with five expanded statements is unreadable;
+            available because "open the editor to find out what the task is" is the
+            complaint this closes. Only SAMPLE cases are ever present — the server
+            filters hidden ones out, so there is nothing to hide here.
+          */}
+          {(item.statement || (item.sampleTestCases?.length ?? 0) > 0) && (
+            <details className="rounded-lg border border-border bg-muted/20 p-3">
+              <summary className="cursor-pointer text-sm font-medium select-none">
+                What you need to do
+              </summary>
+              <div className="mt-3 space-y-3">
+                {item.statement && <p className="text-sm whitespace-pre-wrap">{item.statement}</p>}
+                {(item.sampleTestCases?.length ?? 0) > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">Sample cases</p>
+                    {item.sampleTestCases?.map((tc, i) => (
+                      <div key={i} className="rounded-md border border-border bg-background p-2">
+                        <pre className="overflow-x-auto text-xs">
+                          <span className="text-muted-foreground">Input: </span>
+                          {tc.inputData}
+                        </pre>
+                        <pre className="overflow-x-auto text-xs">
+                          <span className="text-muted-foreground">Expected: </span>
+                          {tc.expectedOutput}
+                        </pre>
+                        {tc.explanation && (
+                          <p className="mt-1 text-xs text-muted-foreground">{tc.explanation}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </details>
           )}
         </div>
       )}
