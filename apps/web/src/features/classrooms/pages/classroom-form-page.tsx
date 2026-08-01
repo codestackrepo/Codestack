@@ -189,11 +189,7 @@ export function ClassroomFormPage() {
                     <FormItem>
                       <FormLabel>Description</FormLabel>
                       <FormControl>
-                        <Textarea
-                          rows={3}
-                          placeholder="What this course covers…"
-                          {...field}
-                        />
+                        <Textarea rows={3} placeholder="What this course covers…" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -238,11 +234,7 @@ export function ClassroomFormPage() {
                     disabled={mutation.isPending}
                     className="bg-brand text-brand-foreground hover:bg-brand/90"
                   >
-                    {mutation.isPending
-                      ? 'Saving…'
-                      : isEdit
-                        ? 'Save changes'
-                        : 'Create classroom'}
+                    {mutation.isPending ? 'Saving…' : isEdit ? 'Save changes' : 'Create classroom'}
                   </Button>
                 </div>
               </form>

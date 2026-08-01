@@ -116,7 +116,10 @@ export function PlatformUnassignedPage() {
                         value={targets[u.id] ?? ''}
                         onValueChange={(v) => setTargets((t) => ({ ...t, [u.id]: v }))}
                       >
-                        <SelectTrigger className="h-8 w-48" aria-label={`Organization for ${u.email}`}>
+                        <SelectTrigger
+                          className="h-8 w-48"
+                          aria-label={`Organization for ${u.email}`}
+                        >
                           <SelectValue placeholder="Choose an organization" />
                         </SelectTrigger>
                         <SelectContent>

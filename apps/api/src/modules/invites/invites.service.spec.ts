@@ -6,6 +6,7 @@ import { MailService } from '../mail/mail.service';
 import { MailTemplate } from '../mail/mail.types';
 import { OrganizationStatus } from '../organizations/enums/organization.enums';
 import { OrganizationsService } from '../organizations/organizations.service';
+import { QuotaResource } from '../quotas/enums/quota-resource.enum';
 import { QuotaService } from '../quotas/quota.service';
 import { User } from '../users/entities/user.entity';
 import { UsersService } from '../users/users.service';
@@ -198,10 +199,29 @@ describe('InvitesService.accept', () => {
   // charging before the invite leaves `pending` double-counts the very person
   // accepting — and 409s the last reserved seat, i.e. exactly the one being held
   // for them.
-  it('CONSUMES the invite before charging the seat quota', async () => {
+  // Two charges since #118: the total (`MAX_USERS`) and the invited role's own cap.
+  // Both still land AFTER the consume, which is the ordering that makes acceptance
+  // net-zero — the consume releases the reservation this invite was holding.
+  it('CONSUMES the invite before charging the seat quotas', async () => {
     const { svc, calls } = setup();
     await svc.accept({ token: 'tok', password: 'Password1' });
-    expect(calls).toEqual(['consume', 'charge', 'create']);
+    expect(calls).toEqual(['consume', 'charge', 'charge', 'create']);
+  });
+
+  it('charges the invited ROLE cap as well as the total', async () => {
+    const { svc, quotas } = setup({ found: invite({ role: Role.PROFESSOR }) });
+    await svc.accept({ token: 'tok', password: 'Password1' });
+    const resources = quotas.assertWithinQuota.mock.calls.map((c) => c[1]);
+    expect(resources).toEqual([QuotaResource.MAX_USERS, QuotaResource.MAX_PROFESSORS]);
+  });
+
+  // ADMIN is charged to MAX_USERS only — `seatResourceFor` returns null for it, so
+  // onboarding admins never consumes a teaching seat.
+  it('charges only the total for an admin invite', async () => {
+    const { svc, quotas } = setup({ found: invite({ role: Role.ADMIN }) });
+    await svc.accept({ token: 'tok', password: 'Password1' });
+    const resources = quotas.assertWithinQuota.mock.calls.map((c) => c[1]);
+    expect(resources).toEqual([QuotaResource.MAX_USERS]);
   });
 
   it('charges the quota with the TRANSACTION manager, not the default one', async () => {
@@ -341,10 +361,13 @@ describe('InvitesService.accept', () => {
 });
 
 describe('InvitesService.claim', () => {
+  // Two charges since #118 — the total, then the TARGET role's cap. A claim can also
+  // change the role (a community student invited as a professor is promoted on claim),
+  // so the cap charged is the invite's role, not the one they arrived with.
   it('consumes before charging, then re-stamps the denormalised rows', async () => {
     const { svc, calls } = setup({ existingUser: user({ organizationId: null }) });
     await svc.claim(actor(), 'tok');
-    expect(calls).toEqual(['consume', 'charge']);
+    expect(calls).toEqual(['consume', 'charge', 'charge']);
   });
 
   it('re-stamps user_gamification and submissions, or they stay on the Legacy tenant', async () => {

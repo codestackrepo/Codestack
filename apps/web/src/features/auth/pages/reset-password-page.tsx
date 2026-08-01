@@ -14,7 +14,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { parseApiError } from '@/lib/api-client';
 import { AuthLayout } from '../components/auth-layout';
 import { passwordConfirmSchema } from '../password-schema';
@@ -114,12 +114,7 @@ export function ResetPasswordPage() {
                 <FormControl>
                   <div className="relative">
                     <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      type="password"
-                      autoComplete="new-password"
-                      className="pl-9"
-                      {...field}
-                    />
+                    <PasswordInput autoComplete="new-password" className="pl-9" {...field} />
                   </div>
                 </FormControl>
                 <FormMessage />
@@ -133,7 +128,7 @@ export function ResetPasswordPage() {
               <FormItem>
                 <FormLabel>Confirm password</FormLabel>
                 <FormControl>
-                  <Input type="password" autoComplete="new-password" {...field} />
+                  <PasswordInput autoComplete="new-password" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>

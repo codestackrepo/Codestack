@@ -81,6 +81,60 @@ gate "@AllowsUnassigned application sites (allowlist = 5)" 5 \
 gate "no quota LIMIT coalesced to zero" 0 \
   grep -rnE "(limit|Limit|max[A-Z][A-Za-z]*)[^;]*\?\? *0" apps/api/src/modules/quotas
 
+# --- Resend API key containment (#118) ------------------------------------
+# There is NO log-redaction layer in this app: nestjs-pino is a dependency but
+# LoggerModule is registered nowhere, so `EMAIL_PASSWORD` is protected only by never
+# being interpolated into a log line. `RESEND_API_KEY` inherits exactly that
+# discipline, which means the discipline has to be checkable.
+#
+# Three reads, and they are the only three that can exist without widening the
+# key's blast radius: the config factory that loads it, and the two lines in
+# `ResendMailTransport` that check it is present and store it. Anything else — a
+# service reaching for the key, a controller passing it around, a second transport
+# — needs the review this gate forces. Specs are excluded: their fixtures use a
+# fake `re_TESTKEY...` value on purpose, and `resend-mail.transport.spec.ts` is
+# where the "no key in any thrown error or log call" assertion lives.
+gate "RESEND_API_KEY read only by config + Resend transport" 3 \
+  grep -rn --include=*.ts --exclude=*.spec.ts "resendApiKey" "$API"
+
+# The raw env var itself has exactly one reader — the config factory. A second one
+# would be a path that bypasses the containment above.
+gate "process.env.RESEND_API_KEY has one reader" 1 \
+  grep -rn --include=*.ts "process.env.RESEND_API_KEY" "$API"
+
+# --- community tenant containment (#118) ----------------------------------
+# The community tenant is a real `organizations` row shared by every open-platform
+# member, which is what makes an org-less professor representable and keeps
+# `chk_users_org_required` untouched. The price is that its members are mutually
+# anonymous strangers, so the org-staff read surfaces would be a directory of the user
+# base — and `POST /auth/professor-applications` is PUBLIC, so an account inside that
+# tenant is something an outsider can obtain.
+#
+# `community-policy.ts` is the whole of that control. Its id must be resolved through
+# the shared constant, never re-typed: a hardcoded uuid somewhere else is a check that
+# silently stops matching the day the constant changes.
+gate "COMMUNITY_ORG_ID is never hardcoded outside its constant" 0 \
+  grep -rn --include=*.ts --exclude=organizations.constants.ts "22222222-2222-2222-2222" "$API"
+
+# --- email verification has exactly four writers (#118) --------------------
+# `users.email_verified_at` is the login gate. Each writer either proves mailbox access
+# (a mailed token came back) or is a deliberate vouch:
+#
+#   email-verification.service.ts  consuming a verification token
+#   password-reset.service.ts      completing a reset (a mailed link was followed)
+#   users.service.ts create()      staff-created inside a tenant — the actor vouches
+#   users.service.ts createFromInvite()  an invite token came back
+#
+# A fifth is how "verified" quietly stops meaning anything. If this count changes, read
+# the new site before you change the number.
+#
+# Matches only writes that SET a value: `createOpenSelfSignup` assigns `null` and is the
+# one path that deliberately produces an UNVERIFIED account, so counting it would
+# inflate the allowlist with a non-writer and hide a real fifth writer behind the same
+# number.
+gate "email_verified_at writers (allowlist = 4)" 4 \
+  grep -rnE --include=*.ts --exclude=*.spec.ts "emailVerifiedAt: new Date\(\)|email_verified_at = " "$API/modules"
+
 # --- web has no TS enums (erasableSyntaxOnly) -----------------------------
 # tsconfig sets erasableSyntaxOnly, so a TS `enum` fails the build too — this
 # catches it at review time rather than in CI.

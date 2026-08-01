@@ -13,10 +13,20 @@ import { QUOTA_LABELS, QuotaResource } from '@/types/entitlement';
 import type { QuotaUsage } from '@/types/organization';
 import { platformApi, platformKeys } from '../api/platform.api';
 
+/**
+ * Every resource the server knows about, derived rather than listed.
+ *
+ * A hardcoded list here is silently wrong the moment a resource is added: the
+ * server returns usage for all of `ALL_QUOTA_RESOURCES`, so an omitted key is a cap
+ * a superadmin simply cannot set, with nothing in the UI to say so. That is exactly
+ * what happened to the two per-role seat caps (#118) — approval wrote them, and this
+ * form could not edit them afterwards.
+ *
+ * MAX_USERS leads because it bounds everything else.
+ */
 const RESOURCES: QuotaResource[] = [
   QuotaResource.MAX_USERS,
-  QuotaResource.MAX_PROBLEMS,
-  QuotaResource.MAX_ASSIGNMENTS,
+  ...Object.values(QuotaResource).filter((r) => r !== QuotaResource.MAX_USERS),
 ];
 
 /**
@@ -68,7 +78,7 @@ export function OrgQuotaForm({ orgId }: { orgId: string }) {
         number — <span className="font-medium text-foreground">0 blocks it entirely</span>, which is
         not the same as unlimited.
       </p>
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {RESOURCES.map((resource) => (
           <QuotaRow
             /*

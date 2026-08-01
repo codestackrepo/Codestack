@@ -11,6 +11,7 @@ import { QuotaUsageDto } from './dto/platform-organization-detail.dto';
 import {
   OrgMatrixResponseDto,
   OrgQuotaResponseDto,
+  UpdateOrgMatrixBulkDto,
   SetOrgQuotaDto,
   UpdateOrgMatrixCellDto,
 } from './dto/platform-entitlements.dto';
@@ -73,6 +74,28 @@ export class PlatformEntitlementsController {
     // setCell itself rejects an unknown key, role=admin and any cell the ceiling
     // forbids, so those become 400s here rather than rows that never take effect.
     await this.access.setCell(dto.key, dto.role, dto.enabled, id);
+    return this.envelope(id);
+  }
+
+  /**
+   * Save many cells in THIS org's layer atomically. Returns the refreshed matrix.
+   *
+   * The org-admin console got this first; the platform console edits the same layer
+   * through the same `setCells`, so it gets the same one-transaction,
+   * one-invalidation guarantee rather than a second per-cell code path that races
+   * differently.
+   */
+  @Patch(':id/module-access/bulk')
+  @HttpCode(200)
+  async updateCells(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateOrgMatrixBulkDto,
+  ): Promise<OrgMatrixResponseDto> {
+    await this.orgs.getById(id);
+    await this.access.setCells(
+      dto.cells.map((c) => ({ moduleKey: c.key, role: c.role, enabled: c.enabled })),
+      id,
+    );
     return this.envelope(id);
   }
 

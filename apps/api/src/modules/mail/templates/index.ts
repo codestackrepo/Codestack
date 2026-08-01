@@ -7,6 +7,17 @@ import {
   welcome,
 } from './account.templates';
 import { inviteReminder, orgAdminInvite, professorInvite, studentInvite } from './invite.templates';
+import {
+  orgApplicationAlert,
+  orgApplicationApproved,
+  orgApplicationReceived,
+  orgApplicationRejected,
+  professorApplicationAlert,
+  professorApplicationApproved,
+  professorApplicationReceived,
+  professorApplicationRejected,
+} from './application.templates';
+import { accountExists, verifyEmail, welcomeOpen } from './verification.templates';
 
 /**
  * The one place a template key becomes a renderer.
@@ -28,6 +39,17 @@ const TEMPLATES: {
   [MailTemplate.ACCESS_RESTORED]: accessRestored,
   [MailTemplate.ORG_ASSIGNED]: orgAssigned,
   [MailTemplate.PASSWORD_RESET]: passwordReset,
+  [MailTemplate.VERIFY_EMAIL]: verifyEmail,
+  [MailTemplate.WELCOME_OPEN]: welcomeOpen,
+  [MailTemplate.ACCOUNT_EXISTS]: accountExists,
+  [MailTemplate.ORG_APPLICATION_RECEIVED]: orgApplicationReceived,
+  [MailTemplate.ORG_APPLICATION_ALERT]: orgApplicationAlert,
+  [MailTemplate.ORG_APPLICATION_APPROVED]: orgApplicationApproved,
+  [MailTemplate.ORG_APPLICATION_REJECTED]: orgApplicationRejected,
+  [MailTemplate.PROFESSOR_APPLICATION_RECEIVED]: professorApplicationReceived,
+  [MailTemplate.PROFESSOR_APPLICATION_ALERT]: professorApplicationAlert,
+  [MailTemplate.PROFESSOR_APPLICATION_APPROVED]: professorApplicationApproved,
+  [MailTemplate.PROFESSOR_APPLICATION_REJECTED]: professorApplicationRejected,
 };
 
 /**

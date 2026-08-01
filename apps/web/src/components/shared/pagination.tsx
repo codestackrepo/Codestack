@@ -58,7 +58,10 @@ export function Pagination({
     <div className={cn('flex items-center justify-between gap-3 text-sm', className)}>
       <p className="text-muted-foreground">
         Page <span className="font-medium text-foreground">{meta.page}</span> of {meta.totalPages}
-        <span className="hidden sm:inline"> · {meta.total} {noun}</span>
+        <span className="hidden sm:inline">
+          {' '}
+          · {meta.total} {noun}
+        </span>
       </p>
       <div className="flex gap-2">
         <Button

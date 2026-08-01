@@ -27,6 +27,8 @@ locked decisions, build order and invariants.
 - [System design](#system-design)
 - [Tech stack](#tech-stack)
 - [Setup](#setup)
+- [Onboarding: two ecosystems](#onboarding-two-ecosystems)
+- [Transactional mail](#transactional-mail)
 - [Database: migrations](#database-migrations)
 - [Database: seeding](#database-seeding)
 - [Scripts](#scripts)
@@ -163,8 +165,12 @@ acceptance net-zero and an org can't oversubscribe by minting invites.
 
 ### Not yet built
 
-No endpoint sets a quota limit yet (the service method exists; the SuperAdmin console will call
-it). SMTP invite onboarding, bulk CSV/XLSX enrolment and password reset are in flight — see the
+Quota limits are set in two places: at approval, where the four caps are **required** so no tenant
+is created accidentally unlimited, and afterwards by a SuperAdmin through
+`PATCH /platform/organizations/:id/quotas` — the Quotas tab on the org detail page. There is still
+no cap on classrooms (`max_classrooms` is not a `QuotaResource`, and the CHECK constraint enumerates
+the five that are). SMTP invite onboarding, bulk CSV/XLSX enrolment and password reset are in
+flight — see the
 `epic:declerk` tracking issue. The **AI** (notes/PDF → generated problems) and **Stripe billing**
 modules exist in the tree but are deliberately **not registered** in `app.module.ts`, so their
 endpoints are absent at runtime.
@@ -239,6 +245,163 @@ pnpm --filter @codestack/api seed          # optional demo data
 pnpm dev:api    # API  → http://localhost:3000/api/v1  (docs at /api/docs)
 pnpm dev:web    # web  → http://localhost:5173
 ```
+
+---
+
+## Onboarding: two ecosystems
+
+CodeStack is entered two ways, and the difference decides what a member sees.
+
+### Closed — an institution's own workspace
+
+```
+public site → "Join as an organisation" → application
+                                             ↓  superadmin reviews
+                            approves + sets professor/student seat caps
+                                             ↓
+                          organisation created, ADMIN invited
+                                             ↓
+              admin invites PROFESSORs and STUDENTs; professors invite STUDENTs
+                                             ↓
+                     invite mail → accept → set password → done
+```
+
+Members of a real organisation see a **co-branded** shell — `CodeStack × their institution`,
+with their logo — and a "you're part of the *{org}* ecosystem" line. Their invite mail carries
+the same lockup.
+
+### Open — individuals
+
+```
+signup → "I'm a student"   → confirm email → onboarding → in
+       → "I'm a professor" → request sent  → superadmin approves
+                                            → invite mail → set password → in
+```
+
+Open members belong to a platform-operated **community tenant** (`type = 'community'`), which
+exists so `chk_users_org_required` and every org-scoped feature keep working unchanged — an
+org-less professor is not even representable. They see the plain CodeStack UI, and because that
+tenant's members are strangers rather than colleagues, the org-staff surfaces (member list,
+search, invites, unassigned pool) answer `403 community_restricted` there.
+
+**`users.origin` is provenance, not state.** It records how an account was created and never
+changes. An open student who later accepts a university invite keeps `origin: 'open'` while
+rendering as a full member of that university — so branding branches on `organization.type`,
+never on origin.
+
+### Seats
+
+A superadmin sets `MAX_PROFESSORS` and `MAX_STUDENTS` when approving an organisation; both are
+required, so no tenant is created with accidental unlimited seats. Admins count against
+`MAX_USERS` only — "professors: 10" means ten teachers. Caps are enforced at every point a seat
+is created *or converted*, including `PATCH /users` role changes and `professor_requests`
+approval, which are the two paths that mint a seat with no invite behind them.
+
+### Verification
+
+Nothing could confirm an address before #118. Now: no login until confirmed, tokens mirror the
+password-reset table (sha-256 at rest, single-use, preview never throws), and accepting an
+invite or completing a reset also marks the address confirmed — clicking a mailed link is the
+same proof.
+
+Public, email-keyed endpoints are **enumeration-safe**: signup, resend-verification, both
+application forms and forgot-password all answer identically whatever the address turns out to
+be. Signup mails the *owner* when an address is already taken rather than telling the caller.
+
+---
+
+## Transactional mail
+
+Invites, invite reminders, org-assignment notices and password resets are queued to BullMQ
+(`QUEUE_MAIL`) and delivered by `MailProcessor`. Delivery sits behind a provider seam, chosen with
+`EMAIL_PROVIDER`.
+
+> **Naming.** "Resend" is overloaded in this repo. `EMAIL_PROVIDER=resend` and `ResendMailTransport`
+> mean **Resend the email provider** (resend.com). `POST /invites/:id/resend`, `resendPending` and
+> `InviteResendCooldownException` mean **re-sending an invite** and have nothing to do with it. Don't
+> let a grep conflate the two.
+
+### Local development — mailpit (the default)
+
+```bash
+docker compose up -d mailpit     # SMTP sink on :1025, web UI on http://localhost:8025
+```
+
+Then set `EMAIL_ENABLED=true` in `apps/api/.env`. The `.env.sample` defaults already point at
+mailpit, so no credentials and no outbound network access are needed — every message lands in the
+web UI, invite links included.
+
+With `EMAIL_ENABLED=false` (the default) nothing is sent and no provider is constructed at all: the
+mailer logs the rendered text body instead, and **only outside production**, so a deployment that
+forgets the flag never writes invite tokens to its log. A disabled mailer never needs a credential.
+
+### Production — Brevo (the current path)
+
+Brevo is an ordinary authenticated SMTP relay, so it needs **no provider-specific code**:
+`EMAIL_PROVIDER=smtp` is the same pooled-nodemailer path used for mailpit, pointed at a real host.
+
+```dotenv
+EMAIL_ENABLED=true
+EMAIL_PROVIDER=smtp
+EMAIL_HOST=smtp-relay.brevo.com
+EMAIL_PORT=587              # STARTTLS. Use 465 for implicit TLS.
+EMAIL_USE_TLS=true          # requireTLS — fails rather than downgrading to plaintext
+EMAIL_USER=<login>@smtp-brevo.com
+EMAIL_PASSWORD=<the xsmtpsib-… SMTP key>
+DEFAULT_FROM_EMAIL=codestack <you@yourdomain>
+```
+
+Two things that will each bite once:
+
+- **The from-address must be a validated sender in Brevo**, or the relay rejects the message.
+  The `"Name <addr>"` display form is fine.
+- **A from-address on a domain you don't control cannot be DKIM-aligned for it.** A `gmail.com`
+  sender authenticates as Brevo rather than as gmail, which delivers but is far likelier to land
+  in spam. Publishing Brevo's DKIM records on a domain you own is what fixes that — and it is the
+  same prerequisite a Resend switch would need.
+
+Note that `EMAIL_PASSWORD` here is an **SMTP key**, not the Brevo account password.
+
+### Alternative — Resend over its HTTP API
+
+Implemented and tested, but **not currently in use** — production runs on Brevo above. Kept
+because the seam exists and switching is a config change, and because the HTTP API gives a
+message id to correlate with delivery plus a route to bounce/complaint webhooks later.
+
+```dotenv
+EMAIL_ENABLED=true
+EMAIL_PROVIDER=resend
+RESEND_API_KEY=<a sending-only key>
+DEFAULT_FROM_EMAIL=no-reply@<a domain you have verified in Resend>
+EMAIL_RATE_MAX=<see below — required for this provider>
+```
+
+Four things that will each bite once:
+
+- **The from-address must be on a domain verified in Resend, or every send answers 403.** Verifying
+  means adding Resend's DNS records to a zone **you** control, so a platform-provided host (a
+  `*.up.railway.app` subdomain, for instance) can never be verified. `onboarding@resend.dev` works
+  without verification but delivers only to the Resend account owner's own address — a smoke test,
+  not an invite path.
+- **`EMAIL_RATE_MAX` has no default for this provider** and Joi requires it. The 20/s that suits
+  mailpit and a real SMTP relay is far above a typical Resend account limit, and inheriting it
+  silently is what produces a 429 storm on the first bulk roster import. Resend's real
+  `POST /emails` limit is not the one its read endpoints report, so `ResendMailTransport` logs the
+  observed limit once on the first successful send; set this to at most half of it. The BullMQ
+  limiter is **Redis-global** — the cap across every worker pod, not per pod — and any other Resend
+  API traffic shares the same account budget.
+- **Use a sending-only API key.** A full-access key can create and revoke domains and other keys,
+  which delivery never needs. The key must never reach a log: the transport builds every message
+  from the response alone and scrubs anything key-shaped out of provider-supplied text, and
+  `pnpm check:invariants` pins the three files allowed to read it.
+- **Failures are classified.** `429`, `408` and `5xx` throw, so BullMQ retries on its backoff.
+  `422` (invalid recipient), `403` (unverified domain) and other `4xx` are *terminal*: the job is
+  logged at error level, its credential is scrubbed, and it completes without burning the remaining
+  attempts — retrying an unverified domain five times over eight minutes changes nothing.
+
+If the HTTP API ever has to be abandoned, Resend also speaks SMTP and that needs no code change:
+`EMAIL_PROVIDER=smtp`, `EMAIL_HOST=smtp.resend.com`, `EMAIL_PORT=465`, `EMAIL_USER=resend`,
+`EMAIL_PASSWORD=<the api key>`.
 
 ---
 

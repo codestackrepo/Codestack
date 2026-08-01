@@ -12,9 +12,15 @@ import { UserResponseDto } from '../users/dto/user-response.dto';
 import { AuthService } from './auth.service';
 import { clearAuthCookies, setAuthCookies } from './cookie.util';
 import { SessionContextDto } from './dto/session-context.dto';
+import {
+  ResendVerificationDto,
+  VerificationPreviewDto,
+  VerifyEmailDto,
+} from './dto/email-verification.dto';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto, ResetPasswordDto, ResetPreviewDto } from './dto/password-reset.dto';
 import { RegisterDto } from './dto/register.dto';
+import { EmailVerificationService } from './email-verification.service';
 import { PasswordResetService } from './password-reset.service';
 import { JwtRefreshGuard } from './guards/jwt-refresh.guard';
 import { SessionContextService } from './session-context.service';
@@ -28,22 +34,57 @@ export class AuthController {
     private readonly auth: AuthService,
     private readonly session: SessionContextService,
     private readonly passwordReset: PasswordResetService,
+    private readonly emailVerification: EmailVerificationService,
     config: ConfigService,
   ) {
     this.authCfg = config.getOrThrow<AuthConfig>('auth');
   }
 
+  /**
+   * Open-platform signup. ALWAYS 200, with an identical body, and NO cookies (#118).
+   *
+   * Three things changed here, each for its own reason:
+   *
+   *  - No user object and no status difference, because `users.email` is globally
+   *    unique and this endpoint is public: any discrimination between "created" and
+   *    "already taken" is a definite "this person has an account here". It used to
+   *    answer 409 for a taken address, which was exactly that oracle. The service
+   *    picks the side effect silently — including mailing the OWNER when the address
+   *    is already in use, which tells the right person without telling the caller.
+   *  - No cookies, because the account is unverified and an unverified account may
+   *    not hold a session. Signing them in here would make the login gate
+   *    decoration; the verification link is what mints the first session.
+   *  - `@HttpCode(200)` rather than the default 201: nothing may imply a resource was
+   *    or was not created.
+   *
+   * The copy is deliberately non-committal about which branch ran, and says what to
+   * do next in every case.
+   */
+  /**
+   * Throttled like `forgot-password` and `resend-verification`, not like a plain form
+   * (#118). It was 5/min with no hour bucket, which made it the loosest mail-sending
+   * endpoint on the API, and it now sends mail on EVERY branch:
+   *
+   *  - a taken address mails `account-exists` to the owner, so 5/min is 300 unsolicited
+   *    mails an hour to any address someone chooses;
+   *  - a pending unverified signup gets its verification re-issued, and `issue()` sweeps
+   *    every prior live token — so repeatedly registering a victim's pending address
+   *    invalidates their link each time, keeping them permanently unable to confirm.
+   *
+   * The second is the sharper one. It is not fatal (password reset also stamps the
+   * address verified, so there is a way out) but it is a denial of the intended flow,
+   * and the fix is the same limit its siblings already use.
+   */
   @Public()
   @Post('register')
-  @Throttle({ minute: { limit: 5, ttl: 60_000 } })
-  async register(
-    @Body() dto: RegisterDto,
-    @Res({ passthrough: true }) res: Response,
-  ): Promise<{ user: UserResponseDto; message: string }> {
-    const user = await this.auth.register(dto);
-    const tokens = await this.auth.login(user);
-    setAuthCookies(res, tokens, this.authCfg);
-    return { user: UserResponseDto.from(user), message: 'Registration successful' };
+  @HttpCode(200)
+  @Throttle({ minute: { limit: 3, ttl: 60_000 }, hour: { limit: 10, ttl: 3_600_000 } })
+  async register(@Body() dto: RegisterDto): Promise<{ message: string }> {
+    await this.auth.register(dto);
+    return {
+      message:
+        'Check your inbox — if we could create your account, a confirmation link is on its way.',
+    };
   }
 
   @Public()
@@ -118,6 +159,60 @@ export class AuthController {
     const tokens = await this.auth.login(user);
     setAuthCookies(res, tokens, this.authCfg);
     return { user: UserResponseDto.from(user), message: 'Password updated' };
+  }
+
+  /**
+   * ALWAYS 200 with an identical body, for exactly the reason `forgot-password` is
+   * (#118). Three cases send nothing — no such address, an already-verified account,
+   * and a disabled one — and none of them may be distinguishable, or this becomes
+   * the enumeration oracle that `register` was.
+   */
+  @Public()
+  @Post('resend-verification')
+  @HttpCode(200)
+  @Throttle({ minute: { limit: 3, ttl: 60_000 }, hour: { limit: 10, ttl: 3_600_000 } })
+  async resendVerification(@Body() dto: ResendVerificationDto): Promise<{ message: string }> {
+    await this.emailVerification.requestVerification(dto.email);
+    return {
+      message: 'If that address needs confirming, a new link is on its way.',
+    };
+  }
+
+  /**
+   * Never 4xxs, mirroring the reset preview and `GET /invites/:token/preview`. A 4xx
+   * would put the raw token into AllExceptionsFilter's `path` field and thence into
+   * the logs — the exact exposure that hashing the token at rest exists to prevent.
+   *
+   * The limits are the loosest of any token route here, deliberately: mail clients
+   * pre-fetch links, so a single human click can arrive as several requests, and a
+   * throttled preview would show that human a dead end for a link that works.
+   */
+  @Public()
+  @Get('verify-email/:token/preview')
+  @Throttle({ minute: { limit: 20, ttl: 60_000 }, hour: { limit: 100, ttl: 3_600_000 } })
+  previewVerification(@Param('token') token: string): Promise<VerificationPreviewDto> {
+    return this.emailVerification.preview(token);
+  }
+
+  /**
+   * Consumes the token, stamps the address verified, and signs the user in.
+   *
+   * Signing in here is the point, mirroring `reset-password`: the alternative sends
+   * someone who has just proved mailbox access to a login form. It is also what
+   * makes the no-login-until-verified rule tolerable — the link IS the way in.
+   */
+  @Public()
+  @Post('verify-email')
+  @HttpCode(200)
+  @Throttle({ minute: { limit: 5, ttl: 60_000 }, day: { limit: 50, ttl: 86_400_000 } })
+  async verifyEmail(
+    @Body() dto: VerifyEmailDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ user: UserResponseDto; message: string }> {
+    const user = await this.emailVerification.verify(dto.token);
+    const tokens = await this.auth.login(user);
+    setAuthCookies(res, tokens, this.authCfg);
+    return { user: UserResponseDto.from(user), message: 'Email confirmed' };
   }
 
   @Public()

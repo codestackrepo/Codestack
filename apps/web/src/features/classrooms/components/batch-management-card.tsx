@@ -142,9 +142,7 @@ export function BatchManagementCard({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete batch?</AlertDialogTitle>
             <AlertDialogDescription>
-              {deleteTarget
-                ? `"${deleteTarget.name}" will be removed. This can't be undone.`
-                : ''}
+              {deleteTarget ? `"${deleteTarget.name}" will be removed. This can't be undone.` : ''}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

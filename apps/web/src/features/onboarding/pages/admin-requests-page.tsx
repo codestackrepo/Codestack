@@ -56,8 +56,7 @@ export function AdminRequestsPage() {
     placeholderData: keepPreviousData,
   });
 
-  const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: ['onboarding', 'requests'] });
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['onboarding', 'requests'] });
 
   const approve = useMutation({
     mutationFn: (id: string) => onboardingApi.approveRequest(id),
@@ -156,11 +155,7 @@ export function AdminRequestsPage() {
                         >
                           <Check className="mr-1 size-3.5" /> Approve
                         </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setRejecting(r)}
-                        >
+                        <Button size="sm" variant="outline" onClick={() => setRejecting(r)}>
                           <X className="mr-1 size-3.5" /> Reject
                         </Button>
                       </div>
@@ -201,7 +196,9 @@ export function AdminRequestsPage() {
             <Button
               variant="destructive"
               disabled={reject.isPending}
-              onClick={() => rejecting && reject.mutate({ id: rejecting.id, reason: reason.trim() })}
+              onClick={() =>
+                rejecting && reject.mutate({ id: rejecting.id, reason: reason.trim() })
+              }
             >
               {reject.isPending ? 'Declining…' : 'Decline request'}
             </Button>

@@ -75,19 +75,30 @@ export class ProblemFeedbackResponseDto {
    * every reader is already inside it (`scopeToOrg`), so returning it would add a
    * tenant identifier to a student-visible payload while telling them nothing.
    */
-  static from(f: ProblemFeedback): ProblemFeedbackResponseDto {
+  /**
+   * `revealAuthor: false` blanks both identities (#118).
+   *
+   * `GET /feedback` returns up to 200 rows, each with an author id, a full name and
+   * free text — a larger identity payload per request than the `/users/search` the
+   * community lockout already refuses. Suppressing the names here rather than refusing
+   * the endpoint keeps the feedback itself readable, which is what it is for.
+   *
+   * Callers pass `canReadStaffDirectory(actor)`: true inside any real organization and
+   * for a superadmin, so this changes nothing outside the shared open tenant.
+   */
+  static from(f: ProblemFeedback, revealAuthor = true): ProblemFeedbackResponseDto {
     const name = (u?: { firstName: string; lastName: string } | null): string | null =>
-      u ? `${u.firstName} ${u.lastName}` : null;
+      revealAuthor && u ? `${u.firstName} ${u.lastName}` : null;
     return {
       id: f.id,
       problemId: f.problemId,
       problemTitle: f.problem?.title ?? null,
-      authorId: f.authorId,
+      authorId: revealAuthor ? f.authorId : '',
       authorName: name(f.author),
       kind: f.kind,
       body: f.body,
       status: f.status,
-      resolvedById: f.resolvedById,
+      resolvedById: revealAuthor ? f.resolvedById : null,
       resolvedByName: name(f.resolvedBy),
       resolvedAt: f.resolvedAt,
       resolutionNote: f.resolutionNote,

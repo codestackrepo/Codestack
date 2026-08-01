@@ -18,6 +18,7 @@ import { AllowsUnassigned } from '../../common/decorators/allows-unassigned.deco
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { assertOrgAllowsStaffDirectory } from '../../common/tenancy/community-policy';
 import { Role } from '../../common/enums/role.enum';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
 import { AuthConfig } from '../../config/configuration';
@@ -179,6 +180,22 @@ export class InvitesController {
         message: 'Use the platform invite endpoint to invite into a specific organization',
       });
     }
+    /**
+     * The community tenant is not an organization anyone administers (#118).
+     *
+     * Minting here would let an approved open professor pull arbitrary addresses into
+     * a tenant they do not own. An open professor's v1 surface is consumption —
+     * problems, playground, topics — and teaching happens when a real organization
+     * invites them.
+     *
+     * CORRECTED: an earlier version of this comment claimed every org-scoped route
+     * funnelled through this helper. It did not — only `create` calls it, while `list`,
+     * `resend` and `revoke` do not, so the list of every pending invite in the shared
+     * tenant was readable. The real guard now lives in `InvitesService.list` and
+     * `getManageable`, which every one of those paths does go through. This call is
+     * kept because it fails earlier and more cheaply for the mint path.
+     */
+    assertOrgAllowsStaffDirectory(actor);
     return actor.organizationId;
   }
 }

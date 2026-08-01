@@ -73,6 +73,34 @@ const ResetPasswordPage = lazy(() =>
     default: m.ResetPasswordPage,
   })),
 );
+const VerifyEmailPage = lazy(() =>
+  import('@/features/auth/pages/verify-email-page').then((m) => ({
+    default: m.VerifyEmailPage,
+  })),
+);
+const ResendVerificationPage = lazy(() =>
+  import('@/features/auth/pages/resend-verification-page').then((m) => ({
+    default: m.ResendVerificationPage,
+  })),
+);
+const OpenOnboardingPage = lazy(() =>
+  import('@/features/onboarding/pages/open-onboarding-page').then((m) => ({
+    default: m.OpenOnboardingPage,
+  })),
+);
+const OrgApplyPage = lazy(() =>
+  import('@/features/onboarding/pages/org-apply-page').then((m) => ({ default: m.OrgApplyPage })),
+);
+const PlatformOrgApplicationsPage = lazy(() =>
+  import('@/features/platform/pages/platform-org-applications-page').then((m) => ({
+    default: m.PlatformOrgApplicationsPage,
+  })),
+);
+const PlatformProfessorApplicationsPage = lazy(() =>
+  import('@/features/platform/pages/platform-professor-applications-page').then((m) => ({
+    default: m.PlatformProfessorApplicationsPage,
+  })),
+);
 const AuthPage = lazy(() =>
   import('@/features/auth/pages/auth-page').then((m) => ({ default: m.AuthPage })),
 );
@@ -97,6 +125,11 @@ const ClassroomFormPage = lazy(() =>
 const ProblemsListPage = lazy(() =>
   import('@/features/problems/pages/problems-list-page').then((m) => ({
     default: m.ProblemsListPage,
+  })),
+);
+const ProblemCreatePage = lazy(() =>
+  import('@/features/problems/pages/problem-create-page').then((m) => ({
+    default: m.ProblemCreatePage,
   })),
 );
 const ProblemDetailPage = lazy(() =>
@@ -158,6 +191,11 @@ const RequestAccessPage = lazy(() =>
     default: m.RequestAccessPage,
   })),
 );
+const SubscriptionPage = lazy(() =>
+  import('@/features/billing/pages/subscription-page').then((m) => ({
+    default: m.SubscriptionPage,
+  })),
+);
 const AdminOverviewPage = lazy(() =>
   import('@/features/admin/pages/admin-overview-page').then((m) => ({
     default: m.AdminOverviewPage,
@@ -200,6 +238,14 @@ function App() {
         <Route path="/invite/:token" element={<InviteAcceptPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
+        {/* PUBLIC on purpose: an unverified account holds no session, so these two
+            cannot sit behind ProtectedRoute — the whole point is that the person
+            cannot sign in yet. The token is the only credential either one needs. */}
+        <Route path="/verify-email/:token" element={<VerifyEmailPage />} />
+        <Route path="/resend-verification" element={<ResendVerificationPage />} />
+        {/* "Join as an organisation" — the public entry to the closed ecosystem (#118).
+            Public because the applicant is a stranger with no account. */}
+        <Route path="/for-organizations" element={<OrgApplyPage />} />
 
         <Route element={<ProtectedRoute />}>
           {/* Inside ProtectedRoute (they need a session) but OUTSIDE AppShell:
@@ -208,6 +254,11 @@ function App() {
               item is a no-op. Each page composes its own minimal top bar. */}
           <Route path="/pending" element={<PendingAssignmentPage />} />
           <Route path="/suspended" element={<SuspendedPage />} />
+          {/* Post-verification arrival for an open signup. Needs the session that
+              confirming just minted, but not the shell: handing a brand-new member a
+              full navigation tree before they have seen anything is the opposite of
+              an onboarding step. */}
+          <Route path="/onboarding" element={<OpenOnboardingPage />} />
 
           <Route path="/home" element={<AppShell />}>
             <Route index element={<Navigate to="dashboard" replace />} />
@@ -218,6 +269,12 @@ function App() {
             <Route path="settings" element={<SettingsPage />} />
             {/* Role-gated onboarding surfaces (not toggleable modules) */}
             <Route path="request-access" element={<RequestAccessPage />} />
+            {/*
+              Plan + usage. Not module-gated on purpose: an org whose modules are being
+              trimmed is exactly the one whose admin needs to see what their plan
+              includes, so gating this behind a module would hide it when it matters.
+            */}
+            <Route path="subscription" element={<SubscriptionPage />} />
 
             {/* Toggleable modules (§9.7) */}
             <Route element={<RequireModule module={AppModuleKey.CLASSROOMS} />}>
@@ -231,6 +288,10 @@ function App() {
             </Route>
             <Route element={<RequireModule module={AppModuleKey.PROBLEMS} />}>
               <Route path="problems" element={<ProblemsListPage />} />
+              {/* Before the :id route so 'new' is never read as a problem id. React
+                  Router ranks static segments above dynamic ones anyway, but the
+                  order documents the intent. */}
+              <Route path="problems/new" element={<ProblemCreatePage />} />
               <Route path="problems/:id" element={<ProblemDetailPage />} />
             </Route>
             <Route element={<RequireModule module={AppModuleKey.ASSIGNMENTS} />}>
@@ -279,6 +340,14 @@ function App() {
 
             {/* Platform console — greenfield. RequireSuperAdmin fails CLOSED. */}
             <Route element={<RequireSuperAdmin />}>
+              <Route
+                path="platform/organization-applications"
+                element={<PlatformOrgApplicationsPage />}
+              />
+              <Route
+                path="platform/professor-applications"
+                element={<PlatformProfessorApplicationsPage />}
+              />
               <Route path="platform/organizations" element={<PlatformOrganizationsPage />} />
               <Route path="platform/organizations/:orgId" element={<PlatformOrgDetailPage />} />
               <Route path="platform/unassigned" element={<PlatformUnassignedPage />} />

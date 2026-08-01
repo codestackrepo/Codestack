@@ -100,7 +100,8 @@ function Segmented<T extends string>({
 }: {
   value: T;
   onChange: (v: T) => void;
-  options: { value: T; label: string }[];
+  /** `disabled` marks an option that cannot be chosen YET; `title` says why. */
+  options: { value: T; label: string; disabled?: boolean; title?: string }[];
 }) {
   return (
     <div className="inline-flex w-fit rounded-lg bg-muted p-[3px]">
@@ -109,10 +110,13 @@ function Segmented<T extends string>({
           key={opt.value}
           type="button"
           data-active={value === opt.value}
+          disabled={opt.disabled}
+          title={opt.title}
           onClick={() => onChange(opt.value)}
           className={cn(
             'rounded-md px-3.5 py-1 text-sm font-medium text-foreground/60 transition-colors',
             'hover:text-foreground data-[active=true]:bg-background data-[active=true]:text-foreground data-[active=true]:shadow-sm',
+            'disabled:pointer-events-none disabled:opacity-40',
           )}
         >
           {opt.label}
@@ -413,7 +417,17 @@ export function AssignmentFormPage() {
                       onChange={field.onChange}
                       options={[
                         { value: AssignmentTargetType.CLASSROOM, label: 'Whole class' },
-                        { value: AssignmentTargetType.BATCH, label: 'Specific batches' },
+                        {
+                          value: AssignmentTargetType.BATCH,
+                          label: 'Specific batches',
+                          // Batches belong to a classroom, so this option cannot be
+                          // acted on before one is picked. It used to be selectable,
+                          // which left the form showing a chosen audience above the
+                          // words "Select a classroom first" — a state that reads as
+                          // broken rather than as a step not yet done.
+                          disabled: !classroomId,
+                          title: !classroomId ? 'Select a classroom first' : undefined,
+                        },
                       ]}
                     />
                   </FormItem>

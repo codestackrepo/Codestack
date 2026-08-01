@@ -81,6 +81,12 @@ export class SessionContextService {
       organization: org ? OrganizationSummaryDto.from(org) : null,
       isSuperAdmin: user.role === Role.SUPERADMIN,
       isUnassigned,
+      origin: user.origin,
+      // Always true in practice for a live session, since an unverified account
+      // cannot log in. Shipped anyway so the client can render account state without
+      // inferring it, and so a future confined-unverified mode would not need a
+      // contract change to become expressible.
+      emailVerified: user.emailVerifiedAt !== null,
       modules,
       features,
       /*

@@ -1,6 +1,7 @@
 import { Column, Entity, Index } from 'typeorm';
 import { BaseEntity } from '../../../common/entities/base.entity';
 import { Role } from '../../../common/enums/role.enum';
+import { UserOrigin } from '../../../common/enums/user-origin.enum';
 
 @Entity('users')
 export class User extends BaseEntity {
@@ -34,6 +35,42 @@ export class User extends BaseEntity {
 
   @Column({ type: 'boolean', default: true, name: 'is_active' })
   isActive!: boolean;
+
+  /**
+   * How this account came into existence. IMMUTABLE after creation (#118).
+   *
+   * Provenance, not current state — see `UserOrigin`. The ecosystem a user is in
+   * right now is answered by `organizationId` (and that org's `type`); this answers
+   * only how they arrived, and nothing may rewrite it. An open student who accepts a
+   * university invite renders as a member of that university while staying
+   * `origin = 'open'` forever, because that is the truth about how they got here.
+   *
+   * DB-enforced by `chk_users_origin` (1785600000000).
+   */
+  @Column({ type: 'varchar', length: 20, default: UserOrigin.CLOSED })
+  origin!: UserOrigin;
+
+  /**
+   * When this address was proven readable by its owner. NULL means never (#118).
+   *
+   * A stamp rather than a boolean, because "when" is the question support actually
+   * asks and a boolean cannot answer it.
+   *
+   * Written by exactly four places in the running code, each of which either proves
+   * mailbox access or is a deliberate vouch: consuming a verification token, completing
+   * a password reset (both = a mailed link came back), staff creation inside a tenant
+   * (the acting admin vouches), and invite acceptance (the invite token came back).
+   * Migration 1785590000000 additionally grandfathered every pre-existing row, which is
+   * a one-off rather than a writer. `check-invariants` pins the count at four.
+   *
+   * The one path that deliberately leaves it NULL is `createOpenSelfSignup` — nobody
+   * vouched for a self-signup address, which is the whole reason verification exists.
+   *
+   * `AuthService.validateCredentials` refuses a password login while this is NULL,
+   * so it is a real gate and not decoration.
+   */
+  @Column({ type: 'timestamptz', nullable: true, name: 'email_verified_at' })
+  emailVerifiedAt!: Date | null;
 
   @Column({ type: 'boolean', default: false, name: 'is_staff' })
   isStaff!: boolean;

@@ -34,6 +34,12 @@ import { AddPasswordResetTokens1785550000000 } from '../../src/database/migratio
 import { AddProblemFeedback1785560000000 } from '../../src/database/migrations/1785560000000-AddProblemFeedback';
 import { AddTopics1785570000000 } from '../../src/database/migrations/1785570000000-AddTopics';
 import { ReserveLeagueContext1785580000000 } from '../../src/database/migrations/1785580000000-ReserveLeagueContext';
+import { AddEmailVerification1785590000000 } from '../../src/database/migrations/1785590000000-AddEmailVerification';
+import { AddUserOrigin1785600000000 } from '../../src/database/migrations/1785600000000-AddUserOrigin';
+import { AddCommunityOrg1785610000000 } from '../../src/database/migrations/1785610000000-AddCommunityOrg';
+import { AddPerRoleSeatQuotas1785620000000 } from '../../src/database/migrations/1785620000000-AddPerRoleSeatQuotas';
+import { AddOrganizationApplications1785630000000 } from '../../src/database/migrations/1785630000000-AddOrganizationApplications';
+import { AddProfessorApplications1785640000000 } from '../../src/database/migrations/1785640000000-AddProfessorApplications';
 
 /**
  * EVERY migration, in timeline order — this IS the e2e schema.
@@ -87,4 +93,10 @@ export const ALL_MIGRATIONS = [
   AddProblemFeedback1785560000000,
   AddTopics1785570000000,
   ReserveLeagueContext1785580000000,
+  AddEmailVerification1785590000000,
+  AddUserOrigin1785600000000,
+  AddCommunityOrg1785610000000,
+  AddPerRoleSeatQuotas1785620000000,
+  AddOrganizationApplications1785630000000,
+  AddProfessorApplications1785640000000,
 ];

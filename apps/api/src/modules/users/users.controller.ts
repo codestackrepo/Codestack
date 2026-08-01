@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { ApiCookieAuth, ApiTags } from '@nestjs/swagger';
 import { AllowsUnassigned } from '../../common/decorators/allows-unassigned.decorator';
+import { assertOrgAllowsStaffDirectory } from '../../common/tenancy/community-policy';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '../../common/enums/role.enum';
@@ -49,7 +50,11 @@ export class UsersController {
    */
   @Get('unassigned')
   @Roles(Role.ADMIN, Role.PROFESSOR)
-  async unassigned(@Query() query: ListUsersQueryDto) {
+  async unassigned(@Query() query: ListUsersQueryDto, @CurrentUser() actor: AuthenticatedUser) {
+    // The claim pool is a list of real people's names and addresses. An open-platform
+    // professor has no business claiming anyone into the community tenant, and
+    // reading the pool would be a directory of every unassigned self-signup.
+    assertOrgAllowsStaffDirectory(actor);
     const page = await this.users.findUnassigned(query);
     return { data: page.data.map(UserResponseDto.from), meta: page.meta };
   }
@@ -59,12 +64,19 @@ export class UsersController {
     @Query() dto: SearchUsersDto,
     @CurrentUser() actor: AuthenticatedUser,
   ): Promise<UserResponseDto[]> {
+    // Search is org-scoped, so inside a real tenant it finds colleagues. In the
+    // community tenant it would find strangers — and a name-prefix search is the
+    // most efficient enumeration primitive on offer here.
+    assertOrgAllowsStaffDirectory(actor);
     const results = await this.users.search(dto, actor);
     return results.map(UserResponseDto.from);
   }
 
   @Get()
   async findAll(@Query() query: ListUsersQueryDto, @CurrentUser() actor: AuthenticatedUser) {
+    // The member list. Correct among colleagues at one institution; a directory dump
+    // in a tenant of mutually anonymous strangers (#118).
+    assertOrgAllowsStaffDirectory(actor);
     const page = await this.users.findAll(query, actor);
     return { data: page.data.map(UserResponseDto.from), meta: page.meta };
   }

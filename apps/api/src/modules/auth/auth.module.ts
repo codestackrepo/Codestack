@@ -14,7 +14,9 @@ import { QuotasModule } from '../quotas/quotas.module';
 import { UsersModule } from '../users/users.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { EmailVerificationToken } from './entities/email-verification-token.entity';
 import { PasswordResetToken } from './entities/password-reset-token.entity';
+import { EmailVerificationService } from './email-verification.service';
 import { PasswordResetService } from './password-reset.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { SessionContextService } from './session-context.service';
@@ -29,8 +31,8 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     ModuleAccessModule,
     OrganizationsModule,
     QuotasModule,
-    TypeOrmModule.forFeature([PasswordResetToken]),
-    MailModule, // the reset link is mailed, never returned
+    TypeOrmModule.forFeature([PasswordResetToken, EmailVerificationToken]),
+    MailModule, // reset and verification links are mailed, never returned
     PassportModule,
     JwtModule.register({}),
   ],
@@ -39,6 +41,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     AuthService,
     SessionContextService, // assembles the GET /auth/verify contract (#54)
     PasswordResetService,
+    EmailVerificationService,
     JwtStrategy,
     JwtRefreshStrategy,
     // Global guard chain (order = execution order): authenticate -> tenant gate ->
@@ -67,6 +70,8 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     { provide: APP_GUARD, useClass: ModuleAccessGuard },
     { provide: APP_GUARD, useClass: FeatureGuard },
   ],
-  exports: [AuthService],
+  // EmailVerificationService is exported because the self-signup path (#118 P2)
+  // mints a verification link at account creation, from outside this module.
+  exports: [AuthService, EmailVerificationService],
 })
 export class AuthModule {}

@@ -48,7 +48,11 @@ export function AuthBrandPanel() {
         />
         <div
           className="orb-float absolute bottom-4 -left-10 size-64 rounded-full opacity-45 blur-3xl"
-          style={{ background: 'radial-gradient(circle, var(--chart-4), transparent 70%)', animationDelay: '3s', animationDuration: '20s' }}
+          style={{
+            background: 'radial-gradient(circle, var(--chart-4), transparent 70%)',
+            animationDelay: '3s',
+            animationDuration: '20s',
+          }}
         />
         {STARS.map((s, i) => (
           <span key={i} className="twinkle absolute rounded-full bg-white" style={s} />

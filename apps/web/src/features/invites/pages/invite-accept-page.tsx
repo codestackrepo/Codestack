@@ -14,6 +14,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { parseApiError } from '@/lib/api-client';
 import { AuthLayout } from '@/features/auth/components/auth-layout';
 import { useAuth } from '@/features/auth/context/auth-context';
@@ -110,7 +111,8 @@ export function InviteAcceptPage() {
       >
         <div className="space-y-4 text-sm">
           <p className="text-muted-foreground">
-            You&apos;re signed in as <span className="font-medium text-foreground">{user.email}</span>
+            You&apos;re signed in as{' '}
+            <span className="font-medium text-foreground">{user.email}</span>
             {sameAccount
               ? ' — accept it from your pending invitations instead.'
               : '. Sign out to accept this invitation.'}
@@ -152,7 +154,7 @@ export function InviteAcceptPage() {
               <FormItem>
                 <FormLabel>Password</FormLabel>
                 <FormControl>
-                  <Input type="password" autoComplete="new-password" {...field} />
+                  <PasswordInput autoComplete="new-password" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -165,7 +167,7 @@ export function InviteAcceptPage() {
               <FormItem>
                 <FormLabel>Confirm password</FormLabel>
                 <FormControl>
-                  <Input type="password" autoComplete="new-password" {...field} />
+                  <PasswordInput autoComplete="new-password" {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>

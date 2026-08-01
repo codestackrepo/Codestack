@@ -22,9 +22,8 @@ export function SettingsPage() {
         <CardHeader>
           <CardTitle>Module access</CardTitle>
           <CardDescription>
-            Enable or disable each module per role. Admins always retain access. Disabling a
-            module hides it from the sidebar, blocks its routes, and rejects its API calls for
-            that role.
+            Enable or disable each module per role. Admins always retain access. Disabling a module
+            hides it from the sidebar, blocks its routes, and rejects its API calls for that role.
           </CardDescription>
         </CardHeader>
         <CardContent>

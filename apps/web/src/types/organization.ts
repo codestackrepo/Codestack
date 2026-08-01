@@ -1,8 +1,20 @@
 /** Mirrors `OrganizationType` / `OrganizationStatus` (api: organizations/enums/organization.enums.ts). */
 export const OrganizationType = {
   UNIVERSITY: 'university',
-  // NOT 'company' or 'other' — the CHECK constraint permits exactly these two.
+  // NOT 'company' or 'other' — the CHECK constraint permits exactly these three.
   ORGANIZATION: 'organization',
+  /**
+   * The single platform-operated tenant that open-platform members live in (#118).
+   *
+   * THIS IS THE BRANDING SWITCH. `type === 'community'` means "not an institution
+   * anyone joined", so the UI renders plain CodeStack; any other type is a real
+   * organization and gets the co-branded CodeStack × org lockup.
+   *
+   * Do not branch on `origin` for this. An open-platform student who accepts a
+   * university invite keeps `origin: 'open'` forever but genuinely belongs to that
+   * university, and must render as a member of it.
+   */
+  COMMUNITY: 'community',
 } as const;
 export type OrganizationType = (typeof OrganizationType)[keyof typeof OrganizationType];
 
@@ -13,6 +25,14 @@ export const OrganizationStatus = {
 } as const;
 export type OrganizationStatus = (typeof OrganizationStatus)[keyof typeof OrganizationStatus];
 
+/** Mirrors `OrgBranding` (api: organizations/org-branding.ts). */
+export interface OrgBranding {
+  /** Absolute https URL. Validated server-side at write, never at render. */
+  logoUrl?: string;
+  /** Short name for tight spaces; the org name is the fallback. */
+  displayName?: string;
+}
+
 /** Mirrors `OrganizationSummaryDto` (api: organizations/dto/organization-summary.dto.ts). */
 export interface OrganizationSummary {
   id: string;
@@ -20,6 +40,11 @@ export interface OrganizationSummary {
   slug: string;
   type: OrganizationType;
   status: OrganizationStatus;
+  /**
+   * Co-branding for the CodeStack × institution lockup (#118). Absent when the org has
+   * set none — and always absent for the community tenant, which must never carry any.
+   */
+  branding?: OrgBranding;
 }
 
 /**
