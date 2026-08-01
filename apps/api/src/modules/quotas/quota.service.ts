@@ -1,9 +1,14 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
-import { OrgInviteStatus } from '../invites/enums/org-invite.enums';
+import { Role } from '../../common/enums/role.enum';
 import { ALL_QUOTA_RESOURCES, QuotaResource } from './enums/quota-resource.enum';
 import { QuotaExceededException } from './quota-exceeded.exception';
+import {
+  ACTIVE_MEMBER_HOLDS_SEAT_SQL,
+  PENDING_INVITE_HOLDS_SEAT_SQL,
+  roleForSeatResource,
+} from './seat-predicate';
 
 /** One resource's limit and live usage. `limit === null` means unlimited. */
 export interface QuotaUsage {
@@ -82,14 +87,27 @@ export class QuotaService {
     return Object.fromEntries(entries) as QuotaUsageSummary;
   }
 
-  /** SuperAdmin: set (or clear) one org's limit. `null` = unlimited, `0` = blocked. */
-  async setLimit(orgId: string, resource: QuotaResource, limitValue: number | null): Promise<void> {
+  /**
+   * SuperAdmin: set (or clear) one org's limit. `null` = unlimited, `0` = blocked.
+   *
+   * `manager` is optional so an organization approval can write its seat caps INSIDE
+   * the transaction that creates the tenant (#118). Without that, an approval whose
+   * later steps failed would leave quota rows pointing at an organization that was
+   * rolled away — or, worse, a committed organization with no caps at all, which means
+   * unlimited.
+   */
+  async setLimit(
+    orgId: string,
+    resource: QuotaResource,
+    limitValue: number | null,
+    manager?: EntityManager,
+  ): Promise<void> {
     if (limitValue !== null && (!Number.isInteger(limitValue) || limitValue < 0)) {
       throw new BadRequestException('limitValue must be a non-negative integer or null');
     }
     // ON CONFLICT keeps this idempotent and race-safe against a concurrent setter,
     // rather than a read-then-write that can lose one of two updates.
-    await this.dataSource.query(
+    await (manager ?? this.dataSource).query(
       `INSERT INTO org_quotas (organization_id, resource, limit_value)
             VALUES ($1, $2, $3)
        ON CONFLICT (organization_id, resource)
@@ -151,6 +169,11 @@ export class QuotaService {
     switch (resource) {
       case QuotaResource.MAX_USERS:
         return this.countSeats(orgId, manager);
+      case QuotaResource.MAX_PROFESSORS:
+      case QuotaResource.MAX_STUDENTS:
+        // Same seat rule, narrowed to one role (#118). `roleForSeatResource` is the
+        // single mapping so this cannot drift from what the enforcement points charge.
+        return this.countSeats(orgId, manager, roleForSeatResource(resource));
       case QuotaResource.MAX_PROBLEMS:
         // organization_id IS NOT NULL <=> scope='org' (chk_problem_scope_org), so
         // this naturally excludes the global catalog: it is charged to no tenant.
@@ -172,16 +195,27 @@ export class QuotaService {
    * the two must move together or the console and enforcement disagree about how
    * full an org is.
    */
-  private async countSeats(orgId: string, manager: EntityManager): Promise<number> {
+  private async countSeats(
+    orgId: string,
+    manager: EntityManager,
+    role?: Role | null,
+  ): Promise<number> {
+    // Both halves are narrowed by role, or neither is. A pending PROFESSOR invite
+    // holds a professor seat — that is what keeps acceptance net-zero PER ROLE, so an
+    // org at its professor cap cannot mint an eleventh professor invite and only
+    // discover the problem when someone clicks it.
+    const roleFilter = role ? ` AND role = $2` : '';
+    const params: unknown[] = role ? [orgId, role] : [orgId];
+
     const rows = await manager.query<{ count: string }[]>(
       `SELECT (
          (SELECT COUNT(*) FROM users
-           WHERE organization_id = $1 AND is_active = true)
+           WHERE organization_id = $1 AND ${ACTIVE_MEMBER_HOLDS_SEAT_SQL}${roleFilter})
          +
          (SELECT COUNT(*) FROM org_invites
-           WHERE organization_id = $1 AND status = $2 AND expires_at > now())
+           WHERE organization_id = $1 AND ${PENDING_INVITE_HOLDS_SEAT_SQL}${roleFilter})
        ) AS count`,
-      [orgId, OrgInviteStatus.PENDING],
+      params,
     );
     return Number(rows[0]?.count ?? 0);
   }

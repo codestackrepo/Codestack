@@ -23,10 +23,13 @@ import {
   UserOrganizationAssignedEvent,
 } from '../../common/events/user-events';
 import { Role } from '../../common/enums/role.enum';
+import { UserOrigin } from '../../common/enums/user-origin.enum';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
+import { isCommunityOrg } from '../../common/tenancy/community-policy';
 import { assertSameOrg, isSuperAdmin, scopeToOrg } from '../../common/tenancy/tenant-scope.util';
 import { QuotaResource } from '../quotas/enums/quota-resource.enum';
 import { QuotaService } from '../quotas/quota.service';
+import { seatResourceFor } from '../quotas/seat-predicate';
 import { CreateUserDto } from './dto/create-user.dto';
 import { ListUsersQueryDto } from './dto/list-users-query.dto';
 import { SearchUsersDto } from './dto/search-users.dto';
@@ -94,6 +97,13 @@ export class UsersService {
       // MAX_USERS is checked inside the tx holding the quota row lock, so two
       // concurrent adds at limit-1 can't both succeed (#66).
       await this.quotas.assertWithinQuota(organizationId, QuotaResource.MAX_USERS, 1, manager);
+      // ...and the role's own cap (#118). A staff-created member consumes a seat just
+      // as an invited one does; charging only MAX_USERS here would make "add a user
+      // directly" the way around a professor cap.
+      const roleResource = seatResourceFor(role);
+      if (roleResource && organizationId) {
+        await this.quotas.assertWithinQuota(organizationId, roleResource, 1, manager);
+      }
       const repo = manager.getRepository(User);
       return repo.save(
         repo.create({
@@ -103,9 +113,72 @@ export class UsersService {
           role,
           organizationId,
           passwordHash,
+          // Staff-vouched (#118). A member added by an admin or professor inside
+          // their own tenant is not asked to confirm an address their institution
+          // supplied — the actor is accountable for it, and mailing a confirmation
+          // to a roster address that may not be monitored yet would strand the
+          // account behind the unverified login gate.
+          //
+          // This also covers the CURRENT no-actor self-registration path, which
+          // still signs the user straight in. Leaving that one unverified here would
+          // create an account that is logged in once and can never log in again.
+          // Open signup gets its own creation path that deliberately does NOT stamp
+          // this, together with the register rework that stops issuing cookies.
+          emailVerifiedAt: new Date(),
         }),
       );
     });
+  }
+
+  /**
+   * Creates an OPEN-platform self-signup, inside the caller's transaction.
+   *
+   * A named bypass of `create()` rather than a flag on it, because it deliberately
+   * differs on the three things `create()` is opinionated about, and a reader needs
+   * to see each stated:
+   *
+   *  - `create()` stamps `emailVerifiedAt` (staff-vouched). This does NOT: nobody
+   *    vouched for this address, which is the entire reason the verification flow
+   *    exists. The row is unusable for login until a mailed token comes back.
+   *  - `create()` derives the org from the actor. There is no actor here, and an
+   *    open member belongs to the community tenant — not NULL, which would land them
+   *    in the legacy confined holding state that `TenantContextGuard` walls off.
+   *  - `create()` 409s on a duplicate address. This must never signal existence, so
+   *    the caller decides what a taken address means and answers identically either
+   *    way; reaching here at all means the caller already established the address is
+   *    free.
+   *
+   * Always a STUDENT. An open professor does not come through here — that path is an
+   * application a superadmin approves, which mints an ordinary invite.
+   *
+   * No quota assertion: the community tenant has no `org_quotas` rows, which is
+   * unlimited by the existing absent-row semantics. Capping open signup would be
+   * capping the growth funnel rather than protecting a customer's seat count.
+   */
+  createOpenSelfSignup(
+    input: { email: string; firstName: string; lastName: string; passwordHash: string },
+    communityOrgId: string,
+    manager?: EntityManager,
+  ): Promise<User> {
+    // A single INSERT is atomic on its own, so no transaction is opened when the
+    // caller has none. The optional manager exists for a future caller that needs
+    // this row to commit with something else — not for this one.
+    const repo = manager ? manager.getRepository(User) : this.users;
+    return repo.save(
+      repo.create({
+        email: input.email.toLowerCase(),
+        firstName: input.firstName,
+        lastName: input.lastName,
+        role: Role.STUDENT,
+        organizationId: communityOrgId,
+        passwordHash: input.passwordHash,
+        isActive: true,
+        origin: UserOrigin.OPEN,
+        // Left NULL on purpose. See the class comment above — this is the one
+        // creation path in the codebase that produces an unverified account.
+        emailVerifiedAt: null,
+      }),
+    );
   }
 
   /**
@@ -147,6 +220,13 @@ export class UsersService {
         organizationId: input.organizationId,
         passwordHash: input.passwordHash,
         isActive: true,
+        // Verified on arrival (#118). Reaching here means a token that existed only
+        // inside a mail to this address was just presented back to us, which is the
+        // same proof the verification flow collects — so an invitee is never asked
+        // to confirm an address they have already demonstrably read. Omitting this
+        // would leave every invited member unable to log in the moment they set a
+        // password, which is the entire closed-ecosystem onboarding path.
+        emailVerifiedAt: new Date(),
       }),
     );
   }
@@ -260,6 +340,19 @@ export class UsersService {
     // An org-less non-superadmin has no tenant, so `null !== null` would read as
     // "same org" and expose every other org-less row. Self-only for them.
     if (actor.organizationId === null) return false;
+    /**
+     * SELF-ONLY inside the community tenant (#118).
+     *
+     * The rules below grant same-org PROFESSOR → anyone and STUDENT → any student,
+     * which is right among colleagues at one institution and wrong among strangers who
+     * merely signed up on the same website. `GET /users/:id` carries `email`, both
+     * names and `lastLoginAt`, so without this it turns any user id into an identity —
+     * defeating the list/search lockout for anyone holding ids from another surface.
+     *
+     * Placed in `canView` rather than on the route because this is the single predicate
+     * every read path consults.
+     */
+    if (isCommunityOrg(actor.organizationId)) return false;
     if (actor.organizationId !== target.organizationId) return false; // org bound
     if (actor.role === Role.ADMIN) return true;
     // Read parity with ADMIN — same-org is already asserted above. The write
@@ -285,6 +378,42 @@ export class UsersService {
     // actor most likely to be doing it. Rank policy replaces the equality check.
     if (dto.role !== undefined && dto.role !== user.role) {
       assertAssignableRole(actor, dto.role);
+      /**
+       * A role change mints a seat against the NEW role's cap (#118).
+       *
+       * This was the second bypass, and the more obvious one: with only `MAX_USERS`
+       * enforced, `PATCH /users/:id {"role":"professor"}` converted a student into a
+       * professor at no cost to the professor cap — the total was unchanged, so
+       * nothing complained. An org capped at ten professors could hold fifty by
+       * inviting students and promoting them.
+       *
+       * The seat freed on the old role is not asserted: releasing capacity cannot
+       * exceed a limit.
+       *
+       * NOT SERIALISED, unlike the invite paths, and that is a deliberate limit
+       * rather than an oversight. `assertWithinQuota` takes a manager so its
+       * `SELECT ... FOR UPDATE` on the quota row can hold inside the caller's
+       * transaction; this method's own save happens outside one, so the manager passed
+       * here is the plain entity manager and the lock spans a single statement.
+       *
+       * The consequence, stated plainly: two simultaneous promotions against the last
+       * remaining seat can both pass, leaving the org one over its cap. Wrapping this
+       * whole method — which also writes email, name, password and access — in a
+       * transaction purely to serialise role changes is a heavier change than that
+       * risk justifies. A per-role cap is a governance control an operator set, not a
+       * billing boundary, the console renders the overage via `exceeded`, and the next
+       * mint is refused. The invite and claim paths, which are the volume paths, ARE
+       * properly serialised.
+       */
+      const roleResource = seatResourceFor(dto.role);
+      if (roleResource && user.organizationId) {
+        await this.quotas.assertWithinQuota(
+          user.organizationId,
+          roleResource,
+          1,
+          this.users.manager,
+        );
+      }
       user.role = dto.role;
     }
 
@@ -327,11 +456,35 @@ export class UsersService {
    * invite consumption and admin request approval) — the CALLER is responsible
    * for authorizing the change; this method intentionally has no actor gate,
    * unlike `update()`. Returns the updated user.
+   *
+   * CHARGES THE TARGET ROLE'S SEAT CAP (#118), and this was a real bypass. A role
+   * change mints a seat with no invite behind it: promoting a student to professor
+   * takes a professor seat that nothing ever reserved, so an org capped at ten
+   * professors could hold any number of them by promoting rather than inviting.
+   * `professor_requests` approval calls straight into here, which made it the
+   * cheapest way around the cap.
+   *
+   * The freed seat on the OLD role needs no assertion — releasing capacity can never
+   * exceed a limit. Only the acquisition is checked.
+   *
+   * Opens its own transaction because the callers here do not have one, and the
+   * `FOR UPDATE` on the quota row is only meaningful inside one.
    */
   async setRole(userId: string, role: Role): Promise<User> {
     const user = await this.getById(userId);
-    user.role = role;
-    return this.users.save(user);
+    if (user.role === role) return user; // no-op: nothing to charge, nothing to save
+
+    return this.users.manager.transaction(async (manager) => {
+      const resource = seatResourceFor(role);
+      // Org-less users (the confined holding state) are charged to no tenant, so
+      // there is no cap to consult — `assertWithinQuota` handles a null org, but
+      // skipping it keeps the intent explicit.
+      if (resource && user.organizationId) {
+        await this.quotas.assertWithinQuota(user.organizationId, resource, 1, manager);
+      }
+      user.role = role;
+      return manager.getRepository(User).save(user);
+    });
   }
 
   verifyPassword(user: User, plain: string): Promise<boolean> {
@@ -341,7 +494,17 @@ export class UsersService {
     return argon2.verify(user.passwordHash, plain);
   }
 
-  private hashPassword(plain: string): Promise<string> {
+  /**
+   * PUBLIC because the open-signup path must hash in every branch, including the
+   * ones where no user is created (#118).
+   *
+   * argon2 costs ~100ms, and that cost is load-bearing there rather than incidental:
+   * hashing only when the address turns out to be free would make a taken address
+   * measurably faster to probe, reinstating in the timing domain the enumeration
+   * oracle the uniform 200 response just closed. So `AuthService.register` calls this
+   * before it looks anything up, and discards the result on two of three branches.
+   */
+  hashPassword(plain: string): Promise<string> {
     return argon2.hash(plain);
   }
 
@@ -370,6 +533,20 @@ export class UsersService {
           1,
           manager,
         );
+        /**
+         * ...and against the ROLE's cap (#118). This is the EIGHTH seat-creating path,
+         * and it was missed when the other seven were enumerated.
+         *
+         * The gap it left is precisely the cycle this method's own reasoning is about:
+         * deactivate a professor (frees a professor seat), invite a replacement (fills
+         * it), then reactivate the first — every step passes, and the org sits
+         * permanently over `MAX_PROFESSORS`. Only the total was checked, and the total
+         * is unchanged across that sequence.
+         */
+        const roleResource = seatResourceFor(target.role);
+        if (roleResource && target.organizationId) {
+          await this.quotas.assertWithinQuota(target.organizationId, roleResource, 1, manager);
+        }
       }
       const repo = manager.getRepository(User);
       target.isActive = isActive;
@@ -424,6 +601,14 @@ export class UsersService {
       }
 
       await this.quotas.assertWithinQuota(organizationId, QuotaResource.MAX_USERS, 1, manager);
+      // ...and the role's cap (#118). The guard above pins `row.role === STUDENT`, so
+      // in practice this is always MAX_STUDENTS — but it is derived rather than
+      // hardcoded, so widening the pool to other roles later cannot leave a cap
+      // silently unenforced.
+      const roleResource = seatResourceFor(role);
+      if (roleResource) {
+        await this.quotas.assertWithinQuota(organizationId, roleResource, 1, manager);
+      }
 
       await repo.update({ id: targetId }, { organizationId, role });
 
@@ -464,6 +649,25 @@ export class UsersService {
     if (isSuperAdmin(actor)) return;
     if (actor.id === target.id) return;
     assertSameOrg(actor, target.organizationId); // block cross-org modify/delete IDOR
+    /**
+     * SELF-ONLY inside the community tenant (#118), and this is a SEPARATE choke point
+     * from `canView` — fixing the read path does not fix this one.
+     *
+     * Without it a community professor could rename, deactivate, DELETE or change the
+     * EMAIL ADDRESS of any community student. The last of those is the worst: changing
+     * a stranger's address is an account-takeover primitive, since password reset then
+     * mails the attacker.
+     *
+     * `assertSameOrg` above passes for two community members precisely because they
+     * share an organization id, which is exactly the assumption the shared tenant
+     * breaks.
+     */
+    if (isCommunityOrg(actor.organizationId)) {
+      throw new ForbiddenException({
+        reason: 'community_restricted',
+        message: 'You can only change your own account on the open platform.',
+      });
+    }
     if (actor.role === Role.ADMIN) return;
     if (actor.role === Role.PROFESSOR && target.role === Role.STUDENT) return;
     throw new ForbiddenException('You cannot modify this user');

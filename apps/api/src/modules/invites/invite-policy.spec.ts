@@ -26,13 +26,24 @@ describe('invite policy', () => {
     );
   });
 
-  // Deliberate, not an oversight: staff onboarding is a SuperAdmin operation, so a
-  // careless or compromised org admin cannot manufacture teaching staff inside
-  // their own tenant. Promoting someone already in the org goes through
-  // professor_requests instead.
-  it('an ADMIN may invite only students — never a professor or another admin', () => {
+  /**
+   * REVERSED in #118. An admin may now staff its own tenant.
+   *
+   * The previous rule allowed students only, so that a compromised org admin could
+   * not manufacture teaching staff. That belonged to a platform where CodeStack
+   * created every tenant by hand; organizations now apply for themselves and are
+   * approved WITH per-role seat caps, after which routing every professor through
+   * CodeStack support is a queue rather than a control.
+   *
+   * What bounds it now is `MAX_PROFESSORS` — a number a superadmin chose at approval —
+   * plus tenancy and the `invited_by_id` audit trail. Hence the second assertion
+   * below, which is the half of the old rule that still holds and matters more: an
+   * admin still cannot mint a peer admin, so a single compromised account cannot
+   * propagate its own level sideways.
+   */
+  it('an ADMIN may invite professors and students, but never another admin', () => {
     expect(mayInvite(Role.ADMIN, Role.STUDENT)).toBe(true);
-    expect(mayInvite(Role.ADMIN, Role.PROFESSOR)).toBe(false);
+    expect(mayInvite(Role.ADMIN, Role.PROFESSOR)).toBe(true);
     expect(mayInvite(Role.ADMIN, Role.ADMIN)).toBe(false);
   });
 

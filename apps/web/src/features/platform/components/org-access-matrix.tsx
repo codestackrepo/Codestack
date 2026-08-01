@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import { EmptyState } from '@/components/shared/empty-state';
 import { CellToggle } from '@/components/shared/cell-toggle';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Table,
@@ -20,6 +22,9 @@ import { platformApi, platformKeys } from '../api/platform.api';
 
 /** The three roles the matrix is editable across. SUPERADMIN bypasses every layer. */
 const ROLES: Role[] = [Role.ADMIN, Role.PROFESSOR, Role.STUDENT];
+
+/** Feature keys contain dots, so the role is recovered by splitting on the LAST colon. */
+const stagingKey = (key: AccessKey, role: Role): string => `${key}:${role}`;
 
 /**
  * One org's Module × Role or Feature × Role matrix (#70).
@@ -42,17 +47,28 @@ export function OrgAccessMatrix({ orgId, kind }: { orgId: string; kind: 'modules
     enabled: !!orgId,
   });
 
-  const toggle = useMutation({
-    mutationFn: (v: { key: AccessKey; role: Role; enabled: boolean }) =>
-      platformApi.setOrgMatrixCell(orgId, v.key, v.role, v.enabled),
+  /**
+   * Staged edits, `key:role` -> enabled. Nothing is written until Save.
+   *
+   * Same reasoning as the org-admin matrix: re-planning access is a multi-cell edit,
+   * and writing each flip immediately walks the org through combinations nobody
+   * chose, each its own transaction and its own cross-instance invalidation.
+   */
+  const [staged, setStaged] = useState<Map<string, boolean>>(new Map());
+
+  const save = useMutation({
+    mutationFn: (cells: { key: AccessKey; role: Role; enabled: boolean }[]) =>
+      platformApi.setOrgMatrixCells(orgId, cells),
     // The PATCH returns the refreshed matrix, so seed the cache with the server's
     // answer instead of refetching or optimistically guessing — the resolver may
     // legitimately disagree with the requested value.
     onSuccess: (fresh) => {
       queryClient.setQueryData(platformKeys.orgMatrix(orgId), fresh);
+      setStaged(new Map());
       // A module/feature change alters what this org's users may reach, so any
       // session-derived module map is now stale.
       void queryClient.invalidateQueries({ queryKey: ['auth', 'session'] });
+      toast.success('Access saved');
     },
     onError: (e) => toast.error(parseApiError(e).message),
   });
@@ -105,12 +121,32 @@ export function OrgAccessMatrix({ orgId, kind }: { orgId: string; kind: 'modules
                       {cell.locked ? (
                         <LockedCell enabled={cell.enabled} role={role} />
                       ) : (
-                        <CellToggle
-                          checked={cell.enabled}
-                          disabled={toggle.isPending}
-                          label={`${key} for ${role}`}
-                          onChange={(enabled) => toggle.mutate({ key, role, enabled })}
-                        />
+                        <span
+                          // An unsaved cell must not look identical to a saved one.
+                          className={
+                            staged.has(stagingKey(key, role))
+                              ? 'inline-block rounded-full ring-2 ring-primary/60 ring-offset-2 ring-offset-background'
+                              : undefined
+                          }
+                          title={staged.has(stagingKey(key, role)) ? 'Unsaved change' : undefined}
+                        >
+                          <CellToggle
+                            checked={staged.get(stagingKey(key, role)) ?? cell.enabled}
+                            // Staging is never blocked by an in-flight save; only the
+                            // Save button is.
+                            disabled={save.isPending}
+                            label={`${key} for ${role}`}
+                            onChange={(enabled) =>
+                              setStaged((prev) => {
+                                const draft = new Map(prev);
+                                // Back to the server's value is not an edit.
+                                if (enabled === cell.enabled) draft.delete(stagingKey(key, role));
+                                else draft.set(stagingKey(key, role), enabled);
+                                return draft;
+                              })
+                            }
+                          />
+                        </span>
                       )}
                     </TableCell>
                   );
@@ -119,6 +155,39 @@ export function OrgAccessMatrix({ orgId, kind }: { orgId: string; kind: 'modules
             ))}
           </TableBody>
         </Table>
+      </div>
+
+      <div className="flex items-center justify-end gap-3">
+        <p className="mr-auto text-sm text-muted-foreground">
+          {staged.size === 0
+            ? 'No unsaved changes.'
+            : `${staged.size} unsaved change${staged.size === 1 ? '' : 's'}.`}
+        </p>
+        <Button
+          variant="outline"
+          onClick={() => setStaged(new Map())}
+          disabled={staged.size === 0 || save.isPending}
+        >
+          Discard
+        </Button>
+        <Button
+          disabled={staged.size === 0 || save.isPending}
+          onClick={() => {
+            const cells = [...staged].map(([k, enabled]) => {
+              // `key` may itself contain a dot (a feature key), so split on the LAST
+              // colon — the role is always the final segment.
+              const idx = k.lastIndexOf(':');
+              return {
+                key: k.slice(0, idx) as AccessKey,
+                role: k.slice(idx + 1) as Role,
+                enabled,
+              };
+            });
+            if (cells.length) save.mutate(cells);
+          }}
+        >
+          {save.isPending ? 'Saving…' : 'Save changes'}
+        </Button>
       </div>
     </div>
   );

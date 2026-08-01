@@ -7,6 +7,16 @@ import { User } from '../users/entities/user.entity';
 import { PasswordResetToken } from './entities/password-reset-token.entity';
 import { maskEmail, PasswordResetService } from './password-reset.service';
 
+/**
+ * Matches the password write regardless of how the statement is formatted.
+ *
+ * It used to be a substring match on `'UPDATE users SET password_hash'`, which broke
+ * the moment the statement gained a second assignment and wrapped across lines —
+ * a formatting change silently turning three assertions into no-ops.
+ */
+const isUserPasswordWrite = (sql: string): boolean =>
+  /UPDATE\s+users/i.test(sql) && sql.includes('password_hash');
+
 const user = (over: Partial<User> = {}): User =>
   ({
     id: 'u-1',
@@ -222,17 +232,34 @@ describe('PasswordResetService.resetPassword', () => {
     const { svc, sql } = setup();
     await expect(svc.resetPassword('t', 'Password1')).resolves.toMatchObject({ id: 'u-1' });
     expect(sql.some((s) => s.includes('UPDATE password_reset_tokens'))).toBe(true);
-    expect(sql.some((s) => s.includes('UPDATE users SET password_hash'))).toBe(true);
+    expect(sql.some((s) => isUserPasswordWrite(s))).toBe(true);
   });
 
   it('hashes with argon2, never storing the plaintext', async () => {
     const { svc, managerQuery } = setup();
     await svc.resetPassword('t', 'Password1');
     const calls = managerQuery.mock.calls as unknown as [string, string[]][];
-    const call = calls.find((c) => c[0].includes('UPDATE users SET password_hash'));
+    const call = calls.find((c) => isUserPasswordWrite(c[0]));
     const [hash] = call![1];
     expect(hash).toMatch(/^\$argon2/);
     expect(hash).not.toContain('Password1');
+  });
+
+  /**
+   * A reset also confirms the address (#118), and it has to: the holder just proved
+   * mailbox access by following a mailed link. Without this an account that never
+   * verified could set a password and then be refused a login by the unverified
+   * gate — a dead end, because `resend-verification` deliberately says nothing for
+   * an account that already has a password.
+   */
+  it('stamps the address verified, keeping any earlier verification time', async () => {
+    const { svc, sql } = setup();
+    await svc.resetPassword('t', 'Password1');
+    const write = sql.find((s) => isUserPasswordWrite(s)) as string;
+    expect(write).toContain('email_verified_at');
+    // COALESCE, not a bare now(): a later reset must not overwrite the first
+    // verification with today's date.
+    expect(write).toMatch(/COALESCE\(\s*email_verified_at\s*,\s*now\(\)\s*\)/);
   });
 
   // The single-use control. A read-then-write would let two simultaneous

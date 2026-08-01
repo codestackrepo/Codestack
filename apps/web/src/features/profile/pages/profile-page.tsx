@@ -43,7 +43,12 @@ function DetailCard({
       </span>
       <div className="min-w-0">
         <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{label}</p>
-        <p className={cn('truncate text-sm font-medium text-foreground', mono && 'font-mono text-xs')}>
+        <p
+          className={cn(
+            'truncate text-sm font-medium text-foreground',
+            mono && 'font-mono text-xs',
+          )}
+        >
           {value}
         </p>
       </div>

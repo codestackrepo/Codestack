@@ -168,10 +168,22 @@ export class PasswordResetService {
         .execute();
       if (result.affected !== 1) throw new InvalidResetTokenException('reset_token_used');
 
-      await manager.query(`UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2`, [
-        passwordHash,
-        user.id,
-      ]);
+      // `email_verified_at` is stamped here too (#118), and it is not a bonus: the
+      // holder just proved mailbox access by following a link we mailed, which is
+      // the same proof the verification flow asks for. Without it, someone who
+      // verified nothing but reset their password would set a password and then be
+      // refused a login by the unverified gate — a dead end with no way out, since
+      // resend-verification silently does nothing for an account that already has a
+      // password. COALESCE keeps the FIRST verification time rather than overwriting
+      // it on every later reset.
+      await manager.query(
+        `UPDATE users
+            SET password_hash = $1,
+                email_verified_at = COALESCE(email_verified_at, now()),
+                updated_at = now()
+          WHERE id = $2`,
+        [passwordHash, user.id],
+      );
     });
 
     return user;

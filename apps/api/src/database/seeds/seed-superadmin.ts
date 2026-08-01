@@ -56,6 +56,12 @@ async function main(): Promise<void> {
             organizationId: null,
             passwordHash: newHash,
             isActive: true,
+            // A bootstrap superadmin has no inbox to confirm from, and
+            // validateCredentials refuses a password login while this is NULL —
+            // so stamping it is what makes the seeded password usable at all.
+            // Left NULL without a password: nothing to unlock, and the reset that
+            // grants one stamps it on the way through.
+            emailVerifiedAt: newHash ? new Date() : null,
           }),
         );
         console.log(

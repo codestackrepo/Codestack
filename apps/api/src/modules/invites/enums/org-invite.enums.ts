@@ -33,4 +33,14 @@ export enum OrgInviteKind {
 export enum OrgInviteSource {
   MANUAL = 'manual',
   BULK = 'bulk',
+  /**
+   * Minted by approving an application rather than by someone choosing to invite
+   * (#118) — currently an open-professor application into the community tenant.
+   *
+   * Recorded distinctly because provenance is the whole point of this column: these
+   * invites were not sent by a member of the target organization, and filing them as
+   * `manual` would make the audit trail claim a person acted who did not. DB-enforced
+   * by `chk_org_invites_source`, widened in 1785640000000.
+   */
+  APPLICATION = 'application',
 }

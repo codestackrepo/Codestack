@@ -18,6 +18,7 @@ import {
 } from './enums/problem.enums';
 import { Language } from '../../common/enums/language.enum';
 import { QuotaResource } from '../quotas/enums/quota-resource.enum';
+import { assertJudgeSpec } from './judge-spec.guard';
 import { QuotaService } from '../quotas/quota.service';
 import { Company } from './entities/company.entity';
 import { LibraryProblemTemplate } from './entities/library-problem-template.entity';
@@ -56,6 +57,7 @@ export class ProblemsService {
     if (dto.scope === ProblemScope.GLOBAL && !superAdmin) {
       throw new ForbiddenException('Only a platform superadmin can create global problems');
     }
+    assertJudgeSpec(dto.functionName, dto.ioSpec);
     const id = await this.dataSource.transaction(async (manager) => {
       // MAX_PROBLEMS, inside the existing tx so the lock is held for the insert
       // (#66). A superadmin's global problem passes orgId=null and is exempt —
@@ -82,6 +84,11 @@ export class ProblemsService {
         organizationId: superAdmin ? null : actor.organizationId,
         source: ProblemSource.HUMAN,
         createdById: actor.id,
+        // Structured judging (§9.11). Both or neither — assertJudgeSpec has already
+        // refused the half-set case, so `?? null` here cannot produce a problem that
+        // claims to be judgeable with only half a signature.
+        functionName: dto.functionName ?? null,
+        ioSpec: dto.ioSpec ?? null,
         tags,
         companies,
       });
@@ -329,6 +336,27 @@ export class ProblemsService {
     if (dto.tags !== undefined) problem.tags = await this.resolveTags(dto.tags, this.tags);
     if (dto.companies !== undefined)
       problem.companies = await this.resolveCompanies(dto.companies, this.companies);
+
+    /*
+     * The judge spec, validated against the MERGED result rather than the patch.
+     *
+     * A PATCH that sends only `functionName` is legal on its own terms, but what
+     * matters is what the row ends up holding — sending one field to a problem that
+     * has neither would produce exactly the half-specified state `assertJudgeSpec`
+     * exists to prevent. Merging first is what makes the check mean the same thing on
+     * create and on update.
+     *
+     * `null` is how a spec is CLEARED, and that is deliberate: reverting a problem to
+     * prose-only is a real editorial action, and it clears both together.
+     */
+    const nextFunctionName =
+      dto.functionName !== undefined ? (dto.functionName ?? null) : problem.functionName;
+    const nextIoSpec = dto.ioSpec !== undefined ? (dto.ioSpec ?? null) : problem.ioSpec;
+    if (dto.functionName !== undefined || dto.ioSpec !== undefined) {
+      assertJudgeSpec(nextFunctionName, nextIoSpec);
+      problem.functionName = nextFunctionName;
+      problem.ioSpec = nextIoSpec;
+    }
 
     return this.problems.save(problem);
   }

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, CheckCircle2, Globe, HelpCircle, Lock, Trash2, Unlock } from 'lucide-react';
 import { toast } from 'sonner';
 import { EmptyState } from '@/components/shared/empty-state';
+import { MarkdownView } from '@/components/shared/markdown-view';
 import { PageHeader } from '@/components/shared/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -153,7 +154,13 @@ export function TopicDetailPage() {
                 <Lock className="size-3" /> Locked
               </Badge>
             )}
-            <span className="text-sm text-muted-foreground">{topic.description}</span>
+            {/* Rendered, not printed: descriptions are authored as markdown, and a
+                curriculum topic's lists and headings are most of its value. */}
+            {topic.description && (
+              <div className="w-full text-sm text-muted-foreground">
+                <MarkdownView>{topic.description}</MarkdownView>
+              </div>
+            )}
           </span>
         }
         actions={

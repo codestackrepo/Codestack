@@ -114,12 +114,26 @@ export class TopicCommentResponseDto {
   @ApiPropertyOptional() resolvedById!: string | null;
   @ApiProperty() createdAt!: Date;
 
-  static from(c: TopicComment): TopicCommentResponseDto {
+  /**
+   * `revealAuthor: false` blanks the author's identity (#118).
+   *
+   * A discussion thread is the cheapest identity leak on the platform: a global topic
+   * is visible to open-platform members, so without this a plain self-signup student
+   * could read `authorId` + `authorName` for everyone who ever commented — no
+   * professor application needed, which is cheaper than the threat the community
+   * lockout was originally written against.
+   *
+   * The comment BODY survives, because the thread is the point; only who wrote it is
+   * withheld. Callers pass `canReadStaffDirectory(actor)`, which is true for everyone
+   * inside a real organization and for a superadmin, so nothing changes there.
+   */
+  static from(c: TopicComment, revealAuthor = true): TopicCommentResponseDto {
     return {
       id: c.id,
       topicId: c.topicId,
-      authorId: c.authorId,
-      authorName: c.author ? `${c.author.firstName} ${c.author.lastName}` : null,
+      authorId: revealAuthor ? c.authorId : '',
+      authorName:
+        revealAuthor && c.author ? `${c.author.firstName} ${c.author.lastName}` : null,
       body: c.body,
       parentId: c.parentId,
       isQuestion: c.isQuestion,

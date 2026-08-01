@@ -5,6 +5,7 @@ import {
   type AcceptInviteInput,
   type LoginInput,
   type QuotaSnapshot,
+  type QuotaResourceKey,
   type RegisterInput,
 } from '../api/auth.api';
 import type { ApiErrorBody, ModuleMap } from '@/types/common';
@@ -23,8 +24,11 @@ interface AuthContextValue {
    * so it is the same 8-layer answer `FeatureGuard` gives, not a client guess.
    */
   features: Record<string, boolean> | null;
-  /** Per-resource quotas; null for a SuperAdmin. `limit: null` means UNLIMITED. */
-  quotas: Record<'max_users' | 'max_problems' | 'max_assignments', QuotaSnapshot> | null;
+  /**
+   * Per-resource quotas; null for a SuperAdmin. `limit: null` means UNLIMITED.
+   * Keys are defined once, next to the session contract they arrive on.
+   */
+  quotas: Record<QuotaResourceKey, QuotaSnapshot> | null;
   /** True for a non-superadmin with no organization — routed to /pending. */
   isUnassigned: boolean;
   isLoading: boolean;
@@ -33,9 +37,24 @@ interface AuthContextValue {
    * suspended tenant from a plain unauthenticated visitor.
    */
   sessionError: ApiErrorBody | null;
+  /**
+   * How the account was created — provenance, immutable (#118). For "should this
+   * render as a co-branded ecosystem?" read `organization.type` instead: an open
+   * student who joins a university is `'open'` forever but renders as a member.
+   */
+  origin: 'closed' | 'open' | null;
   login: (input: LoginInput) => Promise<User>;
-  register: (input: RegisterInput) => Promise<User>;
+  /**
+   * Signup. Resolves to a MESSAGE, not a user, and mints no session — the server
+   * answers identically whether an account was created or the address was taken, so
+   * there is nothing to branch on and nobody to sign in.
+   */
+  register: (input: RegisterInput) => Promise<{ message: string }>;
   acceptInvite: (input: AcceptInviteInput) => Promise<User>;
+  /** Consumes a verification token. Cookie-minting, hence routed through here. */
+  verifyEmail: (token: string) => Promise<User>;
+  /** Uniform response; resolves whatever the address turns out to be. */
+  resendVerification: (email: string) => Promise<{ message: string }>;
   logout: () => Promise<void>;
 }
 
@@ -69,10 +88,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['auth', 'session'] }),
   });
 
-  const registerMutation = useMutation({
-    mutationFn: authApi.register,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['auth', 'session'] }),
-  });
+  /**
+   * NO session invalidation on register any more (#118).
+   *
+   * Signup used to mint cookies, so invalidating made `verify` refetch a live
+   * session. It no longer does: the account is unverified and an unverified account
+   * may not hold one. Invalidating here would fire a `verify` that 401s, which
+   * ProtectedRoute would read as "signed out" and which would clobber the
+   * "check your inbox" screen the user is supposed to be looking at.
+   */
+  const registerMutation = useMutation({ mutationFn: authApi.register });
 
   // The third cookie-minting call. Routed through here so all three share one
   // invalidation rather than each page remembering to refetch the session.
@@ -80,6 +105,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     mutationFn: authApi.acceptInvite,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: SESSION_QUERY_KEY }),
   });
+
+  // The FOURTH cookie-minting call, and the one that gives an open signup its first
+  // session — the verification link is the way in, which is what makes
+  // "no login until verified" tolerable rather than a dead end.
+  const verifyEmailMutation = useMutation({
+    mutationFn: authApi.verifyEmail,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: SESSION_QUERY_KEY }),
+  });
+
+  // Mints nothing, so no invalidation: the answer is a fixed message either way.
+  const resendVerificationMutation = useMutation({ mutationFn: authApi.resendVerification });
 
   const logoutMutation = useMutation({
     mutationFn: authApi.logout, // clears the httpOnly cookies server-side
@@ -116,9 +152,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isUnassigned: sessionQuery.data?.isUnassigned ?? false,
       isLoading: sessionQuery.isLoading,
       sessionError: parseSessionError(sessionQuery.error),
+      origin: sessionQuery.data?.origin ?? null,
       login: loginMutation.mutateAsync,
       register: registerMutation.mutateAsync,
       acceptInvite: acceptInviteMutation.mutateAsync,
+      verifyEmail: verifyEmailMutation.mutateAsync,
+      resendVerification: resendVerificationMutation.mutateAsync,
       logout: logoutMutation.mutateAsync,
     }),
     [
@@ -128,6 +167,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loginMutation.mutateAsync,
       registerMutation.mutateAsync,
       acceptInviteMutation.mutateAsync,
+      verifyEmailMutation.mutateAsync,
+      resendVerificationMutation.mutateAsync,
       logoutMutation.mutateAsync,
     ],
   );

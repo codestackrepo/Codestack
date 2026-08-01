@@ -296,7 +296,13 @@ export class ModuleAccessService implements OnModuleInit, OnModuleDestroy {
    * (immune by design, so a row would be a lie) and any cell the role ceiling
    * forbids — such a row would silently never take effect.
    */
-  async setCell(key: string, role: Role, enabled: boolean, orgId: string | null): Promise<void> {
+  /**
+   * The policy checks shared by the single and bulk writes. Extracted so `setCells`
+   * can validate the WHOLE batch before writing any of it — rejecting cell 5 after
+   * cells 1-4 are already committed is the partial-apply the transaction exists to
+   * prevent, and validation has to run outside it to be worth anything.
+   */
+  private assertCellWritable(key: string, role: Role): void {
     if (!isToggleable(key) && !isFeatureKey(key)) {
       throw new BadRequestException(`'${key}' is not a toggleable module or feature`);
     }
@@ -306,6 +312,10 @@ export class ModuleAccessService implements OnModuleInit, OnModuleDestroy {
     if (isFeatureKey(key) && !withinRoleCeiling(key, role)) {
       throw new BadRequestException(`Role '${role}' can never hold feature '${key}'`);
     }
+  }
+
+  async setCell(key: string, role: Role, enabled: boolean, orgId: string | null): Promise<void> {
+    this.assertCellWritable(key, role);
 
     // IsNull(), not `orgId: null` — TypeORM renders a bare null as `= NULL`, which
     // matches nothing, so the platform layer would insert a duplicate every write
@@ -319,6 +329,54 @@ export class ModuleAccessService implements OnModuleInit, OnModuleDestroy {
     } else {
       await this.repo.save(this.repo.create({ moduleKey: key, role, enabled, orgId }));
     }
+    await this.invalidate(orgId);
+  }
+
+  /**
+   * Upsert MANY cells atomically, then invalidate once.
+   *
+   * Why this exists rather than looping `setCell` on the client: each `setCell` is
+   * its own transaction and its own Redis publish, so a six-cell save would let other
+   * API instances resolve access against three of the six — a state the admin never
+   * chose and cannot be held responsible for. Here the whole batch commits or none of
+   * it does, and the fan-out happens after the commit, so a peer that reacts to the
+   * message and re-reads always finds the finished picture.
+   *
+   * Later cells win over earlier ones for the same (key, role); the client sends its
+   * staged edits and a duplicate is its last word, not a conflict.
+   */
+  async setCells(
+    cells: readonly { moduleKey: string; role: Role; enabled: boolean }[],
+    orgId: string | null,
+  ): Promise<void> {
+    // Whole-batch validation BEFORE the transaction opens: a rejected cell must cost
+    // nothing, and a BadRequest thrown mid-transaction would roll back writes that
+    // were themselves legal, which reads to the admin as "some of my changes stuck".
+    for (const c of cells) this.assertCellWritable(c.moduleKey, c.role);
+
+    // Collapse duplicates so the same row isn't written twice inside one transaction.
+    const deduped = new Map<string, { moduleKey: string; role: Role; enabled: boolean }>();
+    for (const c of cells) deduped.set(`${c.moduleKey}:${c.role}`, c);
+
+    await this.repo.manager.transaction(async (manager) => {
+      const repo = manager.getRepository(ModuleAccess);
+      for (const c of deduped.values()) {
+        const existing = await repo.findOne({
+          where: { moduleKey: c.moduleKey, role: c.role, orgId: orgId ?? IsNull() },
+        });
+        if (existing) {
+          existing.enabled = c.enabled;
+          await repo.save(existing);
+        } else {
+          await repo.save(
+            repo.create({ moduleKey: c.moduleKey, role: c.role, enabled: c.enabled, orgId }),
+          );
+        }
+      }
+    });
+
+    // After the commit, never inside it: a peer that reacted to the message while the
+    // transaction was still open would re-read the PRE-commit rows and cache them.
     await this.invalidate(orgId);
   }
 

@@ -7,6 +7,7 @@ import { JOB_SEND_MAIL, MAIL_JOB_OPTIONS, QUEUE_MAIL } from '../../queue/queue.c
 import { AnyMailMessage } from './mail.types';
 import { MAIL_TRANSPORT, MailTransport, SendMeta } from './mail.transport';
 import { renderMail } from './templates';
+import { setMailWebOrigin } from './templates/layout';
 
 /**
  * Transactional mail (#103).
@@ -39,6 +40,11 @@ export class MailService implements OnModuleDestroy {
   ) {
     this.emailCfg = config.getOrThrow<EmailConfig>('email');
     this.appCfg = config.getOrThrow<AppConfig>('app');
+    // Hand the same origin `webUrl` builds links from to the template layout, which
+    // uses it for the footer's "Open CodeStack" link. Pushed FROM here rather than
+    // read there so this class stays the single reader of WEB_APP_URL — two readers
+    // is how the footer ends up pointing at localhost in production.
+    setMailWebOrigin(this.appCfg.webAppUrl);
   }
 
   async onModuleDestroy(): Promise<void> {

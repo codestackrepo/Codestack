@@ -21,7 +21,7 @@ import { formatDate } from '@/lib/utils';
 import { InviteStatus, type Invite } from '@/types/invite';
 import { invitesApi, inviteKeys } from '@/features/invites/api/invites.api';
 import { adminUserKeys } from '../api/users.api';
-import { InviteStudentDialog } from '../components/invite-student-dialog';
+import { InviteMemberDialog } from '../components/invite-member-dialog';
 
 const STATUS_VARIANT: Record<InviteStatus, 'default' | 'secondary' | 'destructive' | 'outline'> = {
   [InviteStatus.PENDING]: 'secondary',
@@ -81,7 +81,7 @@ export function OrgInvitesPage() {
           title="Invitations"
           description="Pending invitations reserve a seat until they are accepted or expire."
         />
-        <InviteStudentDialog />
+        <InviteMemberDialog />
       </div>
 
       {isLoading && !data ? (

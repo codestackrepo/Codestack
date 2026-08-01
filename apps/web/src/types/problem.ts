@@ -67,6 +67,36 @@ export interface ProblemFacets {
   companies: { name: string; count: number }[];
 }
 
+/**
+ * Mirrors `IoPrimitive` / `IoType` in
+ * `apps/api/src/modules/code-execution/driver-synth/io-spec.types.ts`.
+ *
+ * Non-recursive beyond one level on purpose — the set is exactly what every
+ * per-language (de)serializer in the driver synthesizer can handle.
+ */
+export const IO_PRIMITIVES = ['int', 'long', 'double', 'string', 'bool'] as const;
+export type IoPrimitive = (typeof IO_PRIMITIVES)[number];
+export type IoType = IoPrimitive | { array: IoPrimitive } | { matrix: IoPrimitive };
+
+export interface IoParam {
+  name: string;
+  type: IoType;
+}
+
+/** The judged signature. Sent with `functionName` — the server rejects one without the other. */
+export interface IoSpec {
+  params: IoParam[];
+  returns: IoType;
+}
+
+/** One test case as sent at create time — no id or ordering, the server assigns both. */
+export interface TestCaseInput {
+  inputData: string;
+  expectedOutput: string;
+  type?: TestCaseType;
+  explanation?: string;
+}
+
 export interface CreateProblemInput {
   title: string;
   body: string;
@@ -74,4 +104,23 @@ export interface CreateProblemInput {
   tags?: string[];
   companies?: string[];
   visibility?: ProblemVisibility;
+  /**
+   * `global` is SuperAdmin-only — `problems.global` has an empty role ceiling — and
+   * the server enforces that. Omitted means `org`, which is what any tenant author
+   * wants; sending it explicitly from a non-superadmin is what earns a 403.
+   */
+  scope?: ProblemScope;
+  /**
+   * Created in the SAME transaction as the problem. Passing them here rather than
+   * POSTing each afterwards is what stops a half-authored problem existing with no
+   * way to judge a submission against it.
+   */
+  testCases?: TestCaseInput[];
+  /**
+   * Structured judging. BOTH OR NEITHER — the server answers 400
+   * `incomplete_judge_spec` for one without the other, because a problem carrying
+   * half a signature reports itself as authored while being unjudgeable.
+   */
+  functionName?: string;
+  ioSpec?: IoSpec;
 }

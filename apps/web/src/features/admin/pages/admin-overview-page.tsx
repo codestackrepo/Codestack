@@ -1,14 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import {
-  ClipboardList,
-  FileCode2,
-  GraduationCap,
-  Inbox,
-  Mail,
-  Send,
-  Users,
-} from 'lucide-react';
+import { ClipboardList, FileCode2, GraduationCap, Inbox, Mail, Send, Users } from 'lucide-react';
 import { adminApi } from '../api/admin.api';
 import { PageHeader } from '@/components/shared/page-header';
 import { StatCard } from '@/components/shared/stat-card';
@@ -104,7 +96,11 @@ export function AdminOverviewPage() {
               icon={<ClipboardList className="size-5" />}
               hint={`${data.assignments.tests} timed test${data.assignments.tests === 1 ? '' : 's'}`}
             />
-            <StatCard label="Admins" value={data.users.admins} icon={<Users className="size-5" />} />
+            <StatCard
+              label="Admins"
+              value={data.users.admins}
+              icon={<Users className="size-5" />}
+            />
             <StatCard
               label="Professors"
               value={data.users.professors}

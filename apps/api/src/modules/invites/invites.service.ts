@@ -5,13 +5,25 @@ import { DataSource, EntityManager, QueryFailedError, Repository } from 'typeorm
 import { PaginatedResult } from '../../common/dto/pagination.dto';
 import { Role, ROLE_RANK } from '../../common/enums/role.enum';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
+import {
+  assertOrgAllowsStaffDirectory,
+  isClaimableMember,
+} from '../../common/tenancy/community-policy';
 import { assertSameOrg, scopeToOrg } from '../../common/tenancy/tenant-scope.util';
 import { MailService } from '../mail/mail.service';
-import { MailTemplate } from '../mail/mail.types';
+import {
+  AnyMailMessage,
+  InviteParams,
+  InviteParamsTemplate,
+  MailBranding,
+  MailTemplate,
+} from '../mail/mail.types';
 import { OrganizationStatus } from '../organizations/enums/organization.enums';
+import { readOrgBranding } from '../organizations/org-branding';
 import { OrganizationsService } from '../organizations/organizations.service';
 import { QuotaResource } from '../quotas/enums/quota-resource.enum';
 import { QuotaService } from '../quotas/quota.service';
+import { seatResourceFor } from '../quotas/seat-predicate';
 import { User } from '../users/entities/user.entity';
 import { UsersService } from '../users/users.service';
 import { AcceptInviteDto, CreateInviteDto, ListInvitesQueryDto } from './dto/invite.dto';
@@ -62,6 +74,18 @@ export class InvitesService {
     actor: AuthenticatedUser,
     organizationId: string,
     source: OrgInviteSource = OrgInviteSource.MANUAL,
+    /**
+     * Overrides the role-derived invite mail (#118).
+     *
+     * Exists for the approved OPEN-PROFESSOR application, whose invite is into the
+     * community tenant. The default `professor-invite` copy opens with "You've been
+     * invited to join {orgName}", and rendering that as "CodeStack Community" would
+     * tell someone they joined an institution that does not exist — the community
+     * tenant is our bookkeeping, never a thing anyone chose. Everything else about the
+     * invite is deliberately identical: same token mint, same TTL, same seat
+     * reservation, same accept page.
+     */
+    mailTemplate?: InviteParamsTemplate,
   ): Promise<OrgInvite> {
     assertMayInvite(actor.role, dto.role);
 
@@ -79,9 +103,12 @@ export class InvitesService {
     // An unassigned self-registrant is asked to JOIN rather than to create an
     // account. Nothing here re-homes them — kind only changes what the mail says
     // and what accept/claim will do when they click.
+    // `isClaimableMember` covers org-less AND community-tenant members: to an
+    // inviting organization both mean "has an account, has no institution", and both
+    // must be asked to JOIN rather than to create a second account (#118).
     const existing = await this.users.findByEmail(email);
     const kind =
-      existing && existing.organizationId === null
+      existing && isClaimableMember(existing.organizationId)
         ? OrgInviteKind.CLAIM
         : OrgInviteKind.NEW_ACCOUNT;
 
@@ -106,6 +133,11 @@ export class InvitesService {
         1,
         manager, // the transaction's manager — this is what makes the lock real
       );
+      // ...and the invited ROLE's own cap (#118). Checked at MINT time, not at
+      // accept: a pending invite already holds its seat, so an org at its professor
+      // cap must be refused the eleventh professor invite now rather than letting it
+      // sit in someone's inbox and fail when they finally click it.
+      await this.assertRoleSeat(organizationId, dto.role, manager);
 
       const repo = manager.getRepository(OrgInvite);
       return repo.save(
@@ -129,7 +161,14 @@ export class InvitesService {
 
     // AFTER the transaction commits, never inside it: enqueue is a side effect on
     // another system, and a rollback cannot unsend it.
-    await this.sendInviteMail(invite, org.name, token, ttlDays);
+    await this.sendInviteMail(
+      invite,
+      org.name,
+      token,
+      ttlDays,
+      mailTemplate,
+      readOrgBranding(org.settings),
+    );
     return invite;
   }
 
@@ -140,6 +179,20 @@ export class InvitesService {
     actor: AuthenticatedUser,
     overrideOrgId?: string,
   ): Promise<PaginatedResult<OrgInvite>> {
+    /**
+     * The community tenant's invite list is a directory (#118).
+     *
+     * Enforced HERE rather than in the controller, and that is the fix for a real
+     * hole: the org controller's `requireOrg` claimed every org-scoped route funnelled
+     * through it, but only `create` did — `list`, `resend` and `revoke` did not, so a
+     * community professor could read every pending invite in the shared tenant,
+     * including the address and name of every superadmin-approved professor applicant.
+     *
+     * `overrideOrgId` is the platform (superadmin) path, and `assertOrgAllowsStaffDirectory`
+     * already exempts SUPERADMIN, so that route is unaffected.
+     */
+    assertOrgAllowsStaffDirectory(actor);
+
     const qb = this.invites.createQueryBuilder('i').orderBy('i.createdAt', 'DESC');
     if (query.status) qb.andWhere('i.status = :status', { status: query.status });
     if (query.role) qb.andWhere('i.role = :role', { role: query.role });
@@ -251,6 +304,10 @@ export class InvitesService {
           1,
           manager,
         );
+        // Net-zero in the normal case — the consume above released this invite's
+        // reservation, and it was reserved against the same role's cap. The assertion
+        // stays as the double-accept backstop, exactly as the MAX_USERS one does.
+        await this.assertRoleSeat(invite.organizationId, invite.role, manager);
         return this.users.createFromInvite(
           {
             email: invite.email,
@@ -303,7 +360,11 @@ export class InvitesService {
 
     const user = await this.users.getById(actor.id);
     this.assertEligible(user, invite);
-    if (user.organizationId !== null) {
+    // Claimable = org-less OR in the community tenant (#118). Without the second
+    // case an open-platform student could never accept a university's invite: they
+    // would look like a settled member of another tenant and get the opaque
+    // `email_unavailable` with nothing they could do about it.
+    if (!isClaimableMember(user.organizationId)) {
       throw new AccountConflictException(
         user.organizationId === invite.organizationId ? 'account_exists' : 'email_unavailable',
       );
@@ -311,15 +372,20 @@ export class InvitesService {
 
     return this.dataSource.transaction(async (manager) => {
       await this.consume(manager, invite);
-      // A genuine +1: an org-less student was charged to no tenant, so joining
-      // one takes a seat that was not previously held by their user row (only by
-      // the pending invite, which the consume above just released).
+      // A genuine +1 either way: an org-less student was charged to no tenant, and a
+      // community member was charged to a tenant with no `org_quotas` rows (unlimited
+      // by the absent-row semantics), so there is no seat to release on the way out
+      // and joining a real org takes one it did not previously hold.
       await this.quotas.assertWithinQuota(
         invite.organizationId,
         QuotaResource.MAX_USERS,
         1,
         manager,
       );
+      // The claim may also CHANGE the role (a community student invited as a
+      // professor is promoted on claim, per `invite.role`), so the target role's cap
+      // is charged rather than the role they arrived with.
+      await this.assertRoleSeat(invite.organizationId, invite.role, manager);
       await manager
         .getRepository(User)
         .update({ id: user.id }, { organizationId: invite.organizationId, role: invite.role });
@@ -329,6 +395,28 @@ export class InvitesService {
   }
 
   // ---------------------------------------------------------------- helpers
+
+  /**
+   * Charges one seat against the ROLE's own cap, if that role has one (#118).
+   *
+   * A no-op for ADMIN and SUPERADMIN — `seatResourceFor` returns null for both, and
+   * that is a decision documented there rather than an accident here. Always paired
+   * with a `MAX_USERS` assertion at the call site: the per-role cap is an additional
+   * constraint, never a substitute for the total.
+   *
+   * Must run on the CALLER's manager, inside the caller's transaction. That is what
+   * makes the `FOR UPDATE` on the quota row real, so two concurrent invites at
+   * limit-1 cannot both pass.
+   */
+  private async assertRoleSeat(
+    organizationId: string,
+    role: Role,
+    manager: EntityManager,
+  ): Promise<void> {
+    const resource = seatResourceFor(role);
+    if (!resource) return;
+    await this.quotas.assertWithinQuota(organizationId, resource, 1, manager);
+  }
 
   /**
    * Loads an invite that is currently redeemable, or throws the specific reason.
@@ -375,14 +463,18 @@ export class InvitesService {
       return { outcome: 'already_member', user: existing };
     }
 
-    if (existing.organizationId === null) {
-      // They must claim it while signed in, so we never move an account into an
-      // org on the strength of a link alone.
+    if (isClaimableMember(existing.organizationId)) {
+      // Org-less, or an open-platform member of the community tenant (#118). They
+      // must claim it while signed in, so we never move an account into an org on
+      // the strength of a link alone — anyone holding the mail would otherwise be
+      // able to re-home someone else's account.
       throw new AccountConflictException('account_exists', { claimRequired: true });
     }
 
-    // In some other tenant. Opaque on purpose — a distinct code here is a
-    // cross-tenant existence oracle for whoever holds the invite link.
+    // In some other REAL tenant. Opaque on purpose — a distinct code here is a
+    // cross-tenant existence oracle for whoever holds the invite link. The community
+    // tenant is excluded from that reasoning above precisely because it is nobody's
+    // institution, so revealing membership of it reveals nothing worth protecting.
     throw new AccountConflictException('email_unavailable');
   }
 
@@ -490,6 +582,12 @@ export class InvitesService {
     actor: AuthenticatedUser,
     orgId?: string,
   ): Promise<OrgInvite> {
+    // Managing an invite in the community tenant means acting on a stranger's
+    // pending membership (#118) — resend re-mails their address, revoke cancels it.
+    // Placed here with the `list` guard so every read/write path through this service
+    // is covered, rather than relying on each controller route to remember.
+    assertOrgAllowsStaffDirectory(actor);
+
     const invite = await this.invites.findOne({ where: { id } });
     if (!invite) throw new NotFoundException({ reason: 'invite_not_found' });
     // The platform path pins the org from the route; a mismatch is a 404 rather
@@ -514,25 +612,53 @@ export class InvitesService {
     orgName: string,
     token: string,
     expiresInDays: number,
-    template?: MailTemplate,
+    template?: InviteParamsTemplate,
+    /**
+     * The inviting organization's branding, when it has any (#118).
+     *
+     * Read from the org row the caller already loaded — no extra query, and no cache
+     * work: `OrganizationCache` is status-only and stays that way.
+     */
+    branding?: MailBranding,
   ): Promise<void> {
-    const byRole: Record<string, MailTemplate> = {
+    const byRole: Record<string, InviteParamsTemplate> = {
       [Role.ADMIN]: MailTemplate.ORG_ADMIN_INVITE,
       [Role.PROFESSOR]: MailTemplate.PROFESSOR_INVITE,
       [Role.STUDENT]: MailTemplate.STUDENT_INVITE,
     };
+
+    /**
+     * Typed explicitly, and that is the point of this local existing at all.
+     *
+     * This object is checked against `InviteParams`, so adding a required field to that
+     * interface breaks the build HERE — on the one enqueue in the codebase that carries
+     * a live accept token. Previously the whole message was cast to `never`, which
+     * compiled but checked nothing.
+     */
+    const params: InviteParams = {
+      orgName,
+      firstName: invite.firstName,
+      lastName: invite.lastName,
+      inviterName: null,
+      // The one place the raw token appears outside this method's local scope.
+      acceptUrl: this.mail.webUrl(`invite/${token}`),
+      expiresInDays,
+      branding,
+    };
+
+    /**
+     * The remaining cast is a TypeScript limitation, not a gap in checking.
+     *
+     * `AnyMailMessage` is a union of `MailMessage<K>` per template, and TS will not
+     * accept an object whose discriminant is a UNION of five literals as assignable to
+     * that union — even though every one of the five maps to exactly the `InviteParams`
+     * above. The params, which are the part that can actually be wrong, are already
+     * checked by the typed local.
+     */
     await this.mail.enqueue({
       to: invite.email,
       template: template ?? byRole[invite.role] ?? MailTemplate.STUDENT_INVITE,
-      params: {
-        orgName,
-        firstName: invite.firstName,
-        lastName: invite.lastName,
-        inviterName: null,
-        // The one place the raw token appears outside this method's local scope.
-        acceptUrl: this.mail.webUrl(`invite/${token}`),
-        expiresInDays,
-      },
-    } as never);
+      params,
+    } as AnyMailMessage);
   }
 }

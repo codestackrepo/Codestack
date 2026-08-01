@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { ApiCookieAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
+import { canReadStaffDirectory } from '../../../common/tenancy/community-policy';
 import { Roles } from '../../../common/decorators/roles.decorator';
 import { Role } from '../../../common/enums/role.enum';
 import { AuthenticatedUser } from '../../../common/types/authenticated-user';
@@ -65,7 +66,7 @@ export class ProblemFeedbackController {
     @CurrentUser() actor: AuthenticatedUser,
   ): Promise<ProblemFeedbackResponseDto[]> {
     const rows = await this.feedback.listForProblem(id, actor);
-    return rows.map(ProblemFeedbackResponseDto.from);
+    return rows.map((f) => ProblemFeedbackResponseDto.from(f, canReadStaffDirectory(actor)));
   }
 }
 
@@ -93,7 +94,7 @@ export class FeedbackInboxController {
     @CurrentUser() actor: AuthenticatedUser,
   ): Promise<ProblemFeedbackResponseDto[]> {
     const rows = await this.feedback.listInbox(query, actor);
-    return rows.map(ProblemFeedbackResponseDto.from);
+    return rows.map((f) => ProblemFeedbackResponseDto.from(f, canReadStaffDirectory(actor)));
   }
 
   @Patch(':id/resolve')

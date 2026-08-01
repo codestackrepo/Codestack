@@ -1,6 +1,11 @@
-import { Link, useParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Building2, CheckCircle2, Code2, Tag as TagIcon } from 'lucide-react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ArrowLeft, Building2, CheckCircle2, Code2, CopyPlus, Tag as TagIcon } from 'lucide-react';
+import { toast } from 'sonner';
+import { useModuleAccess } from '@/features/auth/hooks/use-module-access';
+import { parseApiError } from '@/lib/api-client';
+import { FeatureKey } from '@/types/entitlement';
+import { ProblemScope } from '@/types/problem';
 import { problemsApi } from '../api/problems.api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -14,10 +19,26 @@ import { MarkdownView } from '@/components/shared/markdown-view';
 export function ProblemDetailPage() {
   const { id } = useParams<{ id: string }>();
 
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { canAccessFeature } = useModuleAccess();
+
   const { data: problem, isLoading } = useQuery({
     queryKey: ['problems', id],
     queryFn: () => problemsApi.getById(id!),
     enabled: !!id,
+  });
+
+  const clone = useMutation({
+    mutationFn: () => problemsApi.clone(id!),
+    onSuccess: (copy) => {
+      void queryClient.invalidateQueries({ queryKey: ['problems'] });
+      // Straight to the copy: the point of adopting a problem is to edit it, and
+      // leaving the reader on the original makes it look as though nothing happened.
+      toast.success('Added to your organization as a private draft');
+      navigate(`/home/problems/${copy.id}`);
+    },
+    onError: (e) => toast.error(parseApiError(e).message),
   });
 
   if (isLoading) {
@@ -51,6 +72,27 @@ export function ProblemDetailPage() {
               <CheckCircle2 className="size-3" /> Judge-ready
             </Badge>
           )}
+          {/*
+            Take a GLOBAL problem into this tenant (#56/#74).
+
+            Offered only for global problems: cloning one already owned by your own org
+            just duplicates it, which is a different (and rarer) intent than adopting
+            something from the platform catalog. Gated on `problems.author`, matching
+            `@RequiresFeature(PROBLEMS_AUTHOR)` on the clone route.
+          */}
+          {problem.scope === ProblemScope.GLOBAL &&
+            canAccessFeature(FeatureKey.PROBLEMS_AUTHOR) && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="ml-auto gap-2"
+                disabled={clone.isPending}
+                onClick={() => clone.mutate()}
+              >
+                <CopyPlus className="size-4" />
+                {clone.isPending ? 'Adding…' : 'Add to my organization'}
+              </Button>
+            )}
         </div>
         {problem.tags.length > 0 && (
           <div className="flex flex-wrap items-center gap-1">

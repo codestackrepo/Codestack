@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
 import { Organization } from '../organizations/entities/organization.entity';
 import { OrganizationStatus } from '../organizations/enums/organization.enums';
 import { OrganizationCache } from '../organizations/organization-cache.service';
+import { InvalidBrandingError } from '../organizations/org-branding';
 import { OrganizationsService } from '../organizations/organizations.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import {
@@ -158,8 +159,18 @@ export class PlatformService {
     return org;
   }
 
-  update(id: string, dto: UpdateOrganizationDto): Promise<Organization> {
-    return this.orgs.update(id, dto);
+  async update(id: string, dto: UpdateOrganizationDto): Promise<Organization> {
+    try {
+      return await this.orgs.update(id, dto);
+    } catch (err) {
+      // A rejected logo URL is the caller's mistake, not a server fault. Without this it
+      // surfaces as a 500 through AllExceptionsFilter and the superadmin is told
+      // "internal server error" for a typo they can see and fix (#118).
+      if (err instanceof InvalidBrandingError) {
+        throw new BadRequestException({ reason: 'invalid_branding', message: err.message });
+      }
+      throw err;
+    }
   }
 
   async suspend(id: string): Promise<Organization> {

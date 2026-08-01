@@ -9,6 +9,13 @@ export interface MatrixCell {
   locked: boolean;
 }
 
+/** One staged edit, in the shape the bulk endpoint accepts. */
+export interface PendingCell {
+  moduleKey: AppModuleKey;
+  role: Role;
+  enabled: boolean;
+}
+
 export interface ModuleAccessMatrix {
   toggleable: AppModuleKey[];
   system: AppModuleKey[];
@@ -40,6 +47,15 @@ export const moduleAccessApi = {
       role,
       enabled,
     });
+    return data;
+  },
+
+  /**
+   * Save many staged cells in one request. The server applies them in a single
+   * transaction, so the org is never briefly in a half-saved state no admin chose.
+   */
+  async updateCells(cells: PendingCell[]): Promise<ModuleAccessMatrix> {
+    const { data } = await apiClient.patch<ModuleAccessMatrix>('/module-access/bulk', { cells });
     return data;
   },
 };

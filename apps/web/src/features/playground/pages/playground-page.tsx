@@ -98,7 +98,9 @@ export function PlaygroundPage() {
           </span>
           <div>
             <h1 className="font-heading text-lg font-bold leading-none">Playground</h1>
-            <p className="mt-1 text-xs text-muted-foreground">Run scratch code — nothing is saved.</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Run scratch code — nothing is saved.
+            </p>
           </div>
         </div>
 

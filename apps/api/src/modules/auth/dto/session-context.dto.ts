@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { UserOrigin } from '../../../common/enums/user-origin.enum';
 import { AppModuleKey } from '../../module-access/enums/app-module-key.enum';
 import { OrganizationSummaryDto } from '../../organizations/dto/organization-summary.dto';
 import { UserResponseDto } from '../../users/dto/user-response.dto';
@@ -42,6 +43,30 @@ export class SessionContextDto {
       'The frontend routes these users to /pending rather than the app shell.',
   })
   isUnassigned!: boolean;
+
+  /**
+   * How this account came into existence — provenance, never current state (#118).
+   *
+   * Deliberately NOT what the UI branches on to decide whether to render a
+   * co-branded ecosystem. That decision reads `organization.type`, because an open
+   * student who accepts a university invite must render as a member of that
+   * university while keeping `origin: 'open'` forever. Shipping both fields is what
+   * keeps the two questions separable on the client.
+   */
+  @ApiProperty({
+    enum: ['closed', 'open'],
+    description:
+      'How the account was created: "closed" = invited or staff-created, "open" = self-signup. ' +
+      'Immutable. For UI ecosystem/branding decisions read organization.type instead.',
+  })
+  origin!: UserOrigin;
+
+  @ApiProperty({
+    description:
+      'Whether the address has been confirmed. Always true for a session that exists — an ' +
+      'unverified account cannot log in — so this is for rendering, not gating.',
+  })
+  emailVerified!: boolean;
 
   @ApiProperty() isValid!: boolean;
 }

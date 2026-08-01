@@ -20,7 +20,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Textarea } from '@/components/ui/textarea';
+import { MarkdownEditor } from '@/components/shared/markdown-editor';
 import { parseApiError } from '@/lib/api-client';
 import { formatDate } from '@/lib/utils';
 import { Role, atLeast } from '@/types/common';
@@ -102,12 +102,13 @@ export function TopicsPage() {
                   </div>
                   <div className="grid gap-2">
                     <Label htmlFor="topic-desc">Description</Label>
-                    <Textarea
+                    <MarkdownEditor
                       id="topic-desc"
                       value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      rows={3}
+                      onChange={setDescription}
+                      rows={8}
                       maxLength={4000}
+                      placeholder={'What this topic covers, and what to read first.'}
                     />
                   </div>
                 </div>
