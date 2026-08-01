@@ -7,6 +7,7 @@ import {
   ProblemVisibility,
   TestCaseType,
 } from '../enums/problem.enums';
+import type { IoSpec } from '../../code-execution/driver-synth/io-spec.types';
 import { Problem } from '../entities/problem.entity';
 import { TestCase } from '../entities/test-case.entity';
 
@@ -48,6 +49,19 @@ export class ProblemResponseDto {
   @ApiProperty({ type: [String] }) companies!: string[];
   @ApiProperty({ description: 'True when drivers/tests can be judged (has io_spec)' })
   isJudgeReady!: boolean;
+  /*
+   * The judge signature, projected so an AUTHOR can read back what they set and edit
+   * it. Not a secret: the per-language starter code already spells the same signature
+   * out to every solver, so withholding it here would hide it only from the person
+   * allowed to change it while showing it to everyone else.
+   *
+   * Hidden test cases remain absent — those are the actual secret, and they are
+   * projected only through the staff-facing `testCases` field above.
+   */
+  @ApiProperty({ nullable: true, description: 'Entry point the synthesized driver calls.' })
+  functionName!: string | null;
+  @ApiProperty({ nullable: true, description: 'Judged signature: params + return type.' })
+  ioSpec!: IoSpec | null;
   @ApiProperty({ nullable: true }) createdById!: string | null;
   @ApiProperty() createdAt!: Date;
   @ApiPropertyOptional({ type: [TestCaseResponseDto] }) testCases?: TestCaseResponseDto[];
@@ -64,6 +78,8 @@ export class ProblemResponseDto {
       tags: (problem.tags ?? []).map((t) => t.name),
       companies: (problem.companies ?? []).map((c) => c.name),
       isJudgeReady: !!problem.ioSpec && !!problem.functionName,
+      functionName: problem.functionName,
+      ioSpec: problem.ioSpec,
       createdById: problem.createdById,
       createdAt: problem.createdAt,
       ...(testCases ? { testCases: testCases.map(TestCaseResponseDto.from) } : {}),

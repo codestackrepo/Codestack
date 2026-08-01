@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { EntityManager } from 'typeorm';
-import { QuotaResource } from './enums/quota-resource.enum';
+import { ALL_QUOTA_RESOURCES, QuotaResource } from './enums/quota-resource.enum';
 import { QuotaExceededException } from './quota-exceeded.exception';
 import { QuotaService } from './quota.service';
 
@@ -170,9 +170,12 @@ describe('QuotaService.getUsageSummary', () => {
     const managerBag = makeManager({ limit: 7, count: 3 });
     const { service } = makeService({ manager: managerBag.manager });
     const summary = await service.getUsageSummary(ORG);
-    expect(Object.keys(summary).sort()).toEqual(
-      [QuotaResource.MAX_ASSIGNMENTS, QuotaResource.MAX_PROBLEMS, QuotaResource.MAX_USERS].sort(),
-    );
+    // Derived from ALL_QUOTA_RESOURCES rather than listed, so adding a resource
+    // extends the summary without this assertion having to be remembered. The two
+    // per-role seat caps (#118) arrived exactly that way.
+    expect(Object.keys(summary).sort()).toEqual([...ALL_QUOTA_RESOURCES].sort());
+    expect(Object.keys(summary)).toContain(QuotaResource.MAX_PROFESSORS);
+    expect(Object.keys(summary)).toContain(QuotaResource.MAX_STUDENTS);
     expect(summary[QuotaResource.MAX_USERS]).toEqual({ used: 3, limit: 7 });
     expect(managerBag.sql.some((s) => s.includes('FOR UPDATE'))).toBe(false);
   });

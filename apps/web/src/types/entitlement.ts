@@ -56,6 +56,9 @@ export const QuotaResource = {
   MAX_USERS: 'max_users',
   MAX_PROBLEMS: 'max_problems',
   MAX_ASSIGNMENTS: 'max_assignments',
+  /** Per-role seat caps (#118). Count exactly their role; admins are charged to MAX_USERS only. */
+  MAX_PROFESSORS: 'max_professors',
+  MAX_STUDENTS: 'max_students',
 } as const;
 export type QuotaResource = (typeof QuotaResource)[keyof typeof QuotaResource];
 
@@ -69,4 +72,6 @@ export const QUOTA_LABELS: Record<QuotaResource, string> = {
   max_users: 'Members (seats)',
   max_problems: 'Problems',
   max_assignments: 'Assignments',
+  max_professors: 'Professors',
+  max_students: 'Students',
 };

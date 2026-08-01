@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { Search } from 'lucide-react';
+import { Plus, Search } from 'lucide-react';
 import { useAuth } from '@/features/auth/context/auth-context';
+import { useModuleAccess } from '@/features/auth/hooks/use-module-access';
+import { Button } from '@/components/ui/button';
+import { FeatureKey } from '@/types/entitlement';
 import { ProblemScope } from '@/types/problem';
 import { problemsApi } from '../api/problems.api';
 import { EmptyState } from '@/components/shared/empty-state';
@@ -43,6 +46,7 @@ const ANY = '__any__';
 
 export function ProblemsListPage() {
   const { user } = useAuth();
+  const { canAccessFeature } = useModuleAccess();
   const organizationId = user?.organizationId ?? null;
   const [search, setSearch] = useState('');
   const [difficulty, setDifficulty] = useState<Difficulty | 'all'>('all');
@@ -103,6 +107,22 @@ export function ProblemsListPage() {
       <PageHeader
         title="Problems"
         description="Browse the problem library and sharpen your skills."
+        actions={
+          /*
+           * Gated on the FEATURE, not the role. `canAccessFeature` deliberately does
+           * not short-circuit staff the way `canAccess` does, because the resolver
+           * applies a non-overridable role ceiling to features — so this hides for a
+           * student and for any role an admin has switched authoring off for, and
+           * matches exactly what `@RequiresFeature(PROBLEMS_AUTHOR)` will allow.
+           */
+          canAccessFeature(FeatureKey.PROBLEMS_AUTHOR) ? (
+            <Button asChild className="gap-2">
+              <Link to="/home/problems/new">
+                <Plus className="size-4" /> New problem
+              </Link>
+            </Button>
+          ) : undefined
+        }
       />
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">

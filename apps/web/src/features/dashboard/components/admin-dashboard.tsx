@@ -1,23 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
-import {
-  GraduationCap,
-  FileCode2,
-  ClipboardCheck,
-  CalendarClock,
-  Inbox,
-} from 'lucide-react';
+import { GraduationCap, FileCode2, ClipboardCheck, CalendarClock, Inbox } from 'lucide-react';
 import { assignmentsApi } from '@/features/assignments/api/assignments.api';
 import { classroomsApi } from '@/features/classrooms/api/classrooms.api';
 import { problemsApi } from '@/features/problems/api/problems.api';
 import type { User } from '@/types/user';
 import { PageHeader } from '@/components/shared/page-header';
 import { StatCard } from '@/components/shared/stat-card';
-import {
-  byDeadline,
-  DeadlinesCard,
-  QuickActionsCard,
-  type QuickAction,
-} from './dashboard-parts';
+import { byDeadline, DeadlinesCard, QuickActionsCard, type QuickAction } from './dashboard-parts';
 
 const ACTIONS: QuickAction[] = [
   { to: '/home/admin/requests', label: 'Access requests', icon: Inbox },

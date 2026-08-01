@@ -1,5 +1,17 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsBoolean, IsEnum, IsInt, IsString, Min, ValidateIf } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
+  IsBoolean,
+  IsEnum,
+  IsInt,
+  IsString,
+  Min,
+  ValidateIf,
+  ValidateNested,
+} from 'class-validator';
 import { Role } from '../../../common/enums/role.enum';
 import { AppModuleKey } from '../../module-access/enums/app-module-key.enum';
 import { FeatureKey } from '../../module-access/enums/feature-key.enum';
@@ -26,6 +38,20 @@ export class UpdateOrgMatrixCellDto {
   @ApiProperty()
   @IsBoolean()
   enabled!: boolean;
+}
+
+/**
+ * Many cells, applied atomically. The cap is a body-size bound, not a product limit —
+ * modules × roles plus features × roles is comfortably under it.
+ */
+export class UpdateOrgMatrixBulkDto {
+  @ApiProperty({ type: [UpdateOrgMatrixCellDto] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => UpdateOrgMatrixCellDto)
+  cells!: UpdateOrgMatrixCellDto[];
 }
 
 export class SetOrgQuotaDto {

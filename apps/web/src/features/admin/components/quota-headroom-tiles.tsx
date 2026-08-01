@@ -4,10 +4,15 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/features/auth/context/auth-context';
 import type { QuotaSnapshot } from '@/features/auth/api/auth.api';
 
+// Every QuotaResource needs an entry: the tile falls back to the raw key, so a
+// missing one renders `max_professors` at the user. The two per-role seat caps
+// (#118) shipped server-side and reached this map late, which is exactly how.
 const LABELS: Record<string, string> = {
   max_users: 'Members',
   max_problems: 'Problems',
   max_assignments: 'Assignments',
+  max_professors: 'Professors',
+  max_students: 'Students',
 };
 
 /**

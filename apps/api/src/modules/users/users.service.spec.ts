@@ -4,6 +4,7 @@ import { Role } from '../../common/enums/role.enum';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
 import { CreateUserDto } from './dto/create-user.dto';
 import { User } from './entities/user.entity';
+import { COMMUNITY_ORG_ID } from '../organizations/organizations.constants';
 import { UsersService } from './users.service';
 
 type MockRepo = {
@@ -84,8 +85,18 @@ describe('UsersService.create — role assignment', () => {
       1,
       expect.anything(),
     );
+    // Two charges since #118: the total, then the role's own cap (a default-role
+    // create is a STUDENT, so MAX_STUDENTS). A staff-created member consumes a seat
+    // exactly as an invited one does — otherwise "add a user directly" would be the
+    // way around a professor cap.
+    expect(quotas.assertWithinQuota).toHaveBeenCalledWith(
+      'org-test',
+      'max_students',
+      1,
+      expect.anything(),
+    );
     // A check after the insert would be decorative — the row would already exist.
-    expect(order).toEqual(['quota', 'save']);
+    expect(order).toEqual(['quota', 'quota', 'save']);
   });
 
   it('propagates a quota breach and never inserts the user', async () => {
@@ -251,6 +262,63 @@ describe('UsersService — admin surface (#105)', () => {
     return { service, repo, quotas, events, calls, managerQuery };
   }
 
+  /**
+   * The community tenant's containment, at the two choke points that decide it.
+   *
+   * `assertSameOrg` passes for any two community members — they genuinely share an
+   * organization id — which is exactly the assumption a shared tenant of strangers
+   * breaks. Both guards were missing initially, and each is reachable independently:
+   * fixing the read path does not fix the write path.
+   */
+  describe('community tenant is self-only (#118)', () => {
+    // The real constant, not a re-typed copy — a hardcoded uuid would keep passing
+    // on the day the constant changed, asserting against an id nothing else uses.
+    const COMMUNITY = COMMUNITY_ORG_ID;
+    const communityActor = (over: Partial<AuthenticatedUser> = {}): AuthenticatedUser =>
+      admin({ id: 'prof-1', role: Role.PROFESSOR, organizationId: COMMUNITY, ...over });
+    const communityUser = (over: Partial<User> = {}): User =>
+      row({ id: 'stranger-1', role: Role.STUDENT, organizationId: COMMUNITY, ...over });
+
+    // `GET /users/:id` carries email, both names and lastLoginAt — it turns any user id
+    // into an identity, which defeats the list/search lockout for anyone holding ids.
+    it('refuses to reveal another member', async () => {
+      const { service } = build(communityUser());
+      await expect(service.findOneVisible('stranger-1', communityActor())).rejects.toBeTruthy();
+    });
+
+    it('still reveals the actor to themselves', async () => {
+      const { service } = build(communityUser({ id: 'prof-1' }));
+      await expect(service.findOneVisible('prof-1', communityActor())).resolves.toBeTruthy();
+    });
+
+    /**
+     * The write path is a SEPARATE choke point. Changing a stranger's email address is
+     * an account-takeover primitive: password reset then mails the attacker.
+     */
+    it('refuses to modify another member', async () => {
+      const { service } = build(communityUser());
+      await expect(
+        service.update('stranger-1', { firstName: 'Renamed' }, communityActor()),
+      ).rejects.toMatchObject({ response: { reason: 'community_restricted' } });
+    });
+
+    it('refuses to delete another member', async () => {
+      const { service } = build(communityUser());
+      await expect(service.remove('stranger-1', communityActor())).rejects.toMatchObject({
+        response: { reason: 'community_restricted' },
+      });
+    });
+
+    // The closed ecosystem must be completely unaffected — this is the control case.
+    it('leaves a real organization alone', async () => {
+      const { service } = build(row({ id: 'student-1', role: Role.STUDENT }));
+      await expect(service.findOneVisible('student-1', admin())).resolves.toBeTruthy();
+      await expect(
+        service.update('student-1', { firstName: 'Renamed' }, admin()),
+      ).resolves.toBeTruthy();
+    });
+  });
+
   describe('setAccess', () => {
     it('is idempotent — no write, no event, no mail when nothing changes', async () => {
       const { service, repo, events } = build(row({ isActive: true }));
@@ -276,7 +344,26 @@ describe('UsersService — admin surface (#105)', () => {
       const { service, quotas, calls } = build(row({ isActive: false }));
       await service.setAccess('u-1', true, admin());
       expect(quotas.assertWithinQuota).toHaveBeenCalledWith(ORG, 'max_users', 1, expect.anything());
-      expect(calls).toEqual(['quota', 'save']);
+      // Two charges since #118 — the total, then the role's own cap.
+      expect(calls).toEqual(['quota', 'quota', 'save']);
+    });
+
+    /**
+     * Re-activation is the EIGHTH seat-creating path, and it was missed when the other
+     * seven were enumerated. The gap it left is exactly the cycle this method reasons
+     * about: deactivate a professor, invite a replacement (which fills MAX_PROFESSORS),
+     * reactivate the first — every step passes, and the org is permanently over the
+     * professor cap, because only the unchanged TOTAL was ever checked.
+     */
+    it('charges the ROLE cap too, not just the total', async () => {
+      const { service, quotas } = build(row({ isActive: false, role: Role.PROFESSOR }));
+      await service.setAccess('u-1', true, admin());
+      expect(quotas.assertWithinQuota).toHaveBeenCalledWith(
+        ORG,
+        'max_professors',
+        1,
+        expect.anything(),
+      );
     });
 
     it('charges NOTHING when revoking — that frees a seat, it does not take one', async () => {
@@ -342,8 +429,9 @@ describe('UsersService — admin surface (#105)', () => {
     it('locks the row, charges a seat, writes, then re-stamps the denormalised rows', async () => {
       const { service, calls } = build(row({ organizationId: null }));
       await service.assignOrganization('u-1', 'org-new', admin(), Role.STUDENT, 'New Org');
-      // quota before the write; both re-stamps after it.
-      expect(calls).toEqual(['quota', 'write', 'restamp', 'restamp']);
+      // Both quotas before the write — total, then the role's cap (#118) — and both
+      // re-stamps after it.
+      expect(calls).toEqual(['quota', 'quota', 'write', 'restamp', 'restamp']);
     });
 
     it('emits USER_ORGANIZATION_ASSIGNED with the org name for the mail', async () => {

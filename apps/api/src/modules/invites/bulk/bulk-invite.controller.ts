@@ -21,6 +21,7 @@ import { extname } from 'path';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import { Roles } from '../../../common/decorators/roles.decorator';
 import { Role } from '../../../common/enums/role.enum';
+import { assertOrgAllowsStaffDirectory } from '../../../common/tenancy/community-policy';
 import { AuthenticatedUser } from '../../../common/types/authenticated-user';
 import { BulkInviteService } from './bulk-invite.service';
 import { BulkInviteResultDto, CommitBulkInviteDto, RosterPreviewDto } from './dto/bulk-invite.dto';
@@ -146,6 +147,21 @@ export class BulkInviteController {
         message: 'Bulk upload runs against your own organization.',
       });
     }
+    /**
+     * Bulk upload is closed to the community tenant (#118), and this is the sharpest
+     * leak of the set — sharper than the member list it mirrors.
+     *
+     * `POST /invites/bulk/preview` accepts 2000 addresses and answers with a per-address
+     * classification, running an UNSCOPED lookup: `already_member` is a definitive "this
+     * address is in the community tenant" and `not_available` is "this address has an
+     * account somewhere on CodeStack". That is a batch existence oracle over arbitrary
+     * addresses, handed to anyone who obtained a community professor account — which the
+     * PUBLIC professor-application endpoint makes obtainable.
+     *
+     * `commit` is worse in a different way: it mints invites into the shared tenant and
+     * mails claim-invitations that pull org-less students into it.
+     */
+    assertOrgAllowsStaffDirectory(actor);
     return actor.organizationId;
   }
 }

@@ -14,6 +14,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 
 const FIELD = 'h-10 bg-muted/30 pl-9 transition-colors focus-visible:bg-transparent';
 const ICON =
@@ -34,6 +35,19 @@ export function LoginForm({ onSwitch }: { onSwitch: () => void }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [formError, setFormError] = useState<string | null>(null);
+  /**
+   * Set when the credentials were RIGHT but the address is unconfirmed (#118).
+   *
+   * Kept separate from `formError` because the remedy is completely different: a
+   * wrong password means "try again", an unconfirmed address means "go and click the
+   * link, or ask for a new one". Rendering the second as a plain red line under the
+   * password field would send people to re-check a password that was already correct.
+   *
+   * Reaching this state at all means the password was verified server-side — the API
+   * checks credentials BEFORE this gate, precisely so the response cannot tell a
+   * stranger whether an address has an account.
+   */
+  const [unverified, setUnverified] = useState(false);
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -42,12 +56,18 @@ export function LoginForm({ onSwitch }: { onSwitch: () => void }) {
 
   async function onSubmit(values: LoginFormValues) {
     setFormError(null);
+    setUnverified(false);
     try {
       await login(values);
       const redirectTo = (location.state as { from?: Location })?.from?.pathname ?? '/home';
       navigate(redirectTo, { replace: true });
     } catch (error) {
-      setFormError(parseApiError(error).message);
+      const parsed = parseApiError(error);
+      if (parsed.reason === 'email_unverified') {
+        setUnverified(true);
+        return;
+      }
+      setFormError(parsed.message);
     }
   }
 
@@ -90,8 +110,7 @@ export function LoginForm({ onSwitch }: { onSwitch: () => void }) {
                 <FormControl>
                   <div className="relative">
                     <Lock className={ICON} />
-                    <Input
-                      type="password"
+                    <PasswordInput
                       autoComplete="current-password"
                       placeholder="••••••••"
                       className={FIELD}
@@ -112,6 +131,25 @@ export function LoginForm({ onSwitch }: { onSwitch: () => void }) {
             </Link>
           </div>
           {formError && <p className="text-sm text-destructive">{formError}</p>}
+          {/*
+            An unconfirmed address is not a failed sign-in, so it does not look like
+            one. The password was right; the only thing missing is the click in the
+            inbox, and the resend link is the way out of a lost mail.
+          */}
+          {unverified && (
+            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+              <p className="font-medium">Confirm your email address to sign in</p>
+              <p className="mt-1 text-muted-foreground">
+                We sent a link when you signed up. Open it to finish setting up your account.
+              </p>
+              <Link
+                to="/resend-verification"
+                className="mt-2 inline-block font-semibold text-primary hover:underline"
+              >
+                Send me a new link
+              </Link>
+            </div>
+          )}
           <Button type="submit" size="lg" className="w-full" disabled={form.formState.isSubmitting}>
             {form.formState.isSubmitting ? 'Signing in…' : 'Sign in'}
           </Button>

@@ -8,7 +8,12 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { EmptyState } from '@/components/shared/empty-state';
-import { RosterAction, type RosterPreview, type RosterRow, type RosterRowError } from '@/types/bulk';
+import {
+  RosterAction,
+  type RosterPreview,
+  type RosterRow,
+  type RosterRowError,
+} from '@/types/bulk';
 
 /**
  * The reviewed roster, split by outcome.
@@ -108,7 +113,11 @@ function RowTable({
 /** Classification errors and parse errors together — both are "this row is out". */
 function ErrorTable({ rows, parseErrors }: { rows: RosterRow[]; parseErrors: RosterRowError[] }) {
   const all = [
-    ...rows.map((r) => ({ rowNumber: r.rowNumber, email: r.email, message: r.message ?? r.reason })),
+    ...rows.map((r) => ({
+      rowNumber: r.rowNumber,
+      email: r.email,
+      message: r.message ?? r.reason,
+    })),
     ...parseErrors.map((e) => ({
       rowNumber: e.rowNumber,
       email: e.email ?? '—',

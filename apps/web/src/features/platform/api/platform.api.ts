@@ -124,6 +124,22 @@ export const platformApi = {
     return data;
   },
 
+  /**
+   * Save many staged cells in one atomic request. The server writes them in a single
+   * transaction and invalidates once, so no other API instance ever resolves access
+   * against a half-applied matrix.
+   */
+  async setOrgMatrixCells(
+    orgId: string,
+    cells: { key: AccessKey; role: Role; enabled: boolean }[],
+  ): Promise<OrgMatrix> {
+    const { data } = await apiClient.patch<OrgMatrix>(
+      `/platform/organizations/${orgId}/module-access/bulk`,
+      { cells },
+    );
+    return data;
+  },
+
   async getOrgQuotas(orgId: string): Promise<OrgQuotas> {
     const { data } = await apiClient.get<OrgQuotas>(`/platform/organizations/${orgId}/quotas`);
     return data;

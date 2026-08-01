@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { ApiCookieAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { canReadStaffDirectory } from '../../common/tenancy/community-policy';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '../../common/enums/role.enum';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
@@ -61,7 +62,7 @@ export class TopicsController {
   @RequiresFeature(FeatureKey.TOPICS_MODERATE)
   async questions(@CurrentUser() actor: AuthenticatedUser): Promise<TopicCommentResponseDto[]> {
     const rows = await this.topics.listOpenQuestions(actor);
-    return rows.map(TopicCommentResponseDto.from);
+    return rows.map((c) => TopicCommentResponseDto.from(c, canReadStaffDirectory(actor)));
   }
 
   @Post()
@@ -99,7 +100,7 @@ export class TopicsController {
     @CurrentUser() actor: AuthenticatedUser,
   ): Promise<TopicCommentResponseDto[]> {
     const rows = await this.topics.listComments(id, actor);
-    return rows.map(TopicCommentResponseDto.from);
+    return rows.map((c) => TopicCommentResponseDto.from(c, canReadStaffDirectory(actor)));
   }
 
   @Post(':id/comments')

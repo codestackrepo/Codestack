@@ -53,7 +53,19 @@ function DialogContent({
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(
-          'fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95',
+          /*
+           * `max-h` + `overflow-y-auto` are load-bearing, not polish.
+           *
+           * The box is centred with `top-1/2 -translate-y-1/2`, so a dialog taller
+           * than the viewport grows off BOTH edges — and the half above the fold is
+           * unreachable, because the overlay blocks scrolling the page behind it.
+           * A long form (the assignment builder) loses its own heading that way.
+           *
+           * `dvh`, not `vh`: on mobile browsers `vh` counts the area behind the
+           * collapsing address bar, which is the difference between a footer that is
+           * reachable and one that sits permanently under the chrome.
+           */
+          'fixed top-1/2 left-1/2 z-50 grid max-h-[calc(100dvh-2rem)] w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto overscroll-contain rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95',
           className,
         )}
         {...props}

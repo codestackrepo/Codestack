@@ -34,9 +34,12 @@ export const onboardingApi = {
   async listRequests(
     params: { page?: number; limit?: number; status?: RequestStatus } = {},
   ): Promise<PaginatedResult<ProfessorRequest>> {
-    const { data } = await apiClient.get<PaginatedResult<ProfessorRequest>>('/onboarding/requests', {
-      params: { page: 1, limit: 20, ...params },
-    });
+    const { data } = await apiClient.get<PaginatedResult<ProfessorRequest>>(
+      '/onboarding/requests',
+      {
+        params: { page: 1, limit: 20, ...params },
+      },
+    );
     return data;
   },
   async approveRequest(id: string): Promise<ProfessorRequest> {

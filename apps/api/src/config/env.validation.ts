@@ -73,9 +73,31 @@ export const envValidationSchema = Joi.object({
   // empty-string allowance leak into the enabled branch, and a blank host fails
   // at first send instead of at boot.
   EMAIL_ENABLED: Joi.boolean().default(false),
+  // Which provider delivers (#118). Defaults to smtp, so an existing deployment
+  // and a fresh local checkout both behave exactly as before.
+  EMAIL_PROVIDER: Joi.string().valid('smtp', 'resend').default('smtp'),
+  // Now conditional on the PROVIDER too: Resend goes over HTTPS and has no host to
+  // configure, so requiring one would make a valid Resend deployment fail to boot.
   EMAIL_HOST: Joi.when('EMAIL_ENABLED', {
     is: true,
-    then: Joi.string().min(1).required(),
+    then: Joi.when('EMAIL_PROVIDER', {
+      is: 'resend',
+      then: Joi.string().allow('').default(''),
+      otherwise: Joi.string().min(1).required(),
+    }),
+    otherwise: Joi.string().allow('').default(''),
+  }),
+  // Required ONLY when the mailer is on AND the provider is resend. Nested rather
+  // than combined into one condition for the reason EMAIL_HOST is: a disabled
+  // mailer must never require a credential, so `EMAIL_ENABLED=false` has to
+  // short-circuit before the provider is even consulted.
+  RESEND_API_KEY: Joi.when('EMAIL_ENABLED', {
+    is: true,
+    then: Joi.when('EMAIL_PROVIDER', {
+      is: 'resend',
+      then: Joi.string().min(1).required(),
+      otherwise: Joi.string().allow('').default(''),
+    }),
     otherwise: Joi.string().allow('').default(''),
   }),
   EMAIL_PORT: Joi.number().default(587),
@@ -85,7 +107,23 @@ export const envValidationSchema = Joi.object({
   DEFAULT_FROM_EMAIL: Joi.string().default('no-reply@codestack.dev'),
   DEMO_NOTIFICATION_EMAILS: Joi.string().allow('').default(''),
   EMAIL_WORKER_CONCURRENCY: Joi.number().default(4),
-  EMAIL_RATE_MAX: Joi.number().default(20),
+  // No default when sending through Resend — the operator must choose it.
+  // The default of 20/s is safe for mailpit and for a real SMTP relay, and is far
+  // above Resend's account limit, so inheriting it silently is what produces a 429
+  // storm on the first bulk roster import. Resend's real POST /emails limit is not
+  // the one its read endpoints report; `ResendMailTransport` logs the observed
+  // limit off the first successful send, and this value should be at most half of
+  // it (the BullMQ limiter is Redis-global across ALL worker pods, and any other
+  // Resend API traffic shares the same account budget).
+  EMAIL_RATE_MAX: Joi.when('EMAIL_ENABLED', {
+    is: true,
+    then: Joi.when('EMAIL_PROVIDER', {
+      is: 'resend',
+      then: Joi.number().min(1).required(),
+      otherwise: Joi.number().default(20),
+    }),
+    otherwise: Joi.number().default(20),
+  }),
   EMAIL_RATE_DURATION_MS: Joi.number().default(1000),
 
   // Public origin of the WEB app — every mailed link is built from it.

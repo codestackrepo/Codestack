@@ -19,12 +19,35 @@ export interface SessionContext {
   /**
    * Per-resource quotas, or null for a SuperAdmin (charged to no tenant). Keys are
    * SNAKE_CASE — they come straight from the org_quotas resource strings.
+   *
+   * Must list every member of the server's `QuotaResource`: `getUsageSummary` maps
+   * over `ALL_QUOTA_RESOURCES`, so a key missing here is a field that arrives at
+   * runtime but cannot be read without a type error. The two per-role seat caps
+   * (#118) were in that state.
    */
-  quotas: Record<'max_users' | 'max_problems' | 'max_assignments', QuotaSnapshot> | null;
+  quotas: Record<QuotaResourceKey, QuotaSnapshot> | null;
   /** True for a non-superadmin with no organization — the confined holding state. */
   isUnassigned: boolean;
+  /**
+   * How the account was created — provenance, and immutable (#118).
+   *
+   * NOT what to branch on for branding. An open-platform student who accepts a
+   * university invite keeps `'open'` forever while genuinely being a member of that
+   * university, so the ecosystem question is answered by `organization.type`
+   * (`'community'` = the shared open tenant = render plain CodeStack).
+   */
+  origin: 'closed' | 'open';
+  /**
+   * Whether the address is confirmed. Effectively always true for a live session,
+   * since an unverified account cannot log in — present for rendering, not gating.
+   */
+  emailVerified: boolean;
   isValid: boolean;
 }
+
+/** Mirrors the server's `QuotaResource` enum (`quota-resource.enum.ts`). */
+export type QuotaResourceKey =
+  'max_users' | 'max_problems' | 'max_assignments' | 'max_professors' | 'max_students';
 
 /**
  * The per-resource shape inside `quotas`, mirroring `QuotaUsageDto`.
@@ -61,15 +84,58 @@ export interface AcceptInviteInput {
   lastName?: string;
 }
 
+/** What `GET /auth/verify-email/:token/preview` answers. Never throws server-side. */
+export interface VerificationPreview {
+  status: 'valid' | 'expired' | 'used' | 'not_found';
+  /** Present only for `valid` — masked, e.g. `ad••••••••@example.edu`. */
+  maskedEmail?: string;
+}
+
 export const authApi = {
   async login(input: LoginInput): Promise<User> {
     const { data } = await apiClient.post<{ user: User }>('/auth/login', input);
     return data.user;
   },
 
-  async register(input: RegisterInput): Promise<User> {
-    const { data } = await apiClient.post<{ user: User }>('/auth/register', input);
+  /**
+   * Signup. Returns only a message, and mints NO session (#118).
+   *
+   * The response is deliberately identical whether an account was created, the
+   * address was already taken, or a pending signup was re-sent its link — the server
+   * will not say which, because `users.email` is unique and this endpoint is public.
+   * So there is no user to return and nothing for the caller to branch on: the only
+   * correct UI is "check your inbox".
+   */
+  async register(input: RegisterInput): Promise<{ message: string }> {
+    const { data } = await apiClient.post<{ message: string }>('/auth/register', input);
+    return data;
+  },
+
+  /** Describes a verification token without consuming it. Never 4xxs. */
+  async previewVerification(token: string): Promise<VerificationPreview> {
+    const { data } = await apiClient.get<VerificationPreview>(
+      `/auth/verify-email/${encodeURIComponent(token)}/preview`,
+    );
+    return data;
+  },
+
+  /**
+   * Consumes the token, confirms the address and MINTS COOKIES — the third
+   * cookie-minting call alongside login and acceptInvite, which is why it belongs in
+   * AuthContext rather than being called directly. The link is how a verified
+   * account gets its first session.
+   */
+  async verifyEmail(token: string): Promise<User> {
+    const { data } = await apiClient.post<{ user: User }>('/auth/verify-email', { token });
     return data.user;
+  },
+
+  /** Uniform 200 whatever the address turns out to be. Nothing to branch on. */
+  async resendVerification(email: string): Promise<{ message: string }> {
+    const { data } = await apiClient.post<{ message: string }>('/auth/resend-verification', {
+      email,
+    });
+    return data;
   },
 
   async logout(): Promise<void> {

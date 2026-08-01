@@ -4,6 +4,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '../../common/enums/role.enum';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
+import { UpdateModuleAccessBulkDto } from './dto/update-module-access-bulk.dto';
 import { UpdateModuleAccessDto } from './dto/update-module-access.dto';
 import { SYSTEM_MODULES, TOGGLEABLE_MODULES } from './enums/app-module-key.enum';
 import { ALL_FEATURES } from './enums/feature-key.enum';
@@ -49,6 +50,25 @@ export class ModuleAccessController {
   @Roles(Role.ADMIN)
   async update(@Body() dto: UpdateModuleAccessDto, @CurrentUser() actor: AuthenticatedUser) {
     await this.access.setCell(dto.moduleKey, dto.role, dto.enabled, actor.organizationId);
+    return this.envelope(
+      await this.access.getMatrix(actor.organizationId),
+      await this.access.cappedKeys(actor.organizationId),
+    );
+  }
+
+  /**
+   * Save many cells at once, atomically. Admin+. Returns the refreshed matrix.
+   *
+   * This is what the admin matrix's Save button calls. The single-cell PATCH above
+   * is kept for one-off flips and for any client already using it.
+   */
+  @Patch('bulk')
+  @Roles(Role.ADMIN)
+  async updateBulk(
+    @Body() dto: UpdateModuleAccessBulkDto,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
+    await this.access.setCells(dto.cells, actor.organizationId);
     return this.envelope(
       await this.access.getMatrix(actor.organizationId),
       await this.access.cappedKeys(actor.organizationId),

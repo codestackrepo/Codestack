@@ -73,11 +73,7 @@ export function CasePills({
           >
             {v != null && (
               <span
-                className={cn(
-                  'size-1.5 rounded-full',
-                  ok && 'bg-emerald-500',
-                  bad && 'bg-red-500',
-                )}
+                className={cn('size-1.5 rounded-full', ok && 'bg-emerald-500', bad && 'bg-red-500')}
               />
             )}
             Case {i + 1}

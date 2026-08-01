@@ -9,6 +9,7 @@ import { DataSource, In, Repository } from 'typeorm';
 import { PaginatedResult, PaginationQueryDto } from '../../common/dto/pagination.dto';
 import { Role } from '../../common/enums/role.enum';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
+import { assertOrgAllowsStaffDirectory } from '../../common/tenancy/community-policy';
 import { assertSameOrg, isSuperAdmin, scopeToOrg } from '../../common/tenancy/tenant-scope.util';
 import { User } from '../users/entities/user.entity';
 import { CreateClassroomDto } from './dto/create-classroom.dto';
@@ -248,6 +249,21 @@ export class ClassroomsService {
   }
 
   private async loadUsers(ids: string[], actor: AuthenticatedUser): Promise<User[]> {
+    /**
+     * Enrolling strangers is not a thing on the open platform (#118).
+     *
+     * REFUSED rather than shaped, unlike the author-identity leaks: `assertSameOrg`
+     * below is satisfied by any two community members, so a professor there could
+     * enrol harvested user ids into a classroom and then read back a full
+     * `UserResponseDto` for every one of them through the members endpoint — and, via
+     * grading, the source code they submitted. Blanking a field cannot fix that; the
+     * capability itself does not belong to a tenant of strangers.
+     *
+     * Placed in `loadUsers`/`loadProfessor` rather than on the create route because
+     * these are the two functions that turn an id into a person.
+     */
+    assertOrgAllowsStaffDirectory(actor);
+
     const users = await this.users.find({ where: { id: In(ids) } });
     if (users.length !== new Set(ids).size) {
       throw new BadRequestException('One or more users not found');
@@ -258,6 +274,10 @@ export class ClassroomsService {
   }
 
   private async loadProfessor(id: string, actor: AuthenticatedUser): Promise<User> {
+    // Same reasoning as `loadUsers` — this resolves an id to a person, and the shared
+    // open tenant is where that is not the actor's business (#118).
+    assertOrgAllowsStaffDirectory(actor);
+
     const user = await this.users.findOne({ where: { id } });
     if (!user) throw new BadRequestException('Professor not found');
     if (user.role !== Role.PROFESSOR && user.role !== Role.ADMIN) {

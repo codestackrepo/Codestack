@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { AppModuleKey, Role, atLeast } from '@/types/common';
+import { OrganizationType } from '@/types/organization';
 import { useAuth } from '@/features/auth/context/auth-context';
 import { useModuleAccess } from '@/features/auth/hooks/use-module-access';
 import { Logo } from '@/components/shared/logo';
+import { OrgLockup } from '@/components/shared/org-lockup';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   Building2,
@@ -20,10 +22,11 @@ import {
   Mail,
   PanelLeftClose,
   PanelLeftOpen,
+  Sparkles,
   Terminal,
   Upload,
   UserPlus,
-  UserRoundPlus,
+  UserCheck,
   Users,
 } from 'lucide-react';
 
@@ -50,6 +53,18 @@ interface NavItem {
    * `exclude`; the route gate is the half that actually enforces it.
    */
   excludeRoles?: Role[];
+  /**
+   * Hide for members of the open community tenant (#118).
+   *
+   * That tenant's members are mutually anonymous strangers, so the org-staff read
+   * surfaces are refused server-side with `community_restricted`. Without this flag
+   * the nav would advertise sections that 403 on click — which reads as the app being
+   * broken rather than as a surface that does not apply to them.
+   *
+   * Separate from `roles` because it is not about rank: an open PROFESSOR outranks a
+   * student and still must not see a member directory.
+   */
+  orgOnly?: boolean;
   /** Hide when this toggleable module is disabled for the user's role. Admin always sees all. */
   module?: AppModuleKey;
   /** Renders a muted "Soon" badge; the item still navigates (to a placeholder page). */
@@ -68,7 +83,24 @@ interface NavSection {
 // so a section renders only if at least one of its items is visible to the user.
 const NAV_SECTIONS: NavSection[] = [
   {
-    items: [{ to: '/home/dashboard', label: 'Dashboard', icon: LayoutDashboard }],
+    items: [
+      { to: '/home/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+      {
+        /*
+         * Plan + usage. Top-level rather than under Organization, because it applies
+         * to an individual on the open platform just as much as to an institution —
+         * nesting it under a heading that says "Organization" would read as staff-only
+         * to exactly the audience that can actually self-serve an upgrade.
+         *
+         * Not `orgOnly` for the same reason. Excluded for SUPERADMIN alone: they are
+         * charged to no tenant, so `quotas` is null and there is nothing to meter.
+         */
+        to: '/home/subscription',
+        label: 'Subscription',
+        icon: Sparkles,
+        excludeRoles: [Role.SUPERADMIN],
+      },
+    ],
   },
   {
     heading: 'Learn',
@@ -79,7 +111,6 @@ const NAV_SECTIONS: NavSection[] = [
         label: 'Topics',
         icon: Layers,
         module: AppModuleKey.TOPICS,
-        comingSoon: true,
       },
       {
         // #77. Staff-only: the inbox is the professor's queue of students waiting.
@@ -115,18 +146,35 @@ const NAV_SECTIONS: NavSection[] = [
         module: AppModuleKey.CLASSROOMS,
       },
       {
+        // Excluded explicitly for the same reason the Organization section is: this
+        // list is org-scoped, a SuperAdmin's org is null, so `scopeToOrg` renders it
+        // permanently empty. The adjacent Doubts item names SUPERADMIN outright, so
+        // leaving it out here was intent — but `roles` is minimum-rank, and rank let
+        // them back in regardless.
         to: '/home/grading',
         label: 'Gradebook',
         icon: ClipboardCheck,
         roles: [Role.ADMIN, Role.PROFESSOR],
+        excludeRoles: [Role.SUPERADMIN],
         module: AppModuleKey.GRADING,
       },
-      // Students can ask to become a professor; staff never see this.
+      /*
+       * Students can ask to become a professor; staff never see this.
+       *
+       * `roles: [STUDENT]` ALONE DOES NOT SAY THAT. `roles` is minimum-rank
+       * (`atLeast`), and student is the lowest rank, so on its own it matches every
+       * role — which is why an admin was being offered "Become a professor". The
+       * exclusion is what actually narrows it to exactly one role.
+       *
+       * This is the one item in the nav whose intent is an EXACT role rather than a
+       * floor, so it is the one place the rank default is wrong by construction.
+       */
       {
         to: '/home/request-access',
         label: 'Become a professor',
         icon: UserPlus,
         roles: [Role.STUDENT],
+        excludeRoles: [Role.PROFESSOR, Role.ADMIN, Role.SUPERADMIN],
       },
     ],
   },
@@ -134,6 +182,10 @@ const NAV_SECTIONS: NavSection[] = [
     // Renamed from "Admin": half of it is now a professor's job too, so naming it
     // after the tenant rather than after one role stops reading as a lie.
     heading: 'Organization',
+    // EVERY item here is `orgOnly` (#118): the whole section is about administering a
+    // tenant, and the open community tenant is not a tenant anyone administers. The
+    // server already refuses these surfaces there, so showing them would only produce
+    // a section where every link 403s.
     items: [
       {
         to: '/home/admin',
@@ -141,6 +193,7 @@ const NAV_SECTIONS: NavSection[] = [
         icon: LayoutDashboard,
         roles: [Role.ADMIN],
         excludeRoles: [Role.SUPERADMIN],
+        orgOnly: true,
         end: true,
       },
       // People / Invites / Bulk / Unassigned are PROFESSOR-and-up (rank-aware, so
@@ -151,6 +204,7 @@ const NAV_SECTIONS: NavSection[] = [
         icon: Users,
         roles: [Role.PROFESSOR],
         excludeRoles: [Role.SUPERADMIN],
+        orgOnly: true,
       },
       {
         to: '/home/admin/invites',
@@ -158,6 +212,7 @@ const NAV_SECTIONS: NavSection[] = [
         icon: Mail,
         roles: [Role.PROFESSOR],
         excludeRoles: [Role.SUPERADMIN],
+        orgOnly: true,
       },
       {
         to: '/home/admin/bulk-invite',
@@ -165,20 +220,36 @@ const NAV_SECTIONS: NavSection[] = [
         icon: Upload,
         roles: [Role.PROFESSOR],
         excludeRoles: [Role.SUPERADMIN],
+        orgOnly: true,
       },
+      /*
+       * "Unassigned students" is deliberately ABSENT from the org console (#118).
+       *
+       * The pool is `organization_id IS NULL AND role = 'student'`, but open
+       * self-signups are created inside the COMMUNITY TENANT, which is a non-null
+       * org. Nothing in the current onboarding flow produces an org-less student, so
+       * for an org admin this pool is structurally empty — a permanent "no results"
+       * page advertised in the nav.
+       *
+       * It is also the wrong shape for a closed tenant even when non-empty: those
+       * users are strangers to the institution, and a university's roster is built
+       * from its own invites, not by claiming people out of a shared pool.
+       *
+       * The PLATFORM section keeps its own copy, which is where the surface belongs —
+       * a superadmin is the one who resolves genuinely org-less accounts. The org
+       * route still exists and is still guarded; only the signpost is gone.
+       */
       {
-        to: '/home/admin/unassigned',
-        label: 'Unassigned students',
-        icon: UserRoundPlus,
-        roles: [Role.PROFESSOR],
-        excludeRoles: [Role.SUPERADMIN],
-      },
-      {
+        // The org ADMIN's review queue for members already inside the tenant asking to
+        // be promoted. Distinct from invites, which address an EMAIL and answer
+        // `already_member` with no role change for someone who is already here — so
+        // this is the only in-tenant promotion path, and it belongs in this section.
         to: '/home/admin/requests',
         label: 'Access requests',
         icon: Inbox,
         roles: [Role.ADMIN],
         excludeRoles: [Role.SUPERADMIN],
+        orgOnly: true,
       },
     ],
   },
@@ -193,12 +264,42 @@ const NAV_SECTIONS: NavSection[] = [
         icon: Building2,
         roles: [Role.SUPERADMIN],
       },
+      // #118. Institutions apply for themselves now, so this queue is the entry point
+      // to every new tenant — it sits directly under Organizations because approving an
+      // application is how one gets created.
       {
-        to: '/home/platform/unassigned',
-        label: 'Unassigned students',
-        icon: UserRoundPlus,
+        to: '/home/platform/organization-applications',
+        label: 'Org applications',
+        icon: Inbox,
         roles: [Role.SUPERADMIN],
       },
+      // The other half of #118's review work: individuals asking to teach on the open
+      // platform. Kept separate from org applications because approving them does
+      // something quite different — an invite into the community tenant, not a new one.
+      {
+        to: '/home/platform/professor-applications',
+        label: 'Professor requests',
+        icon: UserCheck,
+        roles: [Role.SUPERADMIN],
+      },
+      /*
+       * "Unassigned students" is gone from the platform console too (#118).
+       *
+       * The pool is `organization_id IS NULL AND role = 'student'`, and since open
+       * self-signups are created inside the COMMUNITY TENANT — a non-null org —
+       * nothing produces a row for it any more. It is a permanently empty page, and
+       * the empty state reads as "no open students exist", which is the opposite of
+       * true: they exist, they are just members of a tenant.
+       *
+       * Repointing it at community-tenant students was considered and rejected: that
+       * is a different operation (moving a member BETWEEN tenants, with seat
+       * accounting on both sides), `assignOrganization` deliberately 404s anything
+       * outside the pool, and open members are not meant to be claimable into a
+       * closed institution anyway.
+       *
+       * The route and its guard remain, so a genuinely org-less account left by a
+       * data repair is still reachable and fixable by URL.
+       */
       {
         // #70. `problems.global` has an EMPTY role ceiling — SuperAdmin only — so
         // this catalog is not reachable or authorable from any other role.
@@ -220,8 +321,26 @@ interface SidebarProps {
 }
 
 export function Sidebar({ className, onNavigate, allowCollapse = true }: SidebarProps) {
-  const { user, logout } = useAuth();
+  const { user, logout, organization } = useAuth();
   const { canAccess } = useModuleAccess();
+  /**
+   * Members of the open community tenant. The server refuses org-staff surfaces for
+   * them (`community_restricted`), so the nav must not offer them.
+   *
+   * Keyed on the org TYPE, never on `origin`: an open-platform student who accepts a
+   * university invite is a full member of that university and must see its console
+   * items, while keeping `origin: 'open'` forever.
+   */
+  const inCommunityTenant = organization?.type === OrganizationType.COMMUNITY;
+  /**
+   * Whether to render the co-branded lockup instead of plain CodeStack (#118).
+   *
+   * Not simply `!inCommunityTenant`: a SUPERADMIN has no organization at all, and that
+   * must fall through to plain CodeStack rather than to a lockup with nothing to pair
+   * with. Three states, two outcomes — a real org co-brands, the community tenant and
+   * no-org do not.
+   */
+  const showOrgLockup = !!organization && organization.type !== OrganizationType.COMMUNITY;
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false;
     return window.localStorage.getItem(COLLAPSE_KEY) === '1';
@@ -242,6 +361,7 @@ export function Sidebar({ className, onNavigate, allowCollapse = true }: Sidebar
   const canSee = (item: NavItem) =>
     (!item.excludeRoles || !user || !item.excludeRoles.includes(user.role)) &&
     (!item.roles || !user || item.roles.some((r) => atLeast(user.role, r))) &&
+    (!item.orgOnly || !inCommunityTenant) &&
     (!item.module || canAccess(item.module));
 
   const sections = NAV_SECTIONS.map((section) => ({
@@ -282,8 +402,18 @@ export function Sidebar({ className, onNavigate, allowCollapse = true }: Sidebar
         </div>
       ) : (
         <div className="flex h-16 shrink-0 items-center justify-between gap-2 px-3.5">
-          <Link to="/home" title="CodeStack home" onClick={onNavigate}>
-            <Logo wordmarkClassName="text-white" accentClassName="text-[hsl(248_62%_82%)]" />
+          <Link to="/home" title="CodeStack home" onClick={onNavigate} className="min-w-0">
+            {/*
+              Co-branded for members of a real organization, plain CodeStack otherwise
+              (#118). `OrgLockup` owns that rule — it keys off `organization.type`, not
+              `origin`, so an open-platform student who joins a university sees the
+              university's identity from that moment on.
+            */}
+            {showOrgLockup ? (
+              <OrgLockup className="text-white" />
+            ) : (
+              <Logo wordmarkClassName="text-white" accentClassName="text-[hsl(248_62%_82%)]" />
+            )}
           </Link>
           {allowCollapse && (
             <button

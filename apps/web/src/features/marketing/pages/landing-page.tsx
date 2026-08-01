@@ -78,9 +78,21 @@ const FEATURES: Feature[] = [
 ];
 
 const STEPS = [
-  { n: '1', title: 'Pick a track', desc: 'Jump into practice problems or open an assignment from your classroom.' },
-  { n: '2', title: 'Write & run', desc: 'Code in the editor, run against samples, and submit for an instant verdict.' },
-  { n: '3', title: 'Build a streak', desc: 'Earn points, grow your streak, and watch your heatmap fill in.' },
+  {
+    n: '1',
+    title: 'Pick a track',
+    desc: 'Jump into practice problems or open an assignment from your classroom.',
+  },
+  {
+    n: '2',
+    title: 'Write & run',
+    desc: 'Code in the editor, run against samples, and submit for an instant verdict.',
+  },
+  {
+    n: '3',
+    title: 'Build a streak',
+    desc: 'Earn points, grow your streak, and watch your heatmap fill in.',
+  },
 ];
 
 export function LandingPage() {
@@ -142,8 +154,7 @@ export function LandingPage() {
         <div className="relative mx-auto grid w-full max-w-[75rem] items-center gap-12 px-4 py-16 md:px-6 md:py-24 lg:grid-cols-2">
           <div>
             <span className="animate-fade-in-up inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-muted-foreground shadow-soft dark:border-white/10 dark:bg-white/5">
-              <Sparkles className="size-3.5 text-primary" />
-              A calmer place to learn to code
+              <Sparkles className="size-3.5 text-primary" />A calmer place to learn to code
             </span>
             <h1
               className="animate-fade-in-up mt-5 text-4xl font-bold tracking-tight text-balance md:text-5xl lg:text-6xl"
@@ -170,9 +181,21 @@ export function LandingPage() {
                 </Link>
               </Button>
               {!user && (
-                <Button asChild size="lg" variant="outline">
-                  <Link to="/login">I already have an account</Link>
-                </Button>
+                <>
+                  {/*
+                    The second of the two ways in (#118). An individual signs up and
+                    practises; an institution applies for a workspace, a superadmin
+                    approves it with seat limits, and its admin then invites professors
+                    and students. Both doors belong on the hero — burying the
+                    organisation one in a footer is how institutions never find it.
+                  */}
+                  <Button asChild size="lg" variant="outline">
+                    <Link to="/for-organizations">Join as an organisation</Link>
+                  </Button>
+                  <Button asChild size="lg" variant="ghost">
+                    <Link to="/login">I already have an account</Link>
+                  </Button>
+                </>
               )}
             </div>
             <div
@@ -206,9 +229,7 @@ export function LandingPage() {
                 <div className="text-chart-4">
                   def <span className="text-chart-1">two_sum</span>(nums, target):
                 </div>
-                <div className="pl-4 text-chart-3">
-                  seen = {'{}'}
-                </div>
+                <div className="pl-4 text-chart-3">seen = {'{}'}</div>
                 <div className="pl-4 text-slate-300">for i, n in enumerate(nums):</div>
                 <div className="pl-8 text-slate-300">
                   if target - n <span className="text-chart-4">in</span> seen:
@@ -247,7 +268,9 @@ export function LandingPage() {
       {/* Features */}
       <section className="mx-auto w-full max-w-[75rem] px-4 py-16 md:px-6">
         <div className="mx-auto max-w-2xl text-center">
-          <h2 className="text-2xl font-bold tracking-tight md:text-3xl">Everything in one workspace</h2>
+          <h2 className="text-2xl font-bold tracking-tight md:text-3xl">
+            Everything in one workspace
+          </h2>
           <p className="mt-3 text-muted-foreground">
             No tab-juggling. Practice, classrooms, tests, and grading share one calm, consistent
             interface.
@@ -303,7 +326,9 @@ export function LandingPage() {
         >
           <div
             className="pointer-events-none absolute -top-16 -right-10 size-72 rounded-full opacity-40 blur-3xl"
-            style={{ background: 'radial-gradient(circle, rgba(255,255,255,0.5), transparent 70%)' }}
+            style={{
+              background: 'radial-gradient(circle, rgba(255,255,255,0.5), transparent 70%)',
+            }}
           />
           <div className="relative mx-auto max-w-2xl">
             <h2 className="text-2xl font-bold tracking-tight text-white md:text-4xl">
@@ -316,11 +341,7 @@ export function LandingPage() {
               {/* On the fixed dark gradient in BOTH themes: white pill with
                   deep-navy text. text-sidebar is deep navy in both themes;
                   text-primary would flip to light ice-blue in dark (invisible). */}
-              <Button
-                asChild
-                size="lg"
-                className="bg-white text-sidebar hover:bg-white/90"
-              >
+              <Button asChild size="lg" className="bg-white text-sidebar hover:bg-white/90">
                 <Link to={primaryCta.to}>
                   {primaryCta.label}
                   <ArrowRight className="size-4" data-icon="inline-end" />

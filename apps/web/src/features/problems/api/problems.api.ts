@@ -38,4 +38,18 @@ export const problemsApi = {
     const { data } = await apiClient.post<Problem>('/problems', input);
     return data;
   },
+
+  /**
+   * Copy a problem the caller can SEE into their own org, test cases and judge spec
+   * included. This is how a university takes a global-catalog problem into its own
+   * ecosystem: the copy is theirs to edit, and the original is untouched.
+   *
+   * The copy lands PRIVATE deliberately — it is a draft until its new owner decides
+   * to share it, and inheriting `shared` would publish it to the whole tenant on the
+   * strength of one click.
+   */
+  async clone(id: string): Promise<Problem> {
+    const { data } = await apiClient.post<Problem>(`/problems/${id}/clone`);
+    return data;
+  },
 };

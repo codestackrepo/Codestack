@@ -1,13 +1,13 @@
 import { InjectQueue } from '@nestjs/bullmq';
-import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Queue } from 'bullmq';
-import type { Transporter } from 'nodemailer';
 import { AppConfig, EmailConfig } from '../../config/configuration';
 import { JOB_SEND_MAIL, MAIL_JOB_OPTIONS, QUEUE_MAIL } from '../../queue/queue.constants';
 import { AnyMailMessage } from './mail.types';
-import { createMailTransport } from './mail.transport';
+import { MAIL_TRANSPORT, MailTransport, SendMeta } from './mail.transport';
 import { renderMail } from './templates';
+import { setMailWebOrigin } from './templates/layout';
 
 /**
  * Transactional mail (#103).
@@ -32,20 +32,26 @@ export class MailService implements OnModuleDestroy {
   private readonly logger = new Logger(MailService.name);
   private readonly emailCfg: EmailConfig;
   private readonly appCfg: AppConfig;
-  private transport?: Transporter;
 
   constructor(
     @InjectQueue(QUEUE_MAIL) private readonly queue: Queue,
+    @Inject(MAIL_TRANSPORT) private readonly transport: MailTransport,
     config: ConfigService,
   ) {
     this.emailCfg = config.getOrThrow<EmailConfig>('email');
     this.appCfg = config.getOrThrow<AppConfig>('app');
+    // Hand the same origin `webUrl` builds links from to the template layout, which
+    // uses it for the footer's "Open CodeStack" link. Pushed FROM here rather than
+    // read there so this class stays the single reader of WEB_APP_URL — two readers
+    // is how the footer ends up pointing at localhost in production.
+    setMailWebOrigin(this.appCfg.webAppUrl);
   }
 
   async onModuleDestroy(): Promise<void> {
-    // The pool holds open TCP connections; without this a worker shutdown waits
-    // on them and the process lingers past its termination grace period.
-    this.transport?.close();
+    // An SMTP pool holds open TCP connections; without this a worker shutdown
+    // waits on them and the process lingers past its termination grace period.
+    // Provider-agnostic now — the Resend transport has nothing to close.
+    await this.transport.close();
   }
 
   /**
@@ -88,7 +94,7 @@ export class MailService implements OnModuleDestroy {
    * alternative would make "every invite token in the application log" the
    * default posture of any deployment that forgot to set EMAIL_ENABLED.
    */
-  async deliver(message: AnyMailMessage): Promise<void> {
+  async deliver(message: AnyMailMessage, meta?: SendMeta): Promise<void> {
     const { subject, html, text } = renderMail(message);
 
     if (!this.emailCfg.enabled) {
@@ -98,13 +104,18 @@ export class MailService implements OnModuleDestroy {
       return;
     }
 
-    this.transport ??= createMailTransport(this.emailCfg);
-    await this.transport.sendMail({
-      from: this.emailCfg.from,
-      to: message.to,
-      subject,
-      html,
-      text,
-    });
+    // Whatever the transport throws travels straight out — including
+    // `MailDeliveryError`, whose `terminal` flag the processor reads. Catching and
+    // rewrapping here would erase the one bit that decides retry vs complete.
+    await this.transport.send(
+      {
+        from: this.emailCfg.from,
+        to: message.to,
+        subject,
+        html,
+        text,
+      },
+      meta,
+    );
   }
 }

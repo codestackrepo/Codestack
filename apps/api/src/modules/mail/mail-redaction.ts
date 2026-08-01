@@ -3,11 +3,18 @@ import { AnyMailMessage } from './mail.types';
 /**
  * Param keys whose value is a URL carrying a live single-use credential.
  *
- * `acceptUrl` embeds an invite token (14-day TTL) and `resetUrl` a password-reset
- * token (60-minute TTL). Both are the ONLY thing standing between a holder of the
- * string and an account.
+ * `acceptUrl` embeds an invite token (14-day TTL), `resetUrl` a password-reset
+ * token (60-minute TTL) and `verifyUrl` an email-verification token (24-hour TTL).
+ * Each is the ONLY thing standing between a holder of the string and an account.
+ *
+ * ADDING A TEMPLATE THAT CARRIES A TOKEN MEANS ADDING ITS PARAM KEY HERE. A
+ * template that mails a credential but is missing from this list retains that
+ * credential in Redis for the whole of `removeOnFail`, which is exactly the bug
+ * this module was written to fix. `mail-redaction.spec.ts` enumerates every
+ * `MailTemplate` and asserts the credential-bearing set explicitly, so the omission
+ * fails a test instead of shipping.
  */
-const CREDENTIAL_PARAMS = ['acceptUrl', 'resetUrl'] as const;
+const CREDENTIAL_PARAMS = ['acceptUrl', 'resetUrl', 'verifyUrl'] as const;
 
 export const REDACTED = '[redacted]';
 

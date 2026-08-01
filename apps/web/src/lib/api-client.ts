@@ -1,6 +1,7 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios';
 import { toast } from 'sonner';
 import { queryClient } from '@/lib/query-client';
+import { CROSS_CUTTING_REASONS } from '@/lib/toast-reasons';
 import type { ApiErrorBody } from '@/types/common';
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api/v1';
@@ -31,6 +32,15 @@ const AUTH_BOOTSTRAP_PATHS = [
   '/auth/reset-password',
   '/invites/preview',
   '/invites/accept',
+  // #118. All @Public, and all reachable by someone with NO session — an unverified
+  // signup and a stranger applying have nothing to refresh. Listed for the same reason
+  // the entries above are: a refresh-and-retry on a path that can never be authenticated
+  // is a wasted round trip at best, and these are the paths most likely to be hit by a
+  // browser that holds a stale or absent cookie.
+  '/auth/verify-email',
+  '/auth/resend-verification',
+  '/organization-applications',
+  '/professor-applications',
 ];
 
 /** One toast per reason per burst — a page firing six requests should not stack six. */
@@ -94,6 +104,24 @@ apiClient.interceptors.response.use(
         // Same reasoning as module_disabled: refetch so RequireFeature re-evaluates
         // rather than leaving the user on a page whose controls all fail.
         void queryClient.invalidateQueries({ queryKey: ['auth', 'session'] });
+        return Promise.reject(error);
+      }
+
+      /*
+       * #118. A member of the open community tenant hit an org-staff surface.
+       *
+       * Cross-cutting like the two above — it can come back from the member list, the
+       * unassigned pool, search, or any invite route — so it is handled here rather
+       * than at four call sites.
+       *
+       * NO session invalidation, unlike the cases around it. Those refetch because the
+       * user's entitlements may have just changed and the guards need to re-evaluate.
+       * Nothing has changed here: being in the community tenant is a stable fact, and a
+       * refetch would return the identical session while making a failed click look like
+       * a state transition.
+       */
+      if (reason === 'community_restricted' && !isVerify) {
+        toastOnce(reason, CROSS_CUTTING_REASONS.community_restricted);
         return Promise.reject(error);
       }
 

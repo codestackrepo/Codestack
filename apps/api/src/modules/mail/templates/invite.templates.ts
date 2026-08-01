@@ -36,6 +36,17 @@ function inviteBody(
         If the button doesn't work, paste this into your browser:<br />
         <span style="word-break:break-all">${escapeHtml(p.acceptUrl)}</span>
       </p>`,
+    /*
+     * Co-branding (#118). An invite is the FIRST thing a new member ever sees from the
+     * institution that invited them, so it is where the CodeStack × org lockup earns
+     * most — the mail should look like it came from their university, because it did.
+     *
+     * Undefined when the org has set no branding, in which case `wrapHtml` renders the
+     * plain brand line byte for byte as before and the template snapshots are unchanged.
+     * Never present for the community tenant, which carries no branding at all — so an
+     * open professor's approval mail names CodeStack and nothing else.
+     */
+    p.branding ? { name: org, logoUrl: p.branding.logoUrl } : undefined,
   );
 
   const text = wrapText([

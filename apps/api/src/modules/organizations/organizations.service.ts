@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { QueryFailedError, Repository } from 'typeorm';
 import { Organization } from './entities/organization.entity';
 import { OrganizationStatus, OrganizationType } from './enums/organization.enums';
+import { OrgBranding, parseOrgBranding } from './org-branding';
 
 /**
  * Tenant-root data access + writes: reads (#48) plus the SuperAdmin org CRUD and
@@ -68,11 +69,33 @@ export class OrganizationsService {
   /** SuperAdmin org edit (#62). Slug is intentionally immutable (it's an FK-adjacent identifier). */
   async update(
     id: string,
-    patch: { name?: string; type?: OrganizationType },
+    patch: { name?: string; type?: OrganizationType; branding?: OrgBranding | null },
   ): Promise<Organization> {
     const org = await this.getById(id);
     if (patch.name !== undefined) org.name = patch.name;
     if (patch.type !== undefined) org.type = patch.type;
+
+    if (patch.branding !== undefined) {
+      /**
+       * Validated HERE, at the write, and never at render (#118).
+       *
+       * A mail template must not throw: rendering happens on the BullMQ worker, so a
+       * bad logo URL would burn five retries over eight minutes and park a failed job —
+       * for a value someone typed into a settings form months earlier. Refusing it at
+       * the boundary puts the error in front of the person who can fix it.
+       *
+       * `parseOrgBranding` throws `InvalidBrandingError`; the caller maps it to a 400.
+       * `undefined` back from it means "nothing usable was supplied", which is how
+       * clearing works — the key is deleted rather than left as an empty object, so
+       * `readOrgBranding` stays a plain existence check.
+       */
+      const branding = patch.branding === null ? undefined : parseOrgBranding(patch.branding);
+      const settings = { ...(org.settings ?? {}) };
+      if (branding) settings.branding = branding;
+      else delete settings.branding;
+      org.settings = settings;
+    }
+
     return this.repo.save(org);
   }
 

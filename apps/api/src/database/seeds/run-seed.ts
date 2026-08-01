@@ -151,6 +151,9 @@ async function upsertUser(
       lastName,
       passwordHash,
       isActive: true,
+      // Seeding is the vouch: AuthService.validateCredentials refuses a password
+      // login while this is NULL, so an unstamped seed user cannot sign in at all.
+      emailVerifiedAt: new Date(),
       organizationId: LEGACY_ORG_ID,
     }),
   );
@@ -214,6 +217,9 @@ async function upsertProblem(
       difficulty,
       source: ProblemSource.HUMAN,
       visibility: ProblemVisibility.SHARED,
+      // scope defaults to ORG, and chk_problem_scope_org requires a non-null org
+      // for that scope — omitting this fails the insert, it does not default.
+      organizationId: LEGACY_ORG_ID,
       createdById: createdBy.id,
       tags: tagEntities,
     }),
