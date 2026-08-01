@@ -6,6 +6,7 @@ import type { User } from '@/types/user';
 import { PageHeader } from '@/components/shared/page-header';
 import { StatCard } from '@/components/shared/stat-card';
 import { GamificationPanel } from '@/features/gamification/components/gamification-panel';
+import { MyGradesCard } from '@/features/grading/components/my-grades-card';
 import {
   byDeadline,
   daysUntilLabel,
@@ -71,6 +72,14 @@ export function StudentDashboard({ user }: { user: User }) {
         <DeadlinesCard deadlines={sorted} isLoading={isLoading} className="lg:col-span-2" />
         <QuickActionsCard actions={ACTIONS} />
       </div>
+
+      {/*
+        #128 — published grades, above the gamification panel. Deadlines are what a
+        student acts on and grades are what they check; both belong ahead of streaks
+        and heatmaps, which are a summary of past activity rather than something to
+        do.
+      */}
+      <MyGradesCard />
 
       <GamificationPanel />
     </div>
