@@ -8,6 +8,7 @@ import {
   SmtpMailTransport,
 } from './mail.transport';
 import { ResendMailTransport } from './resend-mail.transport';
+import { BrevoApiMailTransport } from './brevo-mail.transport';
 
 jest.mock('nodemailer', () => ({ createTransport: jest.fn().mockReturnValue({}) }));
 jest.mock('./resend-mail.transport', () => {
@@ -25,14 +26,29 @@ jest.mock('./resend-mail.transport', () => {
     },
   };
 });
+jest.mock('./brevo-mail.transport', () => {
+  const ctor = jest.fn();
+  return {
+    BrevoApiMailTransport: class {
+      constructor(...args: unknown[]) {
+        ctor(...args);
+      }
+      send = jest.fn();
+      close = jest.fn();
+      static ctor = ctor;
+    },
+  };
+});
 
 const resendCtor = (ResendMailTransport as unknown as { ctor: jest.Mock }).ctor;
+const brevoCtor = (BrevoApiMailTransport as unknown as { ctor: jest.Mock }).ctor;
 
 const cfg = (over: Partial<EmailConfig> = {}): EmailConfig =>
   ({
     enabled: true,
     provider: 'smtp',
     resendApiKey: '',
+    brevoApiKey: '',
     host: 'smtp.example.com',
     port: 587,
     user: '',
@@ -67,7 +83,10 @@ function resolveTransport(over: Partial<EmailConfig> = {}): MailTransport {
   return entry.useFactory(config);
 }
 
-beforeEach(() => resendCtor.mockClear());
+beforeEach(() => {
+  resendCtor.mockClear();
+  brevoCtor.mockClear();
+});
 
 describe('MailModule — provider selection', () => {
   it('defaults to SMTP', () => {
@@ -77,6 +96,13 @@ describe('MailModule — provider selection', () => {
   it('selects Resend when the provider says so', () => {
     resolveTransport({ provider: 'resend', resendApiKey: 're_live_key_value' });
     expect(resendCtor).toHaveBeenCalledTimes(1);
+    expect(brevoCtor).not.toHaveBeenCalled();
+  });
+
+  it('selects Brevo when the provider says so', () => {
+    resolveTransport({ provider: 'brevo', brevoApiKey: 'xkeysib-live-key-value' });
+    expect(brevoCtor).toHaveBeenCalledTimes(1);
+    expect(resendCtor).not.toHaveBeenCalled();
   });
 });
 
@@ -94,6 +120,13 @@ describe('MailModule — a disabled mailer needs no credential', () => {
     expect(() =>
       resolveTransport({ enabled: false, provider: 'resend', resendApiKey: '' }),
     ).not.toThrow();
+  });
+
+  it('short-circuits even when the provider is brevo and the key is absent', () => {
+    expect(() =>
+      resolveTransport({ enabled: false, provider: 'brevo', brevoApiKey: '' }),
+    ).not.toThrow();
+    expect(brevoCtor).not.toHaveBeenCalled();
   });
 
   it('does not build an SMTP transport either when disabled', () => {

@@ -102,6 +102,16 @@ gate "RESEND_API_KEY read only by config + Resend transport" 3 \
 gate "process.env.RESEND_API_KEY has one reader" 1 \
   grep -rn --include=*.ts "process.env.RESEND_API_KEY" "$API"
 
+# --- Brevo API key containment (mirrors the Resend gate above) ------------
+# Same reasoning, same shape: the config factory plus the two lines in
+# BrevoApiMailTransport that check the key is present and store it. Specs are
+# excluded for the same reason — their fixtures use a fake key on purpose.
+gate "BREVO_API_KEY read only by config + Brevo transport" 3 \
+  grep -rn --include=*.ts --exclude=*.spec.ts "brevoApiKey" "$API"
+
+gate "process.env.BREVO_API_KEY has one reader" 1 \
+  grep -rn --include=*.ts "process.env.BREVO_API_KEY" "$API"
+
 # --- community tenant containment (#118) ----------------------------------
 # The community tenant is a real `organizations` row shared by every open-platform
 # member, which is what makes an org-less professor representable and keeps

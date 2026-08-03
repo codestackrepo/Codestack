@@ -73,15 +73,16 @@ export const envValidationSchema = Joi.object({
   // empty-string allowance leak into the enabled branch, and a blank host fails
   // at first send instead of at boot.
   EMAIL_ENABLED: Joi.boolean().default(false),
-  // Which provider delivers (#118). Defaults to smtp, so an existing deployment
-  // and a fresh local checkout both behave exactly as before.
-  EMAIL_PROVIDER: Joi.string().valid('smtp', 'resend').default('smtp'),
-  // Now conditional on the PROVIDER too: Resend goes over HTTPS and has no host to
-  // configure, so requiring one would make a valid Resend deployment fail to boot.
+  // Which provider delivers (#118, #brevo-api). Defaults to smtp, so an existing
+  // deployment and a fresh local checkout both behave exactly as before.
+  EMAIL_PROVIDER: Joi.string().valid('smtp', 'resend', 'brevo').default('smtp'),
+  // Now conditional on the PROVIDER too: Resend and Brevo's API both go over
+  // HTTPS and have no host to configure, so requiring one would make a valid
+  // HTTP-API deployment fail to boot.
   EMAIL_HOST: Joi.when('EMAIL_ENABLED', {
     is: true,
     then: Joi.when('EMAIL_PROVIDER', {
-      is: 'resend',
+      is: Joi.valid('resend', 'brevo'),
       then: Joi.string().allow('').default(''),
       otherwise: Joi.string().min(1).required(),
     }),
@@ -100,6 +101,17 @@ export const envValidationSchema = Joi.object({
     }),
     otherwise: Joi.string().allow('').default(''),
   }),
+  // Brevo's counterpart to RESEND_API_KEY, same containment: required only when
+  // the mailer is on AND the provider is brevo.
+  BREVO_API_KEY: Joi.when('EMAIL_ENABLED', {
+    is: true,
+    then: Joi.when('EMAIL_PROVIDER', {
+      is: 'brevo',
+      then: Joi.string().min(1).required(),
+      otherwise: Joi.string().allow('').default(''),
+    }),
+    otherwise: Joi.string().allow('').default(''),
+  }),
   EMAIL_PORT: Joi.number().default(587),
   EMAIL_USER: Joi.string().allow('').default(''),
   EMAIL_PASSWORD: Joi.string().allow('').default(''),
@@ -107,18 +119,19 @@ export const envValidationSchema = Joi.object({
   DEFAULT_FROM_EMAIL: Joi.string().default('no-reply@codestack.dev'),
   DEMO_NOTIFICATION_EMAILS: Joi.string().allow('').default(''),
   EMAIL_WORKER_CONCURRENCY: Joi.number().default(4),
-  // No default when sending through Resend — the operator must choose it.
-  // The default of 20/s is safe for mailpit and for a real SMTP relay, and is far
-  // above Resend's account limit, so inheriting it silently is what produces a 429
-  // storm on the first bulk roster import. Resend's real POST /emails limit is not
-  // the one its read endpoints report; `ResendMailTransport` logs the observed
-  // limit off the first successful send, and this value should be at most half of
-  // it (the BullMQ limiter is Redis-global across ALL worker pods, and any other
-  // Resend API traffic shares the same account budget).
+  // No default when sending through an HTTP API provider (Resend or Brevo) — the
+  // operator must choose it. The default of 20/s is safe for mailpit and for a
+  // real SMTP relay, and is far above either API's account limit, so inheriting it
+  // silently is what produces a 429 storm on the first bulk roster import. The
+  // real per-account send limit is never the one an account page or read endpoint
+  // reports, so this value should be set from whatever the provider's own docs or
+  // dashboard say and kept at most half of it (the BullMQ limiter is Redis-global
+  // across ALL worker pods, and any other API traffic from the same account shares
+  // the same budget).
   EMAIL_RATE_MAX: Joi.when('EMAIL_ENABLED', {
     is: true,
     then: Joi.when('EMAIL_PROVIDER', {
-      is: 'resend',
+      is: Joi.valid('resend', 'brevo'),
       then: Joi.number().min(1).required(),
       otherwise: Joi.number().default(20),
     }),

@@ -5,6 +5,7 @@ import { EmailConfig } from '../../config/configuration';
 import { QUEUE_MAIL } from '../../queue/queue.constants';
 import { MailProcessor } from './mail.processor';
 import { MailService } from './mail.service';
+import { BrevoApiMailTransport } from './brevo-mail.transport';
 import {
   DisabledMailTransport,
   MAIL_TRANSPORT,
@@ -56,6 +57,13 @@ import { ResendMailTransport } from './resend-mail.transport';
           // verified in Resend or every send answers 403.
           logger.log(`Mail provider: resend (HTTP API), from=${cfg.from}`);
           return new ResendMailTransport(cfg);
+        }
+        if (cfg.provider === 'brevo') {
+          // Same reasoning as the Resend branch: the key never reaches this log
+          // line or any other. Brevo's HTTP API over the SMTP relay is what lets a
+          // host that blocks outbound SMTP (Railway's free tier) still send.
+          logger.log(`Mail provider: brevo (HTTP API), from=${cfg.from}`);
+          return new BrevoApiMailTransport(cfg);
         }
         logger.log(`Mail provider: smtp ${cfg.host}:${cfg.port}, from=${cfg.from}`);
         return new SmtpMailTransport(cfg);

@@ -335,10 +335,15 @@ With `EMAIL_ENABLED=false` (the default) nothing is sent and no provider is cons
 mailer logs the rendered text body instead, and **only outside production**, so a deployment that
 forgets the flag never writes invite tokens to its log. A disabled mailer never needs a credential.
 
-### Production — Brevo (the current path)
+### Production — Brevo
 
-Brevo is an ordinary authenticated SMTP relay, so it needs **no provider-specific code**:
-`EMAIL_PROVIDER=smtp` is the same pooled-nodemailer path used for mailpit, pointed at a real host.
+Two transports reach the same Brevo account, sender and deliverability — pick whichever the host
+allows.
+
+**Over SMTP** needs **no provider-specific code**: `EMAIL_PROVIDER=smtp` is the same
+pooled-nodemailer path used for mailpit, pointed at a real host. It fails on a host that firewalls
+outbound mail ports — Railway's free tier blocks 587/465 regardless of credentials, which is what
+the `brevo` provider below exists to work around.
 
 ```dotenv
 EMAIL_ENABLED=true
@@ -361,6 +366,29 @@ Two things that will each bite once:
   same prerequisite a Resend switch would need.
 
 Note that `EMAIL_PASSWORD` here is an **SMTP key**, not the Brevo account password.
+
+**Over its HTTP API** (`BrevoApiMailTransport`) is a normal port-443 POST to
+`api.brevo.com/v3/smtp/email`, so a mail-port firewall never applies to it — this is the path for
+Railway's free tier:
+
+```dotenv
+EMAIL_ENABLED=true
+EMAIL_PROVIDER=brevo
+BREVO_API_KEY=<Brevo's API key, starts xkeysib-… — NOT the SMTP key above>
+DEFAULT_FROM_EMAIL=codestack <you@yourdomain>
+EMAIL_RATE_MAX=<see below — required for this provider>
+```
+
+Same two things bite as the SMTP path (validated sender, DKIM alignment), plus:
+
+- **`BREVO_API_KEY` is a different credential from `EMAIL_PASSWORD`.** Both live in the same Brevo
+  account but are generated separately (SMTP key vs. API key) — swapping providers means fetching
+  the other one, not reusing what's already set.
+- **`EMAIL_RATE_MAX` has no default for this provider**, same reasoning as Resend below: check
+  Brevo's account send limit and set this to at most half of it (the BullMQ limiter is
+  Redis-global).
+- **Failures are classified** the same way Resend's are: `429` and `5xx` retry; `402` (out of send
+  credits), `401` (bad key), `403` and other `4xx` are terminal.
 
 ### Alternative — Resend over its HTTP API
 

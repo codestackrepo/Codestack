@@ -102,12 +102,18 @@ export const emailConfig = registerAs('email', () => ({
   // development keeps working against mailpit with no credentials and no network
   // egress — a change that forced every developer to hold a real API key just to
   // see an invite link would be worked around rather than used.
-  provider: (process.env.EMAIL_PROVIDER ?? 'smtp') as 'smtp' | 'resend',
+  provider: (process.env.EMAIL_PROVIDER ?? 'smtp') as 'smtp' | 'resend' | 'brevo',
   // SECRET. Never interpolated into a log line, an error message or a thrown
   // exception — see `resend-mail.transport.ts`, which builds every message from
   // the response alone, and the `check-invariants` gate that pins the set of
   // files allowed to read this field.
   resendApiKey: process.env.RESEND_API_KEY ?? '',
+  // SECRET, same discipline as `resendApiKey` above — see
+  // `brevo-mail.transport.ts` and its own `check-invariants` containment gate.
+  // Brevo's HTTP API (not its SMTP relay) exists because Railway's free tier
+  // blocks outbound SMTP ports; the `smtp` provider pointed at Brevo remains the
+  // documented fallback for a host that doesn't.
+  brevoApiKey: process.env.BREVO_API_KEY ?? '',
   host: process.env.EMAIL_HOST ?? '',
   port: num(process.env.EMAIL_PORT, 587),
   user: process.env.EMAIL_USER ?? '',
