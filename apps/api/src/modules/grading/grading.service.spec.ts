@@ -1,3 +1,4 @@
+import { ForbiddenException } from '@nestjs/common';
 import { Role } from '../../common/enums/role.enum';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
 import { AssignmentProblem } from '../assignments/entities/assignment-problem.entity';
@@ -133,6 +134,10 @@ describe('GradingService.onSubmissionFinalized — attempt tracking (no auto-awa
       >,
       classrooms as unknown as ClassroomsService,
       notifications as unknown as import('../notifications/notifications.service').NotificationsService,
+      // Not exercised by the finalize path; getStudentScore is covered below.
+      {
+        findOne: jest.fn(),
+      } as unknown as import('../assignments/assignments.service').AssignmentsService,
     );
   });
 
@@ -281,6 +286,16 @@ describe('GradingService — item-model rollup, grade dispatch, reveal gating (#
       assertStaffOrGrader: jest.fn(),
     };
     const notifications: AnyRepo = { createForRecipients: jest.fn().mockResolvedValue([]) };
+    // #139: getStudentScore authorizes through AssignmentsService.findOne and
+    // builds the view from the assignment it returns, so the status a test wants
+    // to exercise the reveal gate with is set HERE, not on the repo mock.
+    const assignmentsService: AnyRepo = {
+      findOne: jest.fn().mockResolvedValue({
+        id: ASSIGNMENT_ID,
+        classroomId: 'c1',
+        status: AssignmentStatus.ACTIVE,
+      }),
+    };
 
     const service = new GradingService(
       problemScores as never,
@@ -293,9 +308,11 @@ describe('GradingService — item-model rollup, grade dispatch, reveal gating (#
       quizResponses as never,
       classrooms as never,
       notifications as never,
+      assignmentsService as never,
     );
     return {
       service,
+      assignmentsService,
       problemScores,
       assignmentScores,
       submissions,
@@ -389,7 +406,7 @@ describe('GradingService — item-model rollup, grade dispatch, reveal gating (#
 
   it('student my-score HIDES scores + finalScore until GRADE_PUBLISHED', async () => {
     const h = build();
-    h.assignments.findOne.mockResolvedValue({
+    h.assignmentsService.findOne.mockResolvedValue({
       id: ASSIGNMENT_ID,
       classroomId: 'c1',
       status: AssignmentStatus.ACTIVE, // not published
@@ -430,7 +447,7 @@ describe('GradingService — item-model rollup, grade dispatch, reveal gating (#
 
   it('student my-score REVEALS full scores at GRADE_PUBLISHED', async () => {
     const h = build();
-    h.assignments.findOne.mockResolvedValue({
+    h.assignmentsService.findOne.mockResolvedValue({
       id: ASSIGNMENT_ID,
       classroomId: 'c1',
       status: AssignmentStatus.GRADE_PUBLISHED,
@@ -487,5 +504,97 @@ describe('GradingService — item-model rollup, grade dispatch, reveal gating (#
 
     expect(rows[0].items[0].score).toBe(9); // staff bypass the reveal gate
     expect(rows[0].assignmentScore.finalScore).toBe(9);
+  });
+
+  /**
+   * #139 moved `my-score` off the staff GRADING module gate, so what is asserted
+   * below is no longer defence in depth — it is the whole of the authorization
+   * on that route. Hence the explicit coverage the issue asked for.
+   */
+  describe('getStudentScore is the sole gate on my-score (#139)', () => {
+    it('reads ONLY the actor’s own rows — every repo query is filtered to actor.id', async () => {
+      const h = build();
+      h.items.find.mockResolvedValue([
+        { id: 'i1', kind: AssignmentItemKind.CODING, assignmentProblemId: AP_ID, maxPoints: 10 },
+        { id: 'i2', kind: AssignmentItemKind.MCQ, assignmentProblemId: null, maxPoints: 5 },
+        { id: 'i3', kind: AssignmentItemKind.QUIZ, assignmentProblemId: null, maxPoints: 5 },
+      ]);
+
+      const view = await h.service.getStudentScore(ASSIGNMENT_ID, STUDENT);
+
+      expect(view.userId).toBe(STUDENT_ID);
+      // There is no parameter by which a caller could name another student, so
+      // the guarantee is that actor.id is what reaches every query.
+      for (const repo of [h.problemScores, h.mcqResponses, h.quizResponses]) {
+        expect(repo.find).toHaveBeenCalledWith(
+          expect.objectContaining({ where: expect.objectContaining({ userId: STUDENT_ID }) }),
+        );
+      }
+      expect(h.assignmentScores.findOne).toHaveBeenCalledWith({
+        where: { assignmentId: ASSIGNMENT_ID, userId: STUDENT_ID },
+      });
+    });
+
+    it('404s a cross-org assignment id before it 403s — no cross-tenant existence leak', async () => {
+      const h = build();
+      // scopeToOrg'd query builder finds nothing for an assignment in another org.
+      h.assignments.createQueryBuilder.mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(null),
+      });
+
+      await expect(h.service.getStudentScore('other-org-assignment', STUDENT)).rejects.toThrow(
+        /not found/i,
+      );
+      // Order matters: the tenancy 404 must win, so the visibility check — which
+      // answers 403, confirming existence — is never reached.
+      expect(h.assignmentsService.findOne).not.toHaveBeenCalled();
+    });
+
+    it('defers to the shared assignment-visibility policy for a same-org outsider', async () => {
+      const h = build();
+      // A student of the same org who is in no batch / not in the classroom:
+      // AssignmentsService.findOne is the single source of that rule.
+      h.assignmentsService.findOne.mockRejectedValue(
+        new ForbiddenException('You do not have access to this assignment'),
+      );
+
+      await expect(h.service.getStudentScore(ASSIGNMENT_ID, STUDENT)).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+      // Rejected before any score row is touched.
+      expect(h.problemScores.find).not.toHaveBeenCalled();
+      expect(h.assignmentScores.findOne).not.toHaveBeenCalled();
+    });
+
+    it('builds the view from the authorized assignment, not a second re-read', async () => {
+      const h = build();
+      h.assignmentsService.findOne.mockResolvedValue({
+        id: ASSIGNMENT_ID,
+        classroomId: 'c1',
+        status: AssignmentStatus.GRADE_PUBLISHED,
+      });
+      // The repo mock disagrees on status. If the view were rebuilt off a fresh
+      // repo read it could reveal (or withhold) against a staler status than the
+      // one the gate authorized — pinned so that cannot regress.
+      h.assignments.findOne.mockResolvedValue({
+        id: ASSIGNMENT_ID,
+        classroomId: 'c1',
+        status: AssignmentStatus.ACTIVE,
+      });
+      h.items.find.mockResolvedValue([
+        { id: 'i1', kind: AssignmentItemKind.CODING, assignmentProblemId: AP_ID, maxPoints: 10 },
+      ]);
+      h.problemScores.find.mockResolvedValue([
+        { assignmentProblemId: AP_ID, score: 10, gradingStatus: GradingStatus.GRADED },
+      ]);
+      h.assignmentScores.findOne.mockResolvedValue({ finalScore: 10, feedback: 'done' });
+
+      const view = await h.service.getStudentScore(ASSIGNMENT_ID, STUDENT);
+
+      expect(view.assignmentScore.finalScore).toBe(10);
+      expect(view.items[0].score).toBe(10);
+    });
   });
 });

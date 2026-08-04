@@ -7,20 +7,22 @@ import { RequiresModule } from '../module-access/decorators/requires-module.deco
 import { UpdateScoreDto } from './dto/grading.dto';
 import { GradingService } from './grading.service';
 
+/**
+ * The staff grading workspace. Everything here is gated on the GRADING module,
+ * which `MODULE_ACCESS_DEFAULTS` has at `student: false`.
+ *
+ * `my-score` — a student reading their own mark — deliberately does NOT live
+ * here; it is on `StudentGradesController`, which shares the `grading` prefix
+ * but carries no module gate (#139). Do not move it back: the class-level
+ * decorator below applies to every route in this file, and inheriting it is
+ * exactly what made a student's own published grade unreadable.
+ */
 @ApiTags('grading')
 @ApiCookieAuth('access_token')
 @Controller('grading')
 @RequiresModule(AppModuleKey.GRADING)
 export class GradingController {
   constructor(private readonly grading: GradingService) {}
-
-  @Get('assignments/:assignmentId/my-score')
-  myScore(
-    @Param('assignmentId', ParseUUIDPipe) assignmentId: string,
-    @CurrentUser() actor: AuthenticatedUser,
-  ) {
-    return this.grading.getStudentScore(assignmentId, actor);
-  }
 
   @Get('assignments/:assignmentId/students-scores')
   studentsScores(
