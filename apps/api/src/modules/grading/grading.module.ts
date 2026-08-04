@@ -8,6 +8,7 @@ import { AssignmentScore } from './entities/assignment-score.entity';
 import { ProblemScore } from './entities/problem-score.entity';
 import { GradingController } from './grading.controller';
 import { GradingService } from './grading.service';
+import { StudentGradesController } from './student-grades.controller';
 
 @Module({
   imports: [
@@ -17,7 +18,10 @@ import { GradingService } from './grading.service';
     NotificationsModule,
     SubmissionsModule,
   ],
-  controllers: [GradingController],
+  // StudentGradesController is registered FIRST so its one static
+  // `grading/assignments/:assignmentId/my-score` route is matched ahead of
+  // anything on the module-gated GradingController.
+  controllers: [StudentGradesController, GradingController],
   providers: [GradingService],
   exports: [GradingService],
 })

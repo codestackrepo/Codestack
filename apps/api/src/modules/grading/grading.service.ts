@@ -8,6 +8,7 @@ import {
 } from '../../common/events/submission-events';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
 import { scopeToOrg } from '../../common/tenancy/tenant-scope.util';
+import { AssignmentsService } from '../assignments/assignments.service';
 import { AssignmentItem } from '../assignments/entities/assignment-item.entity';
 import { AssignmentProblem } from '../assignments/entities/assignment-problem.entity';
 import { Assignment } from '../assignments/entities/assignment.entity';
@@ -75,6 +76,9 @@ export class GradingService {
     @InjectRepository(QuizResponse) private readonly quizResponses: Repository<QuizResponse>,
     private readonly classrooms: ClassroomsService,
     private readonly notifications: NotificationsService,
+    // #139: `my-score` no longer sits behind the GRADING module gate, so the
+    // shared assignment-visibility policy has to be applied here instead.
+    private readonly assignmentsService: AssignmentsService,
   ) {}
 
   /**
@@ -159,12 +163,27 @@ export class GradingService {
     });
   }
 
+  /**
+   * Self-service read of one's own score, and — since #139 took this route off
+   * the staff GRADING module gate — the ONLY authorization standing on it. Two
+   * checks, in this order, because the order is what each one is for:
+   *
+   *  1. org-scoped existence, so a cross-org id 404s rather than 403s (a 403
+   *     would confirm the assignment exists in another tenant);
+   *  2. the shared assignment-visibility policy, so a same-org student who is
+   *     not in the classroom — or not in a targeted batch — cannot read the
+   *     item shells of an assignment that was never theirs. Delegated to
+   *     `AssignmentsService.findOne` rather than restated here, so grading can
+   *     never drift from what `GET /assignments/:id` itself allows.
+   *
+   * The row is then read for `actor.id` only; there is no parameter by which a
+   * caller could name another student. Item scores + finalScore stay hidden
+   * until GRADE_PUBLISHED (§9.2).
+   */
   async getStudentScore(assignmentId: string, actor: AuthenticatedUser): Promise<StudentScoreView> {
-    // Self-service read of one's own score. Item scores + finalScore are hidden
-    // until GRADE_PUBLISHED (§9.2); the assignment must exist so a bogus id 404s
-    // instead of returning silent zeros.
     await this.assertAssignmentExists(assignmentId, actor);
-    return this.buildStudentScore(assignmentId, actor.id);
+    const assignment = await this.assignmentsService.findOne(assignmentId, actor);
+    return this.buildStudentScore(assignment, actor.id);
   }
 
   /**
@@ -560,9 +579,17 @@ export class GradingService {
     return map;
   }
 
-  private async buildStudentScore(assignmentId: string, userId: string): Promise<StudentScoreView> {
-    const assignment = await this.assignments.findOne({ where: { id: assignmentId } });
-    const reveal = assignment?.status === AssignmentStatus.GRADE_PUBLISHED;
+  /**
+   * Takes the already-authorized, status-refreshed assignment rather than an id:
+   * the caller has loaded it to authorize the read, and re-reading it here would
+   * risk building the view off a staler status than the one the gate saw.
+   */
+  private async buildStudentScore(
+    assignment: Assignment,
+    userId: string,
+  ): Promise<StudentScoreView> {
+    const assignmentId = assignment.id;
+    const reveal = assignment.status === AssignmentStatus.GRADE_PUBLISHED;
 
     const items = await this.loadItems(assignmentId);
     const codingApIds = items

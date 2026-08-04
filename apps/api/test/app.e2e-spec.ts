@@ -435,16 +435,33 @@ describe('CodeStack e2e', () => {
       expect(row.assignmentScore.finalScore).toBe(10);
     });
 
-    // KNOWN DEFECT, asserted so it cannot change silently: `my-score` is a
-    // student's own score, but it sits on GradingController, which carries a
-    // class-level @RequiresModule(GRADING) — and MODULE_ACCESS_DEFAULTS marks
-    // GRADING `student: false` ("staff-only gradebook"). So the one grading route
-    // written FOR students is the one students cannot reach. Fixing it is a
-    // module-access decision (either the route leaves this controller or it opts
-    // out of the gate), not an e2e change — see the module/feature-perms epic.
-    it('403s a student on /my-score today, because GRADING is staff-only by default', async () => {
+    // #139, the regression pair. GRADING is `student: false` in
+    // MODULE_ACCESS_DEFAULTS and nothing in this suite turns it on, so this org
+    // is exactly the "staff grading switched off" case — the state that used to
+    // make a student's own score unreachable. `my-score` now lives on
+    // StudentGradesController, off that gate; the staff gradebook does not.
+    //
+    // These two assertions have to stay together: passing the first one alone is
+    // also what flipping GRADING on for students in the Module × Role matrix
+    // would achieve, and that would open the gradebook with it.
+    it('serves a student their OWN score even with the staff GRADING module off', async () => {
       const res = await request(http)
         .get(`/api/v1/grading/assignments/${assignmentId}/my-score`)
+        .set('Cookie', studentCookie);
+      expect(res.status).toBe(200);
+      expect(res.body.userId).toBe(studentId);
+      // The professor graded the item above but has not published grades, so the
+      // reveal gate (§9.2) still withholds the numbers — 200 with nulls is the
+      // correct answer here, not 403.
+      expect(res.body.assignmentScore.finalScore).toBeNull();
+      expect(res.body.assignmentScore.maxScore).toBe(10);
+      expect(res.body.items[0].score).toBeNull();
+      expect(res.body.items[0].gradingStatus).toBe('submitted');
+    });
+
+    it('still 403s that same student on the staff gradebook', async () => {
+      const res = await request(http)
+        .get(`/api/v1/grading/assignments/${assignmentId}/students-scores`)
         .set('Cookie', studentCookie);
       expect(res.status).toBe(403);
       expect(res.body.reason).toBe('module_disabled');
