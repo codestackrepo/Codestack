@@ -1,7 +1,7 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios';
 import { toast } from 'sonner';
 import { queryClient } from '@/lib/query-client';
-import { CROSS_CUTTING_REASONS } from '@/lib/toast-reasons';
+import { CROSS_CUTTING_REASONS, resolveErrorMessage } from '@/lib/toast-reasons';
 import type { ApiErrorBody } from '@/types/common';
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api/v1';
@@ -90,7 +90,7 @@ apiClient.interceptors.response.use(
       // page: toast, then refetch the session so RequireModule re-evaluates and
       // redirects to /home. No full reload — the guard handles navigation.
       if (reason === 'module_disabled' && !isVerify) {
-        toastOnce(reason, 'This section has been disabled by your administrator.');
+        toastOnce(reason, CROSS_CUTTING_REASONS.module_disabled);
         void queryClient.invalidateQueries({ queryKey: ['auth', 'session'] });
         return Promise.reject(error);
       }
@@ -100,7 +100,7 @@ apiClient.interceptors.response.use(
       // `{ reason: 'entitlement_required', feature }`, and `feature` is null on the
       // fail-closed branch, so nothing may assume it is present.
       if (reason === 'entitlement_required' && !isVerify) {
-        toastOnce(reason, 'Your organization does not have access to this capability.');
+        toastOnce(reason, CROSS_CUTTING_REASONS.entitlement_required);
         // Same reasoning as module_disabled: refetch so RequireFeature re-evaluates
         // rather than leaving the user on a page whose controls all fail.
         void queryClient.invalidateQueries({ queryKey: ['auth', 'session'] });
@@ -128,12 +128,7 @@ apiClient.interceptors.response.use(
       // The tenant-level rejections. Refetching the session is what moves the user
       // to /pending or /suspended, since ProtectedRoute reads it.
       if ((reason === 'no_organization' || reason === 'org_suspended') && !isVerify) {
-        toastOnce(
-          reason,
-          reason === 'org_suspended'
-            ? 'Your organization has been suspended.'
-            : 'You are not yet part of an organization.',
-        );
+        toastOnce(reason, CROSS_CUTTING_REASONS[reason]);
         void queryClient.invalidateQueries({ queryKey: ['auth', 'session'] });
         return Promise.reject(error);
       }
@@ -166,9 +161,41 @@ apiClient.interceptors.response.use(
   },
 );
 
+/**
+ * A JSON error envelope, as opposed to whatever else a failing hop can hand back — an
+ * HTML 502 page from a proxy, a bare string, an array. Those used to be cast to
+ * `ApiErrorBody` regardless, which left `.message` undefined at the call site.
+ */
+function isErrorEnvelope(data: unknown): data is Record<string, unknown> {
+  return typeof data === 'object' && data !== null && !Array.isArray(data);
+}
+
+/**
+ * The error body a component should render — with `message` already resolved to copy
+ * a person can read (#140).
+ *
+ * This is the chokepoint the fix hangs on. Roughly sixty call sites render
+ * `parseApiError(e).message` directly, so resolving here fixes all of them at once and
+ * leaves no call site *able* to print an exception class name. Everything else on the
+ * body is passed through untouched, `reason` included, so the handful of callers that
+ * branch on it keep working.
+ *
+ * `serverMessage` carries the raw `message` exactly as sent, for the rare caller that
+ * wants the server's own words — the override is non-destructive.
+ */
 export function parseApiError(error: unknown): ApiErrorBody {
-  if (axios.isAxiosError(error) && error.response?.data) {
-    return error.response.data as ApiErrorBody;
+  if (axios.isAxiosError(error) && isErrorEnvelope(error.response?.data)) {
+    const body = error.response.data as ApiErrorBody;
+    // Prefer the transport's status: a body is not obliged to carry `statusCode`, and
+    // the generic last resort is chosen by it.
+    const statusCode =
+      typeof body.statusCode === 'number' ? body.statusCode : error.response.status;
+    return {
+      ...body,
+      statusCode,
+      message: resolveErrorMessage({ ...body, statusCode }),
+      serverMessage: typeof body.message === 'string' ? body.message : undefined,
+    };
   }
   return {
     statusCode: 0,

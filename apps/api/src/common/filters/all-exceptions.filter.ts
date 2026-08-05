@@ -21,6 +21,20 @@ interface ErrorBody {
 }
 
 /**
+ * Neutral, status-derived wording for a rejection that supplied no message of its own.
+ * Plain HTTP semantics, not product copy — the client maps `reason` to a sentence.
+ */
+const STATUS_MESSAGES: Record<number, string> = {
+  [HttpStatus.BAD_REQUEST]: 'Bad request',
+  [HttpStatus.UNAUTHORIZED]: 'Authentication required',
+  [HttpStatus.FORBIDDEN]: 'Not permitted',
+  [HttpStatus.NOT_FOUND]: 'Not found',
+  [HttpStatus.CONFLICT]: 'Conflict',
+  [HttpStatus.UNPROCESSABLE_ENTITY]: 'Could not process this request',
+  [HttpStatus.TOO_MANY_REQUESTS]: 'Too many requests',
+};
+
+/**
  * Global exception filter producing a consistent error envelope for every
  * failure (revives the intent of the original app's unused custom handler).
  */
@@ -47,7 +61,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
         message = res;
       } else if (typeof res === 'object' && res !== null) {
         const body = res as Record<string, unknown>;
-        message = this.stringifyMessage(body.message) ?? exception.message;
+        message = this.stringifyMessage(body.message) ?? this.fallbackMessage(exception, status);
         error = (body.error as string) ?? error;
         if (Array.isArray(body.message)) errors = body.message;
         // Anything beyond the well-known Nest fields is caller-supplied
@@ -89,5 +103,41 @@ export class AllExceptionsFilter implements ExceptionFilter {
     if (typeof message === 'string') return message;
     if (Array.isArray(message)) return message.join(', ');
     return undefined;
+  }
+
+  /**
+   * What to say when the thrown object carried no `message` of its own (#140).
+   *
+   * `exception.message` is the wrong answer here. Nest derives it from the exception's
+   * CLASS NAME whenever the response body is an object without a `message`:
+   *
+   * ```
+   * this.message = this.constructor.name.match(/[A-Z][a-z]+|[0-9]+/g)?.join(' ') ?? 'Error'
+   * ```
+   *
+   * Which is exactly how every guard in this codebase throws — `new ForbiddenException({
+   * reason: 'org_suspended' })` — so the envelope went out carrying
+   * `message: "Forbidden Exception"`. `reason` was always the real payload, but `message`
+   * is what a client renders, and a student was shown that string where their grade
+   * belonged.
+   *
+   * The placeholder is detected by RECOMPUTING Nest's own derivation rather than matching
+   * a list of known strings: if `message` is identical to what the class name produces,
+   * nobody wrote it. That stays correct for exception classes that do not exist yet.
+   *
+   * Note what this deliberately does NOT do: turn `reason` into a sentence. The
+   * reason→copy table lives in the web app (`toast-reasons.ts`) and is the single source
+   * of that wording; duplicating it here — with no shared package between `apps/api` and
+   * `apps/web` to keep the two honest — would recreate the "one failure, two different
+   * explanations" problem that file exists to prevent. So the API stops emitting an
+   * internal class name, and the client still owns the copy.
+   */
+  private fallbackMessage(exception: HttpException, status: number): string {
+    const derivedFromClassName =
+      exception.constructor.name.match(/[A-Z][a-z]+|[0-9]+/g)?.join(' ') ?? 'Error';
+    if (exception.message && exception.message !== derivedFromClassName) {
+      return exception.message;
+    }
+    return STATUS_MESSAGES[status] ?? (status >= 500 ? 'Internal server error' : 'Request failed');
   }
 }

@@ -15,7 +15,6 @@ import {
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { parseApiError } from '@/lib/api-client';
-import { toastMessageFor } from '@/lib/toast-reasons';
 import { OrgApplicationStatus } from '@/features/onboarding/api/organization-applications.api';
 import {
   professorApplicationKeys,
@@ -66,7 +65,7 @@ export function PlatformProfessorApplicationsPage() {
         void queryClient.invalidateQueries({ queryKey: professorApplicationKeys.list(status) });
         return;
       }
-      toast.error(toastMessageFor(parsed.reason as string | undefined, parsed.message));
+      toast.error(parsed.message);
     },
   });
 
@@ -198,7 +197,7 @@ function RejectDialog({
     },
     onError: (error) => {
       const parsed = parseApiError(error);
-      toast.error(toastMessageFor(parsed.reason as string | undefined, parsed.message));
+      toast.error(parsed.message);
     },
   });
 

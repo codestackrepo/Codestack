@@ -80,16 +80,74 @@ export const FLOW_REASONS: Record<string, string> = {
 };
 
 /**
- * The message for a reason code, or a fallback.
+ * Nest's placeholder `message` — boilerplate wearing the shape of copy (#140).
  *
- * Prefers the SERVER's message when the reason is unknown to this map: the API writes
- * specific, contextual messages (a quota error names the resource and the numbers), and
- * a generic client string would throw that detail away. This map exists to make copy
- * consistent where it would otherwise be invented per component, not to override the
- * backend.
+ * `HttpException` fills `message` from its own CLASS NAME whenever the body it was
+ * thrown with is an object carrying no `message` of its own:
+ *
+ * ```
+ * this.message = this.constructor.name.match(/[A-Z][a-z]+|[0-9]+/g)?.join(' ') ?? 'Error'
+ * ```
+ *
+ * So `new ForbiddenException({ reason: 'org_suspended' })` — how every guard in this
+ * codebase rejects — answers `message: "Forbidden Exception"`. Which is what a student
+ * was shown where their grade belonged.
+ *
+ * Every built-in Nest exception collapses to the same tell, because every one of those
+ * class names ends in `Exception`. No sentence a person wrote does.
  */
-export function toastMessageFor(reason: string | undefined, serverMessage?: string): string {
+const NEST_PLACEHOLDER_MESSAGE = /\bException$/;
+
+/** True when `message` cannot be shown to a person: absent, blank, or Nest boilerplate. */
+export function isPlaceholderMessage(message: unknown): boolean {
+  if (typeof message !== 'string') return true;
+  const trimmed = message.trim();
+  return !trimmed || NEST_PLACEHOLDER_MESSAGE.test(trimmed);
+}
+
+/**
+ * The last resort, by status — reached only when there is no `reason` we know and no
+ * usable server `message`. Deliberately vague but never alarming, and never a class name.
+ */
+const GENERIC_BY_STATUS: Record<number, string> = {
+  401: 'Your session has expired. Please sign in again.',
+  403: 'You do not have permission to do that.',
+  404: 'We could not find what you were looking for.',
+  408: 'That took too long. Please try again.',
+  429: 'Too many attempts — wait a moment and try again.',
+};
+
+/**
+ * The single resolver every error message in the app goes through (#140).
+ *
+ * Precedence, in this order:
+ *
+ *  1. **`reason`** — the machine-readable code the backend attaches to every deliberate
+ *     rejection, mapped to copy by the two tables above. This is the only field that is
+ *     always meaningful, so it leads.
+ *  2. **the server's `message`** — but only when it is real copy. The API writes specific,
+ *     contextual sentences (a quota error names the resource and the numbers) and throwing
+ *     that away for a generic string would lose the whole answer. Skipped when it is
+ *     `isPlaceholderMessage`, which is the entire bug this fixes.
+ *  3. **a generic by status** — so the floor is a sentence, not a stack-trace artefact.
+ *
+ * Call sites should not re-implement any of this; `parseApiError` applies it centrally,
+ * so `parseApiError(e).message` is already safe to render.
+ */
+export function resolveErrorMessage(body: {
+  reason?: unknown;
+  message?: unknown;
+  statusCode?: unknown;
+}): string {
+  const reason = typeof body.reason === 'string' ? body.reason : undefined;
   if (reason && FLOW_REASONS[reason]) return FLOW_REASONS[reason];
   if (reason && CROSS_CUTTING_REASONS[reason]) return CROSS_CUTTING_REASONS[reason];
-  return serverMessage || 'Something went wrong. Please try again.';
+
+  if (!isPlaceholderMessage(body.message)) return (body.message as string).trim();
+
+  const status = typeof body.statusCode === 'number' ? body.statusCode : 0;
+  if (GENERIC_BY_STATUS[status]) return GENERIC_BY_STATUS[status];
+  return status >= 500
+    ? 'Something went wrong on our side. Please try again.'
+    : 'Something went wrong. Please try again.';
 }
