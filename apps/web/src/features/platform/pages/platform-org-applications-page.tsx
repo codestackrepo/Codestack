@@ -16,7 +16,6 @@ import {
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { parseApiError } from '@/lib/api-client';
-import { toastMessageFor } from '@/lib/toast-reasons';
 import {
   orgApplicationKeys,
   orgApplicationsApi,
@@ -254,7 +253,7 @@ function ApproveDialog({
         void queryClient.invalidateQueries({ queryKey: orgApplicationKeys.list(status) });
         return;
       }
-      toast.error(toastMessageFor(parsed.reason as string | undefined, parsed.message));
+      toast.error(parsed.message);
     },
   });
 
@@ -376,7 +375,7 @@ function RejectDialog({
     },
     onError: (error) => {
       const parsed = parseApiError(error);
-      toast.error(toastMessageFor(parsed.reason as string | undefined, parsed.message));
+      toast.error(parsed.message);
     },
   });
 

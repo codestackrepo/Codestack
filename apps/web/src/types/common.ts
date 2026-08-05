@@ -70,11 +70,18 @@ export interface PaginatedResult<T> {
 /** Shape of every error response body — see AllExceptionsFilter on the backend. */
 export interface ApiErrorBody {
   statusCode: number;
+  /**
+   * Copy safe to render. Not necessarily what the server sent: `parseApiError` resolves
+   * it through `resolveErrorMessage` (#140) so a call site can never print an exception
+   * class name. See `serverMessage` for the original.
+   */
   message: string;
   error: string;
   errors?: string[];
   path: string;
   timestamp: string;
+  /** The raw `message` as sent, before resolution — set by `parseApiError`. */
+  serverMessage?: string;
   /** Machine-readable extra fields some errors carry (e.g. entitlement gating). */
   [key: string]: unknown;
 }

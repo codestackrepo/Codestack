@@ -1,4 +1,12 @@
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  HttpException,
+  HttpStatus,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { QueryFailedError } from 'typeorm';
 import { AllExceptionsFilter } from './all-exceptions.filter';
 
@@ -79,5 +87,88 @@ describe('AllExceptionsFilter', () => {
     const { status, body } = runFilter(new Error('boom'));
     expect(status).toBe(500);
     expect(body.message).toBe('boom');
+  });
+
+  /**
+   * #140. Nest fills `message` from the exception's CLASS NAME when the thrown body is an
+   * object without a `message` — which is how every guard in this codebase rejects. The
+   * envelope went out saying `"Forbidden Exception"`, and that string reached a student
+   * where their grade belonged.
+   */
+  describe('never emits a Nest exception class name as `message` (#140)', () => {
+    it('replaces the placeholder on a reason-only ForbiddenException', () => {
+      const { status, body } = runFilter(new ForbiddenException({ reason: 'org_suspended' }));
+
+      expect(status).toBe(403);
+      expect(body.message).not.toBe('Forbidden Exception');
+      expect(body.message).toBe('Not permitted');
+      // `reason` is the real payload and must survive untouched — it is what the client
+      // maps to copy, and what deep-links off this rejection.
+      expect(body.reason).toBe('org_suspended');
+    });
+
+    it('does the same for the module gate, which is where this was reported', () => {
+      const { body } = runFilter(
+        new ForbiddenException({ reason: 'module_disabled', module: 'grading' }),
+      );
+      expect(body.message).toBe('Not permitted');
+      expect(body).toMatchObject({ reason: 'module_disabled', module: 'grading' });
+    });
+
+    it('covers the other statuses guards and services actually throw', () => {
+      expect(runFilter(new NotFoundException({ reason: 'x' })).body.message).toBe('Not found');
+      expect(runFilter(new BadRequestException({ reason: 'x' })).body.message).toBe('Bad request');
+      expect(runFilter(new ConflictException({ reason: 'quota_exceeded' })).body.message).toBe(
+        'Conflict',
+      );
+      expect(runFilter(new UnauthorizedException({ reason: 'x' })).body.message).toBe(
+        'Authentication required',
+      );
+    });
+
+    it('leaves a real message alone — this must not flatten copy the API does write', () => {
+      // The `auth.service` pattern the issue holds up as correct: a reason AND a sentence.
+      const { body } = runFilter(
+        new ForbiddenException({
+          reason: 'email_unverified',
+          message: 'Confirm your email address to sign in.',
+        }),
+      );
+      expect(body.message).toBe('Confirm your email address to sign in.');
+      expect(body.reason).toBe('email_unverified');
+    });
+
+    it('keeps a string-constructed message, the most common shape in the codebase', () => {
+      expect(runFilter(new ForbiddenException('You do not have access to this assignment')).body.message).toBe(
+        'You do not have access to this assignment',
+      );
+    });
+
+    /**
+     * The detection recomputes Nest's derivation instead of matching known strings, so it
+     * holds for exception classes that do not exist yet.
+     */
+    it('detects the placeholder on a custom exception subclass it has never seen', () => {
+      class TeapotBrewingException extends ForbiddenException {}
+      const { body } = runFilter(new TeapotBrewingException({ reason: 'x' }));
+      expect(body.message).not.toBe('Teapot Brewing Exception');
+      expect(body.message).toBe('Not permitted');
+    });
+
+    it('falls back by status class for a status with no specific wording', () => {
+      class TeapotException extends HttpException {
+        constructor() {
+          super({ reason: 'x' }, HttpStatus.I_AM_A_TEAPOT);
+        }
+      }
+      expect(runFilter(new TeapotException()).body.message).toBe('Request failed');
+
+      class GatewayException extends HttpException {
+        constructor() {
+          super({ reason: 'x' }, HttpStatus.BAD_GATEWAY);
+        }
+      }
+      expect(runFilter(new GatewayException()).body.message).toBe('Internal server error');
+    });
   });
 });
