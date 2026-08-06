@@ -6,6 +6,8 @@ import { Assignment } from '../entities/assignment.entity';
 import { AssignmentKind } from '../enums/assignment-kind.enum';
 import { AssignmentStatus } from '../enums/assignment-status.enum';
 import { AssignmentTargetType } from '../enums/assignment-target-type.enum';
+import { AttemptStatus } from '../enums/attempt-status.enum';
+import type { EditorBootstrapView } from '../assignments.service';
 
 export class AssignmentResponseDto {
   @ApiProperty() id!: string;
@@ -79,6 +81,12 @@ export class EditorLanguageTemplateDto {
 }
 
 /** Bootstrap payload for the code-editor screen — never includes driverCode. */
+export class EditorAttemptDto {
+  /** ISO-8601, server-authoritative. Never derived from a client duration. */
+  @ApiProperty() deadlineAt!: string;
+  @ApiProperty({ enum: AttemptStatus }) status!: AttemptStatus;
+}
+
 export class AssignmentProblemEditorResponseDto {
   @ApiProperty() id!: string;
   @ApiProperty() assignmentId!: string;
@@ -90,8 +98,22 @@ export class AssignmentProblemEditorResponseDto {
   @ApiProperty() score!: number;
   @ApiProperty({ type: [EditorSampleTestCaseDto] }) sampleTestCases!: EditorSampleTestCaseDto[];
   @ApiProperty({ type: [EditorLanguageTemplateDto] }) templates!: EditorLanguageTemplateDto[];
+  /** `test` means the clock below applies; `assignment` has no per-student deadline. */
+  @ApiProperty({ enum: AssignmentKind }) kind!: AssignmentKind;
+  /**
+   * The caller's own attempt, for a timed test they have already started (#145).
+   * Null for a regular assignment, and for a test not yet started — the editor
+   * renders no countdown in either case. `deadlineAt` is the SERVER's, and is the
+   * only clock a client may trust.
+   */
+  @ApiProperty({ type: EditorAttemptDto, nullable: true })
+  attempt!: EditorAttemptDto | null;
 
-  static from(ap: AssignmentProblem): AssignmentProblemEditorResponseDto {
+  static from({
+    ap,
+    assignment,
+    attempt,
+  }: EditorBootstrapView): AssignmentProblemEditorResponseDto {
     return {
       id: ap.id,
       assignmentId: ap.assignmentId,
@@ -113,6 +135,10 @@ export class AssignmentProblemEditorResponseDto {
         language: t.language,
         starterCode: t.starterCode,
       })),
+      kind: assignment.kind,
+      attempt: attempt
+        ? { deadlineAt: attempt.deadlineAt.toISOString(), status: attempt.status }
+        : null,
     };
   }
 }

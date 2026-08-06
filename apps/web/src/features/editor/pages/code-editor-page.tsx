@@ -1,6 +1,7 @@
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Skeleton } from '@/components/ui/skeleton';
+import { AssignmentKind, AttemptStatus } from '@/types/assignment';
 import { editorApi } from '../api/editor.api';
 import { CodeEditorScreen } from '../components/code-editor-screen';
 
@@ -32,11 +33,23 @@ export function CodeEditorPage() {
     );
   }
 
+  // #145: a timed test's clock has to follow the student in here — this screen
+  // is where the coding round actually happens, and the take page's countdown is
+  // unmounted the moment they arrive. Only an OPEN attempt has a live deadline:
+  // once it is submitted or auto-submitted the countdown is meaningless, and the
+  // assignment status (→ reviewMode) is what closes the door from then on.
+  const attempt = bootstrap.attempt;
+  const deadlineAt =
+    bootstrap.kind === AssignmentKind.TEST && attempt?.status === AttemptStatus.IN_PROGRESS
+      ? attempt.deadlineAt
+      : null;
+
   return (
     <CodeEditorScreen
       bootstrap={bootstrap}
       variant="assignment"
       reviewMode={reviewMode}
+      deadlineAt={deadlineAt}
       onRun={(language, code, samples) => editorApi.run(apId!, language, code, samples)}
       onSubmit={(language, code) => editorApi.submit(apId!, language, code)}
     />

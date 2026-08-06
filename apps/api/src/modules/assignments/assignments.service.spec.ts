@@ -1,7 +1,8 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { Role } from '../../common/enums/role.enum';
 import { AuthenticatedUser } from '../../common/types/authenticated-user';
-import { AssignmentsService } from './assignments.service';
+import { AssignmentsService, type EditorBootstrapView } from './assignments.service';
+import { AssignmentProblemEditorResponseDto } from './dto/assignment-response.dto';
 import { CreateAssignmentDto } from './dto/assignment.dto';
 import { Assignment } from './entities/assignment.entity';
 import { AssignmentKind } from './enums/assignment-kind.enum';
@@ -317,5 +318,140 @@ describe('AssignmentsService.finalizeExpiredAttempts (#39)', () => {
   it('returns the affected count', async () => {
     const { service } = makeSweepService({ affected: 4 });
     expect(await service.finalizeExpiredAttempts()).toBe(4);
+  });
+});
+
+/**
+ * #145. The solve editor is a separate screen from the take page, so it has to
+ * bootstrap the timed-test clock itself or the student codes with no countdown
+ * and meets the deadline as a 403 on submit.
+ */
+describe('AssignmentsService.getEditorBootstrap — timed-test clock (#145)', () => {
+  const actor = { id: 'u1', role: Role.STUDENT, organizationId: 'org-1' } as AuthenticatedUser;
+  const AP = { id: 'ap-1', assignmentId: 'a1', problem: {}, languageTemplates: [] };
+
+  function setup(over: { ap?: unknown; assignment?: Assignment; attempt?: unknown } = {}) {
+    const assignmentProblems = { findOne: jest.fn(async () => ('ap' in over ? over.ap : AP)) };
+    const attempts = { findOne: jest.fn(async () => over.attempt ?? null), save: jest.fn() };
+    const noop = {} as never;
+    const service = new AssignmentsService(
+      noop, // assignments
+      assignmentProblems as never,
+      noop, // templates
+      noop, // testCases
+      noop, // libraryTemplates
+      noop, // batches
+      attempts as never,
+      noop, // classroomsService
+      noop, // dataSource
+      noop, // emitter
+      noop, // problemsService
+      noop, // quotas
+    );
+    const assignment = over.assignment ?? assignmentRow({ kind: AssignmentKind.ASSIGNMENT });
+    const findOne = jest.spyOn(service, 'findOne').mockResolvedValue(assignment);
+    return { service, assignmentProblems, attempts, findOne };
+  }
+
+  it('returns the caller’s own attempt for a timed test', async () => {
+    const deadlineAt = future();
+    const { service, attempts } = setup({
+      assignment: assignmentRow({ kind: AssignmentKind.TEST }),
+      attempt: { deadlineAt, status: AttemptStatus.IN_PROGRESS },
+    });
+
+    const res = await service.getEditorBootstrap('ap-1', actor);
+
+    expect(res.attempt).toMatchObject({ deadlineAt, status: AttemptStatus.IN_PROGRESS });
+    expect(res.assignment.kind).toBe(AssignmentKind.TEST);
+    // Scoped to the actor — an editor bootstrap must never surface another
+    // student's clock.
+    expect(attempts.findOne).toHaveBeenCalledWith({
+      where: { assignmentId: 'a1', userId: 'u1' },
+    });
+  });
+
+  it('does not look for an attempt on a regular assignment', async () => {
+    const { service, attempts } = setup({
+      assignment: assignmentRow({ kind: AssignmentKind.ASSIGNMENT }),
+    });
+
+    const res = await service.getEditorBootstrap('ap-1', actor);
+
+    expect(res.attempt).toBeNull();
+    expect(attempts.findOne).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The load-bearing one. Opening a problem must not start somebody's clock —
+   * `assertTestAttemptOpen` creates lazily on submit and the take page starts it
+   * deliberately, but a READ path that creates would cost a student time merely
+   * for looking.
+   */
+  it('never creates an attempt — a test not yet started reports null', async () => {
+    const { service, attempts } = setup({
+      assignment: assignmentRow({ kind: AssignmentKind.TEST }),
+      attempt: null,
+    });
+
+    const res = await service.getEditorBootstrap('ap-1', actor);
+
+    expect(res.attempt).toBeNull();
+    expect(attempts.save).not.toHaveBeenCalled();
+  });
+
+  it('404s an unknown assignment problem before any permission work', async () => {
+    const { service, findOne } = setup({ ap: null });
+    await expect(service.getEditorBootstrap('nope', actor)).rejects.toThrow(/not found/i);
+    expect(findOne).not.toHaveBeenCalled();
+  });
+
+  it('still delegates view permission to findOne, and lets it reject', async () => {
+    const { service, findOne, attempts } = setup();
+    findOne.mockRejectedValue(new ForbiddenException('You do not have access to this assignment'));
+
+    await expect(service.getEditorBootstrap('ap-1', actor)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(attempts.findOne).not.toHaveBeenCalled();
+  });
+});
+
+describe('AssignmentProblemEditorResponseDto — clock serialization (#145)', () => {
+  const base = {
+    ap: {
+      id: 'ap-1',
+      assignmentId: 'a1',
+      problemId: 'p1',
+      score: 10,
+      problem: { title: 'T', body: 'B', difficulty: 'medium', tags: [], testCases: [] },
+      languageTemplates: [],
+    },
+  } as never as EditorBootstrapView;
+
+  it('emits the deadline as ISO-8601 alongside the kind', () => {
+    const deadlineAt = new Date('2026-08-06T10:30:00.000Z');
+    const dto = AssignmentProblemEditorResponseDto.from({
+      ...base,
+      assignment: assignmentRow({ kind: AssignmentKind.TEST }),
+      attempt: { deadlineAt, status: AttemptStatus.IN_PROGRESS } as never,
+    });
+
+    expect(dto.kind).toBe(AssignmentKind.TEST);
+    expect(dto.attempt).toEqual({
+      deadlineAt: '2026-08-06T10:30:00.000Z',
+      status: AttemptStatus.IN_PROGRESS,
+    });
+  });
+
+  it('emits a null attempt rather than omitting the key, so the client can branch on it', () => {
+    const dto = AssignmentProblemEditorResponseDto.from({
+      ...base,
+      assignment: assignmentRow({ kind: AssignmentKind.ASSIGNMENT }),
+      attempt: null,
+    });
+
+    expect(dto.kind).toBe(AssignmentKind.ASSIGNMENT);
+    expect(dto.attempt).toBeNull();
   });
 });

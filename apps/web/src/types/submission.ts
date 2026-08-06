@@ -1,3 +1,4 @@
+import type { AssignmentKind, AttemptStatus } from './assignment';
 import type { Language } from './common';
 
 export const SubmissionStatus = {
@@ -81,6 +82,15 @@ export interface EditorBootstrap {
   score: number;
   sampleTestCases: SampleTestcase[];
   templates: LanguageTemplate[];
+  /** `test` means `attempt` carries a live clock; `assignment` never does. */
+  kind: AssignmentKind;
+  /**
+   * The caller's own timed-test attempt (#145) — null for a regular assignment
+   * and for a test not yet started. `deadlineAt` is the SERVER's; it is the only
+   * clock that matches what the submit gate enforces, so never recompute one
+   * from a duration here.
+   */
+  attempt: { deadlineAt: string; status: AttemptStatus } | null;
 }
 
 /**
