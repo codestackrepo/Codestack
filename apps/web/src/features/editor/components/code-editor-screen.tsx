@@ -36,6 +36,7 @@ import { CasePills, IoField } from './solve-io';
 import { useSubmissionSocket } from '../hooks/use-submission-socket';
 import { usePersistedCode } from '../hooks/use-persisted-code';
 import { parseApiError } from '@/lib/api-client';
+import { formatRemaining, isUrgent } from '@/lib/countdown';
 import type { Language } from '@/types/common';
 import { Difficulty } from '@/types/problem';
 import {
@@ -87,6 +88,20 @@ interface CodeEditorScreenProps {
   variant: 'assignment' | 'practice';
   /** Assignment-only: closed for submissions — disables Submit, shows a banner. */
   reviewMode?: boolean;
+  /**
+   * Timed test only (#145): the SERVER's attempt deadline, ISO-8601. Drives the
+   * countdown in the header and, at expiry, the same lockout `reviewMode` gives.
+   *
+   * Deliberately just a deadline and not an attempt object: this screen is shared
+   * with practice, which has no attempt at all, and a countdown is the entire
+   * amount of attempt the editor needs to know about.
+   *
+   * The screen does NOT auto-submit the attempt at expiry. The take page owns
+   * that (it has the pending MCQ/quiz saves to flush), and the server sweep
+   * closes every expired attempt within ~60s regardless. A second auto-submit
+   * owner would just be a second toast racing the first.
+   */
+  deadlineAt?: string | null;
   onRun: (language: Language, code: string, samples: SampleTestcase[]) => Promise<RunResult>;
   onSubmit: (language: Language, code: string) => Promise<SubmitResult>;
   /**
@@ -115,6 +130,7 @@ export function CodeEditorScreen({
   bootstrap,
   variant,
   reviewMode = false,
+  deadlineAt = null,
   onRun,
   onSubmit,
   onAccepted,
@@ -144,6 +160,21 @@ export function CodeEditorScreen({
     effectiveLanguage ?? 'python',
     starterCode,
   );
+
+  // Timed-test countdown (#145). The 1s tick only runs when there is a deadline,
+  // so practice and untimed assignments keep re-rendering exactly as before.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!deadlineAt) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [deadlineAt]);
+
+  const remainingMs = deadlineAt ? new Date(deadlineAt).getTime() - now : null;
+  const timeExpired = remainingMs !== null && remainingMs <= 0;
+  const urgent = isUrgent(remainingMs);
+  // Both close the door on Submit; they differ only in what the banner says.
+  const submitClosed = reviewMode || timeExpired;
 
   const { status: liveStatus, testcaseVerdicts } = useSubmissionSocket(submissionId);
 
@@ -186,7 +217,10 @@ export function CodeEditorScreen({
   }
 
   function handleSubmit() {
-    if (reviewMode) return;
+    // Also guards the ⌘/Ctrl+Enter shortcut, which does not go through the
+    // disabled button — without this, expiry would still let a keyboard submit
+    // through to a certain 403.
+    if (submitClosed) return;
     if (!submitMutation.isPending) submitMutation.mutate();
   }
 
@@ -264,6 +298,24 @@ export function CodeEditorScreen({
               </SelectContent>
             </Select>
           )}
+          {deadlineAt && (
+            <div
+              // aria-live so a screen-reader user is told time is short without
+              // having to poll the value; 'off' the rest of the time, because a
+              // per-second announcement would be unusable.
+              aria-live={urgent || timeExpired ? 'polite' : 'off'}
+              className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 tabular-nums ${
+                timeExpired || urgent
+                  ? 'border-destructive/30 bg-destructive/10 text-destructive'
+                  : 'border-border text-muted-foreground'
+              }`}
+            >
+              <Timer className="size-3.5 shrink-0" />
+              <span className="text-xs font-medium">
+                {timeExpired ? 'Time is up' : formatRemaining(remainingMs ?? 0)}
+              </span>
+            </div>
+          )}
           <Button
             variant="outline"
             onClick={handleRun}
@@ -279,8 +331,14 @@ export function CodeEditorScreen({
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={submitMutation.isPending || !!isJudging || reviewMode}
-            title={reviewMode ? 'Closed for submissions' : 'Submit (⌘/Ctrl + Enter)'}
+            disabled={submitMutation.isPending || !!isJudging || submitClosed}
+            title={
+              timeExpired
+                ? 'Your time for this test has run out'
+                : reviewMode
+                  ? 'Closed for submissions'
+                  : 'Submit (⌘/Ctrl + Enter)'
+            }
           >
             {submitMutation.isPending || isJudging ? (
               <Loader2 className="size-4 animate-spin" />
@@ -292,12 +350,22 @@ export function CodeEditorScreen({
         </div>
       </div>
 
-      {reviewMode && (
-        <div className="flex items-center gap-2 border-b border-warning/30 bg-warning/10 px-4 py-2 text-xs font-medium text-warning">
-          <Lock className="size-3.5" />
-          This assignment is closed for submissions — you can still run your code against the sample
-          cases.
+      {/* Expiry wins the banner slot: when a test has run out, "closed for
+          submissions" is true but tells the student nothing about why. */}
+      {timeExpired ? (
+        <div className="flex items-center gap-2 border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-xs font-medium text-destructive">
+          <Timer className="size-3.5 shrink-0" />
+          Your time for this test has run out. Anything you already submitted is saved and will be
+          graded — this problem is no longer accepting submissions.
         </div>
+      ) : (
+        reviewMode && (
+          <div className="flex items-center gap-2 border-b border-warning/30 bg-warning/10 px-4 py-2 text-xs font-medium text-warning">
+            <Lock className="size-3.5" />
+            This assignment is closed for submissions — you can still run your code against the
+            sample cases.
+          </div>
+        )
       )}
 
       <Group orientation="horizontal" className="flex-1">

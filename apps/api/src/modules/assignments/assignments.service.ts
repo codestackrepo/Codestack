@@ -48,6 +48,17 @@ import { AssignmentStatus, VISIBLE_TO_STUDENTS } from './enums/assignment-status
 import { AssignmentTargetType } from './enums/assignment-target-type.enum';
 import { AttemptStatus } from './enums/attempt-status.enum';
 
+/**
+ * What the solve editor bootstraps from: the problem, the assignment it belongs
+ * to, and — for a timed test only — the caller's own attempt, so the editor can
+ * render the same server-anchored clock the take page does (#145).
+ */
+export interface EditorBootstrapView {
+  ap: AssignmentProblem;
+  assignment: Assignment;
+  attempt: AssignmentAttempt | null;
+}
+
 @Injectable()
 export class AssignmentsService {
   /**
@@ -521,17 +532,41 @@ export class AssignmentsService {
     return ap;
   }
 
-  /** Everything the code-editor screen needs to bootstrap: statement, sample
-   * testcases, and per-language starter code (never driverCode — the judge
-   * harness is never sent to the client). */
-  async getEditorBootstrap(apId: string, actor: AuthenticatedUser): Promise<AssignmentProblem> {
+  /**
+   * Everything the code-editor screen needs to bootstrap: statement, sample
+   * testcases, per-language starter code (never driverCode — the judge harness is
+   * never sent to the client) and, for a timed test, the clock (#145).
+   *
+   * The editor is a separate screen from the take page, so without the attempt
+   * here the student spends the whole coding round with no countdown and
+   * discovers the deadline as a 403 on the submit they were part-way through.
+   * The permission check already loads the assignment; it is now returned rather
+   * than discarded.
+   *
+   * The attempt is READ, never created. Opening a problem must not start
+   * somebody's clock: the take page starts the attempt deliberately
+   * (`startAttempt`), and `assertTestAttemptOpen` creates one lazily on the first
+   * submit. A deep link straight here with no attempt yet simply reports `null`
+   * and renders no countdown — the submit gate is server-side regardless, so
+   * showing no clock is a display gap, whereas starting one would silently cost
+   * the student time they never asked to spend.
+   */
+  async getEditorBootstrap(apId: string, actor: AuthenticatedUser): Promise<EditorBootstrapView> {
     const ap = await this.assignmentProblems.findOne({
       where: { id: apId },
       relations: { problem: { tags: true, testCases: true }, languageTemplates: true },
     });
     if (!ap) throw new NotFoundException('Assignment problem not found');
-    await this.findOne(ap.assignmentId, actor); // view permission + status visibility
-    return ap;
+    const assignment = await this.findOne(ap.assignmentId, actor); // view permission + status visibility
+
+    const attempt =
+      assignment.kind === AssignmentKind.TEST
+        ? await this.attempts.findOne({
+            where: { assignmentId: assignment.id, userId: actor.id },
+          })
+        : null;
+
+    return { ap, assignment, attempt: attempt ?? null };
   }
 
   async myActiveDeadlines(actor: AuthenticatedUser): Promise<Assignment[]> {
