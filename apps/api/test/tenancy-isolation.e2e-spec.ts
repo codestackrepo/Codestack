@@ -26,9 +26,8 @@ import {
   createTestApp,
   createTestOrg,
   destroyTestApp,
-  extractAuthCookies,
   getDataSource,
-  resetThrottleStorage,
+  registerUser,
   TestAppContext,
 } from './utils/test-app';
 
@@ -56,26 +55,11 @@ describe('tenancy isolation + escalation (e2e)', () => {
   let bProf: string;
   let saCookie: string;
 
-  const register = async (email: string): Promise<string> => {
-    resetThrottleStorage(ctx);
-    const res = await request(http)
-      .post('/api/v1/auth/register')
-      .send({ email, password: 'Password1', firstName: 'Ti', lastName: 'User' });
-    expect(res.status).toBe(201);
-    return res.body.user.id as string;
-  };
-
-  /** Registers, stamps role + org directly, then signs in for a fresh cookie. */
+  /** Registers, stamps verification + role + org, then signs in for a fresh cookie. */
   const cast = async (email: string, role: Role, org: string | null): Promise<string> => {
-    id[email] = await register(email);
-    await repo.update({ email }, { organizationId: org, role });
-    resetThrottleStorage(ctx);
-    const login = await request(http).post('/api/v1/auth/login').send({
-      email,
-      password: 'Password1',
-    });
-    expect(login.status).toBe(200);
-    return extractAuthCookies(login.headers['set-cookie'] as unknown as string[]);
+    const user = await registerUser(ctx, { email, role, organizationId: org, firstName: 'Ti' });
+    id[email] = user.id;
+    return user.cookie;
   };
 
   beforeAll(async () => {
@@ -279,11 +263,17 @@ describe('tenancy isolation + escalation (e2e)', () => {
       expect(res.status).toBe(403);
     });
 
-    it('403s an ADMIN minting a PROFESSOR invite (the invite path, not the user path)', async () => {
+    /**
+     * The ADMIN -> PROFESSOR invite is ALLOWED since #118 (see `invite-policy.ts`),
+     * so what this now pins is the boundary that survived: an admin cannot mint a
+     * peer ADMIN. That is the escalation this describe block is about — a
+     * professor invite was never the privilege step.
+     */
+    it('403s an ADMIN minting a peer ADMIN invite (the invite path, not the user path)', async () => {
       const res = await request(http)
         .post('/api/v1/invites')
         .set('Cookie', bAdmin)
-        .send({ email: 'ti-invited-prof@codestack.dev', role: 'professor' });
+        .send({ email: 'ti-invited-admin@codestack.dev', role: 'admin' });
       // Asserted as one object so a failure prints the BODY alongside the status.
       // This assertion was seen to fail once with a bare 404 in a full-suite run
       // and never reproduced in isolation or in two subsequent full runs; the only

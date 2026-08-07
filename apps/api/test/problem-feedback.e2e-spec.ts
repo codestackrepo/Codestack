@@ -11,19 +11,16 @@
  * problem, which is what this suite builds. A single-org suite would pass against
  * the broken version.
  */
-import { getRepositoryToken } from '@nestjs/typeorm';
 import request from 'supertest';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource } from 'typeorm';
 
 import { Role } from '../src/common/enums/role.enum';
-import { User } from '../src/modules/users/entities/user.entity';
 import {
   createTestApp,
   createTestOrg,
   destroyTestApp,
-  extractAuthCookies,
   getDataSource,
-  resetThrottleStorage,
+  registerUser,
   TestAppContext,
 } from './utils/test-app';
 
@@ -47,23 +44,9 @@ describe('problem feedback (e2e)', () => {
   let orgAProblemId: string;
 
   const cast = async (email: string, role: Role, org: string | null): Promise<string> => {
-    resetThrottleStorage(ctx);
-    const reg = await request(http)
-      .post('/api/v1/auth/register')
-      .send({ email, password: 'Password1', firstName: 'Fb', lastName: 'User' });
-    expect(reg.status).toBe(201);
-    id[email] = reg.body.user.id as string;
-
-    await ctx.app
-      .get<Repository<User>>(getRepositoryToken(User))
-      .update({ email }, { organizationId: org, role });
-
-    resetThrottleStorage(ctx);
-    const login = await request(http)
-      .post('/api/v1/auth/login')
-      .send({ email, password: 'Password1' });
-    expect(login.status).toBe(200);
-    return extractAuthCookies(login.headers['set-cookie'] as unknown as string[]);
+    const user = await registerUser(ctx, { email, role, organizationId: org, firstName: 'Fb' });
+    id[email] = user.id;
+    return user.cookie;
   };
 
   beforeAll(async () => {

@@ -10,20 +10,18 @@
 import { createHash } from 'node:crypto';
 
 import { getQueueToken } from '@nestjs/bullmq';
-import { getRepositoryToken } from '@nestjs/typeorm';
 import { Queue } from 'bullmq';
 import request from 'supertest';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource } from 'typeorm';
 
 import { Role } from '../src/common/enums/role.enum';
 import { JOB_SEND_MAIL } from '../src/queue/queue.constants';
-import { User } from '../src/modules/users/entities/user.entity';
 import {
   createTestApp,
   createTestOrg,
   destroyTestApp,
-  extractAuthCookies,
   getDataSource,
+  registerUser,
   resetThrottleStorage,
   TestAppContext,
 } from './utils/test-app';
@@ -49,29 +47,20 @@ describe('invites (e2e)', () => {
     ds = getDataSource(ctx);
     orgId = await createTestOrg(ds);
 
-    resetThrottleStorage(ctx);
-    await request(http).post('/api/v1/auth/register').send({
-      email: 'inv-admin@codestack.dev',
-      password: 'Password1',
-      firstName: 'Org',
-      lastName: 'Admin',
-    });
-    adminCookie = await promote('inv-admin@codestack.dev', Role.ADMIN, orgId);
+    adminCookie = (
+      await registerUser(ctx, {
+        email: 'inv-admin@codestack.dev',
+        role: Role.ADMIN,
+        organizationId: orgId,
+        firstName: 'Org',
+        lastName: 'Admin',
+      })
+    ).cookie;
   });
 
   afterAll(async () => {
     await destroyTestApp(ctx);
   });
-
-  const promote = async (email: string, role: Role, org: string | null): Promise<string> => {
-    const repo = ctx.app.get<Repository<User>>(getRepositoryToken(User));
-    await repo.update({ email }, { organizationId: org, role });
-    resetThrottleStorage(ctx);
-    const login = await request(http)
-      .post('/api/v1/auth/login')
-      .send({ email, password: 'Password1' });
-    return extractAuthCookies(login.headers['set-cookie'] as unknown as string[]);
-  };
 
   /** Pops the most recent queued mail and returns its payload. */
   const lastQueuedMail = async (): Promise<QueuedInvite> => {
@@ -119,13 +108,31 @@ describe('invites (e2e)', () => {
       expect(row.token_hash).not.toBe(token);
     });
 
-    // The policy matrix, not the @Roles decorator, is what stops this — RolesGuard
-    // is minimum-rank, so @Roles(PROFESSOR) admits an ADMIN.
-    it('403 role_not_invitable when an ADMIN tries to invite a PROFESSOR', async () => {
+    /**
+     * #118 REVERSED the old `ADMIN -> [STUDENT]` rule, and this assertion used to
+     * pin it. An admin may now invite a professor: tenants apply for themselves
+     * and are approved with per-role seat caps, so `MAX_PROFESSORS` — a number a
+     * superadmin chose — is what bounds staff creation, instead of routing every
+     * professor through CodeStack support. See the rationale on `invite-policy.ts`.
+     *
+     * The boundary that remains is the one below: an admin still cannot mint a
+     * peer admin, so the matrix is still a privilege boundary and not a formality.
+     */
+    it('allows an ADMIN to invite a PROFESSOR (#118 reversed the old rule)', async () => {
       const res = await request(http)
         .post('/api/v1/invites')
         .set('Cookie', adminCookie)
         .send({ email: 'prof@codestack.dev', role: 'professor' });
+      expect(res.status).toBe(201);
+    });
+
+    // The policy matrix, not the @Roles decorator, is what stops this — RolesGuard
+    // is minimum-rank, so @Roles(PROFESSOR) admits an ADMIN.
+    it('403 role_not_invitable when an ADMIN tries to invite a peer ADMIN', async () => {
+      const res = await request(http)
+        .post('/api/v1/invites')
+        .set('Cookie', adminCookie)
+        .send({ email: 'peer-admin@codestack.dev', role: 'admin' });
       expect(res.status).toBe(403);
       expect(res.body.reason).toBe('role_not_invitable');
     });
@@ -226,16 +233,21 @@ describe('invites (e2e)', () => {
     let strandedCookie: string;
 
     beforeAll(async () => {
-      resetThrottleStorage(ctx);
-      const reg = await request(http).post('/api/v1/auth/register').send({
+      // Explicitly org-less. Self-registration now lands in the COMMUNITY tenant,
+      // so the holding state has to be built rather than inherited — the confined
+      // shape #101 fixed still exists, it is just no longer what signup produces.
+      const stranded = await registerUser(ctx, {
         email: 'stranded@codestack.dev',
-        password: 'Password1',
+        organizationId: null,
         firstName: 'Stran',
         lastName: 'Ded',
       });
-      // Self-registration lands org-less — the defect #101 fixed.
-      expect(reg.body.user.organizationId).toBeNull();
-      strandedCookie = extractAuthCookies(reg.headers['set-cookie'] as unknown as string[]);
+      strandedCookie = stranded.cookie;
+
+      const [row] = (await ds.query(`SELECT organization_id FROM users WHERE email = $1`, [
+        'stranded@codestack.dev',
+      ])) as { organization_id: string | null }[];
+      expect(row.organization_id).toBeNull();
     });
 
     it('403 no_organization on an ordinary tenant route', async () => {

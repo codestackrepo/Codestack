@@ -17,6 +17,8 @@ import {
   destroyTestApp,
   extractAuthCookies,
   getDataSource,
+  loginAs,
+  registerUser,
   resetThrottleStorage,
   TestAppContext,
 } from './utils/test-app';
@@ -42,25 +44,19 @@ describe('admin surface (e2e)', () => {
    * assign-organization rather than at the missing fixture. Same shape as the flake
    * fixed in app.e2e-spec.ts (#120).
    */
-  const register = async (email: string): Promise<string> => {
-    resetThrottleStorage(ctx);
-    const res = await request(http)
-      .post('/api/v1/auth/register')
-      .send({ email, password: 'Password1', firstName: 'Test', lastName: 'User' });
-    expect(res.status).toBe(201);
-    return res.body.user.id as string;
-  };
+  // Deliberately org-less: `stamp` gives a user their tenant, and the unassigned
+  // pool tests need fixtures that never get one. Self-signup lands in the COMMUNITY
+  // tenant now, so leaving `organizationId` unset would quietly make every fixture
+  // assigned and empty the pool.
+  const register = async (email: string): Promise<string> =>
+    (await registerUser(ctx, { email, organizationId: null, firstName: 'Test' })).id;
 
   const stamp = async (email: string, role: Role, org: string | null): Promise<string> => {
     const repo = ctx.app.get<Repository<User>>(getRepositoryToken(User));
     const stamped = await repo.update({ email }, { organizationId: org, role });
     expect(stamped.affected).toBe(1); // 0 means the caller never registered this address
-    resetThrottleStorage(ctx);
-    const login = await request(http)
-      .post('/api/v1/auth/login')
-      .send({ email, password: 'Password1' });
-    expect(login.status).toBe(200);
-    return extractAuthCookies(login.headers['set-cookie'] as unknown as string[]);
+    // Re-login so the issued JWT carries the stamped org and role.
+    return loginAs(ctx, email);
   };
 
   beforeAll(async () => {

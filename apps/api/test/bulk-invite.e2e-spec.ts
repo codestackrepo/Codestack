@@ -6,20 +6,18 @@
  * secretly wrote rows, or a blocked commit that wrote some of them, would pass
  * any assertion made only against the response body.
  */
-import { getRepositoryToken } from '@nestjs/typeorm';
 import ExcelJS from 'exceljs';
 import request from 'supertest';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource } from 'typeorm';
 
 import { Role } from '../src/common/enums/role.enum';
-import { User } from '../src/modules/users/entities/user.entity';
 import {
   createTestApp,
   createTestOrg,
   destroyTestApp,
-  extractAuthCookies,
   getDataSource,
-  resetThrottleStorage,
+  loginAs,
+  registerUser,
   TestAppContext,
 } from './utils/test-app';
 
@@ -34,22 +32,36 @@ describe('bulk roster onboarding (e2e)', () => {
   let orgA: string;
   let adminCookie: string;
 
+  /**
+   * Register + stamp + sign in, in one step (#149). Kept as a two-name shim so
+   * the call sites below read unchanged: `register` returns the id, `stamp`
+   * returns the cookie for an address `register` already created.
+   */
+  const created = new Map<string, { id: string; cookie: string }>();
+
+  // Org-less on purpose — see admin-surface: `stamp` is what assigns a tenant, and
+  // the roster classifier needs genuinely unassigned fixtures.
   const register = async (email: string): Promise<string> => {
-    resetThrottleStorage(ctx);
-    const res = await request(http)
-      .post('/api/v1/auth/register')
-      .send({ email, password: 'Password1', firstName: 'T', lastName: 'U' });
-    return res.body.user.id as string;
+    const user = await registerUser(ctx, {
+      email,
+      organizationId: null,
+      firstName: 'T',
+      lastName: 'U',
+    });
+    created.set(email, { id: user.id, cookie: user.cookie });
+    return user.id;
   };
 
   const stamp = async (email: string, role: Role, org: string | null): Promise<string> => {
-    const repo = ctx.app.get<Repository<User>>(getRepositoryToken(User));
-    await repo.update({ email }, { organizationId: org, role });
-    resetThrottleStorage(ctx);
-    const login = await request(http)
-      .post('/api/v1/auth/login')
-      .send({ email, password: 'Password1' });
-    return extractAuthCookies(login.headers['set-cookie'] as unknown as string[]);
+    if (!created.has(email)) await register(email);
+    const ds2 = getDataSource(ctx);
+    await ds2.query(`UPDATE "users" SET "organization_id" = $2, "role" = $3 WHERE "email" = $1`, [
+      email,
+      org,
+      role,
+    ]);
+    // Re-login so the issued JWT carries the stamped org and role.
+    return loginAs(ctx, email);
   };
 
   const upload = (body: Buffer, filename = 'roster.csv', cookie = adminCookie) =>

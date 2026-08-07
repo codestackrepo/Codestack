@@ -9,19 +9,15 @@
  * type-checks, but has NOT been executed in the authoring environment (Docker was
  * unavailable) — run `pnpm --filter @codestack/api test:e2e` to verify.
  */
-import { getRepositoryToken } from '@nestjs/typeorm';
 import request from 'supertest';
-import { Repository } from 'typeorm';
 
 import { Role } from '../src/common/enums/role.enum';
-import { User } from '../src/modules/users/entities/user.entity';
 import {
   createTestApp,
   createTestOrg,
   destroyTestApp,
-  extractAuthCookies,
   getDataSource,
-  resetThrottleStorage,
+  registerUser,
   TestAppContext,
 } from './utils/test-app';
 
@@ -61,19 +57,15 @@ describe('batches + targeting + items (e2e)', () => {
    * one org so the classroom/batch pickers are never a cross-org reference.
    */
   const register = async (role: Role = Role.STUDENT): Promise<Registered> => {
-    resetThrottleStorage(ctx);
     const email = `bt${seq++}.e2e@codestack.dev`;
-    const reg = await request(http)
-      .post('/api/v1/auth/register')
-      .send({ email, password: 'Password1', firstName: 'BT', lastName: `U${seq}` });
-    const id: string = reg.body.user.id;
-
-    const userRepo = ctx.app.get<Repository<User>>(getRepositoryToken(User));
-    await userRepo.update({ id }, { organizationId: orgId, role });
-    const login = await request(http)
-      .post('/api/v1/auth/login')
-      .send({ email, password: 'Password1' });
-    return { id, cookie: extractAuthCookies(login.headers['set-cookie'] as unknown as string[]) };
+    const user = await registerUser(ctx, {
+      email,
+      role,
+      organizationId: orgId,
+      firstName: 'BT',
+      lastName: `U${seq}`,
+    });
+    return { id: user.id, cookie: user.cookie };
   };
 
   describe('batch targeting: 3-site student visibility', () => {

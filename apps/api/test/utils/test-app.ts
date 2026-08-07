@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import { getStorageToken, ThrottlerStorageService } from '@nestjs/throttler';
 import cookieParser from 'cookie-parser';
 import Redis from 'ioredis';
+import request from 'supertest';
 import { DataSource } from 'typeorm';
 
 import { AppModule } from '../../src/app.module';
@@ -232,6 +233,132 @@ export function getDataSource(ctx: TestAppContext): DataSource {
  */
 export async function destroyTestApp(ctx: TestAppContext): Promise<void> {
   await ctx.app.close();
+}
+
+/**
+ * Creates a fixture user and returns them signed in (#149).
+ *
+ * ONE place owns the registration dance, because it is longer than it looks and
+ * every suite needs all of it:
+ *
+ *  1. `POST /auth/register` answers **200** with `{ message }` only — no `user`,
+ *     no cookies. Registration deliberately does not authenticate the caller
+ *     any more, so the id has to come from the database.
+ *  2. The account is minted UNVERIFIED, and `auth.service` refuses login with
+ *     `email_unverified` until `emailVerifiedAt` is set. A fixture has no inbox,
+ *     so the stamp stands in for clicking the link.
+ *  3. Self-registration always lands in the COMMUNITY tenant at the STUDENT role
+ *     (`createOpenSelfSignup`). A suite that needs its own org — nearly all of
+ *     them, since the community tenant is a different product surface — has to
+ *     stamp it, and `chk_users_org_required` rejects an org-less PROFESSOR
+ *     outright (23514), so the promotion must carry the org with it.
+ *  4. Only then can they log in, and only that login carries the stamped org and
+ *     role in the issued JWT.
+ *
+ * This used to be copy-pasted into all eleven suites, which is why one contract
+ * change broke every one of them at once. Suites that are TESTING registration
+ * (throttle, duplicate 409, weak password 400) should still call the endpoint
+ * directly — this helper is for fixtures, not for the thing under test.
+ */
+export interface FixtureUser {
+  id: string;
+  email: string;
+  /** `access_token=…; refresh_token=…`, ready for `.set('Cookie', …)`. */
+  cookie: string;
+}
+
+export async function registerUser(
+  ctx: TestAppContext,
+  opts: {
+    email: string;
+    password?: string;
+    /** Promotes the user. Omit to leave them a STUDENT. */
+    role?: string;
+    /** Omit for a deliberately org-less user (holding-state coverage). */
+    organizationId?: string | null;
+    firstName?: string;
+    lastName?: string;
+  },
+): Promise<FixtureUser> {
+  const password = opts.password ?? 'Password1';
+  const http = ctx.app.getHttpServer();
+
+  // Registration is throttled 3/min + 10/hour and a suite typically creates
+  // several users back to back, so clear the in-memory window first. The store is
+  // process-scoped, so one clear covers both windows.
+  resetThrottleStorage(ctx);
+  const reg = await request(http)
+    .post('/api/v1/auth/register')
+    .send({
+      email: opts.email,
+      password,
+      firstName: opts.firstName ?? 'E2E',
+      lastName: opts.lastName ?? 'User',
+    });
+  if (reg.status !== 200) {
+    throw new Error(
+      `Fixture registration failed for ${opts.email}: ${reg.status} ${JSON.stringify(reg.body)}`,
+    );
+  }
+
+  const dataSource = getDataSource(ctx);
+  const updates: string[] = ['"email_verified_at" = now()'];
+  const params: unknown[] = [opts.email];
+  if (opts.organizationId !== undefined) {
+    params.push(opts.organizationId);
+    updates.push(`"organization_id" = $${params.length}`);
+  }
+  if (opts.role) {
+    params.push(opts.role);
+    updates.push(`"role" = $${params.length}`);
+  }
+  await dataSource.query(`UPDATE "users" SET ${updates.join(', ')} WHERE "email" = $1`, params);
+
+  // Read the id separately rather than with UPDATE ... RETURNING: TypeORM's
+  // postgres driver answers `[rows, rowCount]` for an UPDATE but bare `rows` for
+  // an INSERT, so `rows[0].id` is silently undefined on the update shape while a
+  // length check still passes. A SELECT has one unambiguous shape.
+  const rows = await dataSource.query<{ id: string }[]>(
+    `SELECT "id" FROM "users" WHERE "email" = $1`,
+    [opts.email],
+  );
+  // Missing means the address was never created — say so here, rather than
+  // letting the login below fail with a 401 that points nowhere near the cause.
+  if (!rows[0]?.id) {
+    throw new Error(`Fixture user ${opts.email} was not created by /auth/register`);
+  }
+
+  resetThrottleStorage(ctx);
+  const login = await request(http)
+    .post('/api/v1/auth/login')
+    .send({ email: opts.email, password });
+  if (login.status !== 200) {
+    throw new Error(
+      `Fixture login failed for ${opts.email}: ${login.status} ${JSON.stringify(login.body)}`,
+    );
+  }
+
+  return {
+    id: rows[0].id,
+    email: opts.email,
+    cookie: extractAuthCookies(login.headers['set-cookie'] as unknown as string[]),
+  };
+}
+
+/** Signs an existing fixture user back in — e.g. after their role or org changed. */
+export async function loginAs(
+  ctx: TestAppContext,
+  email: string,
+  password = 'Password1',
+): Promise<string> {
+  resetThrottleStorage(ctx);
+  const login = await request(ctx.app.getHttpServer())
+    .post('/api/v1/auth/login')
+    .send({ email, password });
+  if (login.status !== 200) {
+    throw new Error(`Login failed for ${email}: ${login.status} ${JSON.stringify(login.body)}`);
+  }
+  return extractAuthCookies(login.headers['set-cookie'] as unknown as string[]);
 }
 
 /** Extracts a `name=value` pair from a Set-Cookie header array for reuse in later requests. */
