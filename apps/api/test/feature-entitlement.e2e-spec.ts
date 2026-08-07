@@ -20,20 +20,17 @@
  * `role === ADMIN` to `true` — org-admin immunity — so an ADMIN can never observe
  * an override and would make these tests pass regardless of the annotations.
  */
-import { getRepositoryToken } from '@nestjs/typeorm';
 import request from 'supertest';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource } from 'typeorm';
 
 import { Role } from '../src/common/enums/role.enum';
 import { ModuleAccessService } from '../src/modules/module-access/module-access.service';
-import { User } from '../src/modules/users/entities/user.entity';
 import {
   createTestApp,
   createTestOrg,
   destroyTestApp,
-  extractAuthCookies,
   getDataSource,
-  resetThrottleStorage,
+  registerUser,
   TestAppContext,
 } from './utils/test-app';
 
@@ -82,21 +79,15 @@ describe('feature entitlement on annotated routes (e2e)', () => {
     access = ctx.app.get(ModuleAccessService);
     orgId = await createTestOrg(ds);
 
-    resetThrottleStorage(ctx);
-    await request(http).post('/api/v1/auth/register').send({
-      email: 'fe-prof@codestack.dev',
-      password: 'Password1',
-      firstName: 'Feature',
-      lastName: 'Prof',
-    });
-    await ctx.app
-      .get<Repository<User>>(getRepositoryToken(User))
-      .update({ email: 'fe-prof@codestack.dev' }, { organizationId: orgId, role: Role.PROFESSOR });
-    resetThrottleStorage(ctx);
-    const login = await request(http)
-      .post('/api/v1/auth/login')
-      .send({ email: 'fe-prof@codestack.dev', password: 'Password1' });
-    profCookie = extractAuthCookies(login.headers['set-cookie'] as unknown as string[]);
+    profCookie = (
+      await registerUser(ctx, {
+        email: 'fe-prof@codestack.dev',
+        role: Role.PROFESSOR,
+        organizationId: orgId,
+        firstName: 'Feature',
+        lastName: 'Prof',
+      })
+    ).cookie;
   });
 
   afterAll(async () => {

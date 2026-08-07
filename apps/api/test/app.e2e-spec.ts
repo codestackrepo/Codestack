@@ -10,6 +10,8 @@ import {
   destroyTestApp,
   extractAuthCookies,
   getDataSource,
+  loginAs,
+  registerUser,
   resetThrottleStorage,
   TestAppContext,
 } from './utils/test-app';
@@ -42,13 +44,12 @@ describe('CodeStack e2e', () => {
    * Puts a just-registered user into the suite's tenant (and optionally promotes
    * them), then re-authenticates and returns the fresh cookie.
    *
-   * Both halves are mandatory. `POST /auth/register` writes `organization_id
-   * = NULL` — legal for a STUDENT since 1785520000000, but `TenantContextGuard`
-   * (APP_GUARD slot 2) 403s `no_organization` on every route that is not
-   * `@Public`, `/auth/verify` included, and `chk_users_org_required` rejects an
-   * org-less PROFESSOR outright (23514). So every fixture user needs a tenant,
-   * not just the promoted ones. The re-login is what gets the stamped org and role
-   * into the issued JWT.
+   * All three parts are mandatory. `POST /auth/register` lands the user in the
+   * COMMUNITY tenant at STUDENT, unverified. This suite's assertions are about an
+   * institutional tenant, `chk_users_org_required` rejects an org-less PROFESSOR
+   * outright (23514), and `validateCredentials` refuses an unverified account —
+   * so the stamp covers org, role and verification, and the re-login is what gets
+   * the first two into the issued JWT.
    *
    * Confined org-less (holding-state) behaviour is deliberately NOT covered here —
    * it arrives with `@AllowsUnassigned` (#104) and gets its own suite.
@@ -57,17 +58,19 @@ describe('CodeStack e2e', () => {
     const userRepo = ctx.app.get<Repository<User>>(getRepositoryToken(User));
     const stamped = await userRepo.update(
       { email },
-      { organizationId: orgId, ...(role ? { role } : {}) },
+      {
+        organizationId: orgId,
+        ...(role ? { role } : {}),
+        // Stands in for clicking the emailed link (#149). Self-signup mints the
+        // account UNVERIFIED, and `validateCredentials` refuses it, so without
+        // this the login below 403s `email_unverified`.
+        emailVerifiedAt: new Date(),
+      },
     );
     // 0 rows means the caller never registered this address — say so here rather
     // than letting the login below fail with an unrelated-looking 401.
     expect(stamped.affected).toBe(1);
-    resetThrottleStorage(ctx);
-    const login = await request(http)
-      .post('/api/v1/auth/login')
-      .send({ email, password: 'Password1' });
-    expect(login.status).toBe(200);
-    return extractAuthCookies(login.headers['set-cookie'] as unknown as string[]);
+    return loginAs(ctx, email);
   };
 
   // Runs first, deliberately, before any other test consumes the shared
@@ -106,7 +109,19 @@ describe('CodeStack e2e', () => {
       expect(res.status).toBe(400);
     });
 
-    it('registers a user, sets httpOnly auth cookies, and never returns the password', async () => {
+    /**
+     * Registration does NOT authenticate the caller and does not describe the
+     * account it may or may not have made. Both are deliberate:
+     *
+     *  - the account is created UNVERIFIED, so there is nothing to issue a
+     *    session for until the emailed link is used;
+     *  - the response is identical whether or not the address was free, which is
+     *    what closes the account-enumeration oracle.
+     *
+     * Asserted as its own contract rather than through the fixture helper, since
+     * this is the behaviour under test.
+     */
+    it('accepts a registration without authenticating the caller', async () => {
       resetThrottleStorage(ctx);
       const res = await request(http).post('/api/v1/auth/register').send({
         email: 'alice.e2e@codestack.dev',
@@ -114,23 +129,37 @@ describe('CodeStack e2e', () => {
         firstName: 'Alice',
         lastName: 'E2E',
       });
-      expect(res.status).toBe(201);
-      expect(res.body.message).toBe('Registration successful');
-      expect(res.body.user.email).toBe('alice.e2e@codestack.dev');
-      expect(res.body.user.password).toBeUndefined();
-      expect(res.body.user.passwordHash).toBeUndefined();
-      const setCookie = res.headers['set-cookie'] as unknown as string[];
-      expect(setCookie.some((c) => c.startsWith('access_token='))).toBe(true);
-      expect(setCookie.some((c) => c.startsWith('refresh_token='))).toBe(true);
-      expect(setCookie.every((c) => /HttpOnly/i.test(c))).toBe(true);
+      expect(res.status).toBe(200);
+      expect(res.body.message).toMatch(/check your inbox/i);
+      // No account details, and no session — a caller cannot learn anything about
+      // the address from this response, nor act as it.
+      expect(res.body.user).toBeUndefined();
+      expect(res.headers['set-cookie']).toBeUndefined();
 
-      // Self-registration lands org-less; every later test in this suite drives
-      // authenticated routes, so give her the tenant now.
-      expect(res.body.user.organizationId ?? null).toBeNull();
-      await joinOrg('alice.e2e@codestack.dev');
+      // The row exists but is unverified, which is why login is refused below.
+      const [row] = (await getDataSource(ctx).query(
+        `SELECT email_verified_at FROM users WHERE email = $1`,
+        ['alice.e2e@codestack.dev'],
+      )) as { email_verified_at: string | null }[];
+      expect(row.email_verified_at).toBeNull();
     });
 
-    it('rejects duplicate registration with the same email', async () => {
+    it('refuses login until the address is confirmed', async () => {
+      resetThrottleStorage(ctx);
+      const res = await request(http)
+        .post('/api/v1/auth/login')
+        .send({ email: 'alice.e2e@codestack.dev', password: 'Password1' });
+      expect(res.status).toBe(403);
+      expect(res.body.reason).toBe('email_unverified');
+    });
+
+    /**
+     * The old contract answered 409 here. It was replaced on purpose: a distinct
+     * status for a taken address is an account-enumeration oracle, so the caller
+     * now gets the same 200 and the same sentence, and the MAILBOX OWNER is told
+     * instead. Pinned so nobody "fixes" the missing 409 back into existence.
+     */
+    it('answers a duplicate address identically, creating no second account', async () => {
       resetThrottleStorage(ctx);
       const res = await request(http).post('/api/v1/auth/register').send({
         email: 'alice.e2e@codestack.dev',
@@ -138,7 +167,15 @@ describe('CodeStack e2e', () => {
         firstName: 'Alice',
         lastName: 'Dup',
       });
-      expect(res.status).toBe(409);
+      expect(res.status).toBe(200);
+      expect(res.body.message).toMatch(/check your inbox/i);
+
+      const [row] = (await getDataSource(ctx).query(
+        `SELECT count(*)::int AS n, max(first_name) AS first_name FROM users WHERE email = $1`,
+        ['alice.e2e@codestack.dev'],
+      )) as { n: number; first_name: string }[];
+      expect(row.n).toBe(1);
+      expect(row.first_name).toBe('Alice'); // the second attempt overwrote nothing
     });
 
     it('rejects verify without any auth cookie', async () => {
@@ -153,7 +190,11 @@ describe('CodeStack e2e', () => {
       expect(res.status).toBe(401);
     });
 
-    it('logs in and verify succeeds with the issued cookie', async () => {
+    it('logs in and verify succeeds once the address is confirmed', async () => {
+      // Confirms the address (and puts her in the suite's tenant, which every
+      // later test needs) — the fixture stand-in for clicking the emailed link.
+      await joinOrg('alice.e2e@codestack.dev');
+
       const login = await request(http)
         .post('/api/v1/auth/login')
         .send({ email: 'alice.e2e@codestack.dev', password: 'Password1' });
@@ -186,16 +227,14 @@ describe('CodeStack e2e', () => {
     beforeAll(() => resetThrottleStorage(ctx));
 
     it('blocks a plain student from creating a problem', async () => {
-      await request(http).post('/api/v1/auth/register').send({
+      // In the suite's tenant, so this 403 comes from RolesGuard — a student left
+      // in the community tenant would 403 at a different gate and pass the
+      // assertion for the wrong reason.
+      const { cookie } = await registerUser(ctx, {
         email: 'bob.e2e@codestack.dev',
-        password: 'Password1',
+        organizationId: orgId,
         firstName: 'Bob',
-        lastName: 'E2E',
       });
-      // In the tenant, so this 403 comes from RolesGuard — an org-less student
-      // would 403 at the tenant gate instead and pass the assertion for the
-      // wrong reason.
-      const cookie = await joinOrg('bob.e2e@codestack.dev');
 
       const res = await request(http)
         .post('/api/v1/problems')
@@ -205,14 +244,11 @@ describe('CodeStack e2e', () => {
     });
 
     it('allows a student to view another STUDENT profile (by design — only staff are hidden)', async () => {
-      resetThrottleStorage(ctx);
-      await request(http).post('/api/v1/auth/register').send({
+      const { cookie } = await registerUser(ctx, {
         email: 'dan.e2e@codestack.dev',
-        password: 'Password1',
+        organizationId: orgId,
         firstName: 'Dan',
-        lastName: 'E2E',
       });
-      const cookie = await joinOrg('dan.e2e@codestack.dev');
 
       const aliceLogin = await request(http)
         .post('/api/v1/auth/login')
@@ -224,27 +260,22 @@ describe('CodeStack e2e', () => {
     });
 
     it('blocks a student from viewing a STAFF profile', async () => {
-      resetThrottleStorage(ctx);
-      await request(http).post('/api/v1/auth/register').send({
+      const { cookie: studentCookie } = await registerUser(ctx, {
         email: 'erin.e2e@codestack.dev',
-        password: 'Password1',
+        organizationId: orgId,
         firstName: 'Erin',
-        lastName: 'E2E',
       });
-      const studentCookie = await joinOrg('erin.e2e@codestack.dev');
 
-      resetThrottleStorage(ctx);
-      const staffReg = await request(http).post('/api/v1/auth/register').send({
-        email: 'staffmember.e2e@codestack.dev',
-        password: 'Password1',
-        firstName: 'Staff',
-        lastName: 'Member',
-      });
-      const staffId: string = staffReg.body.user.id;
       // The promotion has to carry the org with it: chk_users_org_required's CASE
       // form exempts only 'superadmin' and 'student', so an org-less PROFESSOR
       // raises 23514.
-      await joinOrg('staffmember.e2e@codestack.dev', Role.PROFESSOR);
+      const { id: staffId } = await registerUser(ctx, {
+        email: 'staffmember.e2e@codestack.dev',
+        role: Role.PROFESSOR,
+        organizationId: orgId,
+        firstName: 'Staff',
+        lastName: 'Member',
+      });
 
       const res = await request(http).get(`/api/v1/users/${staffId}`).set('Cookie', studentCookie);
       expect(res.status).toBe(403);
@@ -260,31 +291,27 @@ describe('CodeStack e2e', () => {
     let submissionId: string;
 
     beforeAll(async () => {
-      resetThrottleStorage(ctx);
-      const profReg = await request(http).post('/api/v1/auth/register').send({
+      // Self-registration always forces STUDENT into the community tenant, so the
+      // role and org are stamped and the JWT reissued by the login inside the
+      // helper.
+      const prof = await registerUser(ctx, {
         email: 'prof.e2e@codestack.dev',
-        password: 'Password1',
+        role: Role.PROFESSOR,
+        organizationId: orgId,
         firstName: 'Prof',
-        lastName: 'E2E',
       });
-      const profId: string = profReg.body.user.id;
+      const profId = prof.id;
+      professorCookie = prof.cookie;
 
-      // Self-registration always forces STUDENT and no org — stamp both via the
-      // repository (a normal e2e-setup shortcut) then re-login so the issued JWT
-      // carries the updated role and tenant.
-      professorCookie = await joinOrg('prof.e2e@codestack.dev', Role.PROFESSOR);
-
-      resetThrottleStorage(ctx);
-      const studentReg = await request(http).post('/api/v1/auth/register').send({
-        email: 'carol.e2e@codestack.dev',
-        password: 'Password1',
-        firstName: 'Carol',
-        lastName: 'E2E',
-      });
-      studentId = studentReg.body.user.id;
       // Same tenant as the professor, or the classroom's studentIds picker is a
       // cross-org reference and assertSameOrg 403s it.
-      studentCookie = await joinOrg('carol.e2e@codestack.dev');
+      const student = await registerUser(ctx, {
+        email: 'carol.e2e@codestack.dev',
+        organizationId: orgId,
+        firstName: 'Carol',
+      });
+      studentId = student.id;
+      studentCookie = student.cookie;
 
       const classroom = await request(http)
         .post('/api/v1/classrooms')
@@ -476,26 +503,22 @@ describe('CodeStack e2e', () => {
     });
 
     it('a student cannot view another classroom submission (IDOR check)', async () => {
-      // resetThrottleStorage BEFORE the register, and assert it landed.
+      // `registerUser` clears the throttle before registering AND asserts the
+      // registration landed, which is what this test needed spelled out inline
+      // before: `/auth/register` is throttled (3/min, 10/hour) and the test
+      // directly above deliberately drives a 429, so this runs at the throttle
+      // boundary. A throttled register used to fail silently — no user row, then
+      // an `update` matching 0 rows without complaint, then a login 401 several
+      // lines later that pointed nowhere near the cause. The helper throws at the
+      // registration instead.
       //
-      // `/auth/register` is throttled 5/min, and the test directly above this one
-      // deliberately drives a 429 — so this describe runs at the throttle boundary.
-      // A throttled register here used to fail silently: no user row, then
-      // `joinOrg`'s `userRepo.update` matched 0 rows without complaint (TypeORM
-      // `update` does not throw), and the suite failed several lines later on a
-      // login 401 that pointed nowhere near the cause. That was a real flake in the
-      // full-suite run.
-      resetThrottleStorage(ctx);
-      const registered = await request(http).post('/api/v1/auth/register').send({
-        email: 'eve.e2e@codestack.dev',
-        password: 'Password1',
-        firstName: 'Eve',
-        lastName: 'E2E',
-      });
-      expect(registered.status).toBe(201);
       // Same tenant on purpose: the 403 must come from classroom membership, not
       // from the tenant gate.
-      const otherCookie = await joinOrg('eve.e2e@codestack.dev');
+      const { cookie: otherCookie } = await registerUser(ctx, {
+        email: 'eve.e2e@codestack.dev',
+        organizationId: orgId,
+        firstName: 'Eve',
+      });
       const res = await request(http)
         .get(`/api/v1/submissions/${submissionId}`)
         .set('Cookie', otherCookie);

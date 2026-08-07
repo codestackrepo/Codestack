@@ -10,20 +10,17 @@
  * conflates them turns an uncapped org into a fully blocked one. That distinction is
  * asserted on the response AND on the row.
  */
-import { getRepositoryToken } from '@nestjs/typeorm';
 import request from 'supertest';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource } from 'typeorm';
 
 import { Role } from '../src/common/enums/role.enum';
 import { ModuleAccessService } from '../src/modules/module-access/module-access.service';
-import { User } from '../src/modules/users/entities/user.entity';
 import {
   createTestApp,
   createTestOrg,
   destroyTestApp,
-  extractAuthCookies,
   getDataSource,
-  resetThrottleStorage,
+  registerUser,
   TestAppContext,
 } from './utils/test-app';
 
@@ -45,22 +42,8 @@ describe('platform entitlements + quotas (e2e)', () => {
   let saCookie: string;
   let adminCookie: string;
 
-  const cast = async (email: string, role: Role, org: string | null): Promise<string> => {
-    resetThrottleStorage(ctx);
-    const reg = await request(http)
-      .post('/api/v1/auth/register')
-      .send({ email, password: 'Password1', firstName: 'Pe', lastName: 'User' });
-    expect(reg.status).toBe(201);
-    await ctx.app
-      .get<Repository<User>>(getRepositoryToken(User))
-      .update({ email }, { organizationId: org, role });
-    resetThrottleStorage(ctx);
-    const login = await request(http)
-      .post('/api/v1/auth/login')
-      .send({ email, password: 'Password1' });
-    expect(login.status).toBe(200);
-    return extractAuthCookies(login.headers['set-cookie'] as unknown as string[]);
-  };
+  const cast = async (email: string, role: Role, org: string | null): Promise<string> =>
+    (await registerUser(ctx, { email, role, organizationId: org, firstName: 'Pe' })).cookie;
 
   beforeAll(async () => {
     ctx = await createTestApp();
