@@ -27,15 +27,40 @@ export interface TestAppContext {
 /**
  * Per-suite isolation on the SHARED servers (#132).
  *
- * `JEST_WORKER_ID` is the right key for both halves. Jest gives each worker a stable
- * id and runs suites on a worker SERIALLY, so two suites sharing an id never overlap
- * in time — which makes the Redis DB index safe to reuse — while two suites running
- * concurrently are always on different workers. A counter alone would not give that:
- * concurrent suites could collide, and Redis only has 16 databases to hand out.
+ * `jest-e2e.json` pins `maxWorkers: 1` — THE SUITES RUN SERIALLY, AND THAT IS
+ * DELIBERATE. Please read this before "speeding the suite up" by raising it.
  *
- * The Postgres database name adds a counter anyway, so a worker running several
- * suites gets a clean schema each time without dropping one that might still have a
- * connection open.
+ * The shared-container work removed the 22 container start/stop cycles that made
+ * runs time out, but a second, quieter non-determinism survived it. Measured on one
+ * machine, same commit, nothing else changed:
+ *
+ *   maxWorkers: 4  ->  3 failures in  9 full runs  (~33%)
+ *   serial         ->  1 failure  in 17 full runs  (~6%)
+ *
+ * SO THIS IS A MITIGATION, NOT A CURE, and #132 stays open. Do not read the pin as
+ * "the flake is fixed" — a serial run still failed once out of seventeen.
+ *
+ * The failure lands on a DIFFERENT suite each time and always has the same shape:
+ * an entity that demonstrably existed a moment earlier is not found. An empty mail
+ * queue; a topic its own author cannot see; an org lookup answering 404; a user row
+ * that a previous assertion in the SAME test file had just read back, gone one test
+ * later. Every one of those suites passes in isolation.
+ *
+ * What has been ruled out: per-suite Postgres databases and per-worker Redis
+ * databases were logged across a full run and are correctly assigned, with no
+ * duplicates among concurrent suites — so it is not the obvious keyspace collision.
+ * And because a SERIAL run still reproduced it, it is not purely cross-suite
+ * concurrency either. That is as far as it got; the mechanism is still unknown.
+ *
+ * Serialization is kept because 6% beats 33% and the cost is ~15s of wall clock. A
+ * suite that fails one run in three trains everyone to re-run rather than read the
+ * failure, and that is exactly how two real bugs hid behind "it's just flaky".
+ *
+ * `JEST_WORKER_ID` is kept as the Redis key rather than hardcoding 1: it stays
+ * correct if the cap is ever lifted, and it documents which axis the isolation is on.
+ * With one worker every suite gets DB 1 and `flushRedis` clears it between suites.
+ *
+ * The Postgres database name is per SUITE (see below), so it is unaffected either way.
  */
 const workerId = Number(process.env.JEST_WORKER_ID ?? '1');
 
@@ -131,8 +156,8 @@ export async function createTestApp(): Promise<TestAppContext> {
   process.env.REDIS_HOST = process.env.E2E_REDIS_HOST as string;
   process.env.REDIS_PORT = process.env.E2E_REDIS_PORT as string;
   process.env.REDIS_PASSWORD = '';
-  // One Redis logical database per worker. Redis ships 16; Jest is capped at 4
-  // workers in jest-e2e.json, so this never wraps.
+  // One Redis logical database per worker. Redis ships 16 and jest-e2e.json pins
+  // one worker, so this is DB 1 in practice and can never wrap.
   process.env.REDIS_DB = String(workerId);
   process.env.JWT_ACCESS_SECRET = 'e2e-test-access-secret-not-for-production-use';
   process.env.JWT_REFRESH_SECRET = 'e2e-test-refresh-secret-not-for-production-use';

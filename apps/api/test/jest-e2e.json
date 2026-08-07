@@ -23,5 +23,5 @@
   },
   "globalSetup": "<rootDir>/utils/global-setup.ts",
   "globalTeardown": "<rootDir>/utils/global-teardown.ts",
-  "maxWorkers": 4
+  "maxWorkers": 1
 }
